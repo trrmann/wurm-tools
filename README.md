@@ -120,29 +120,40 @@ The workspace is configured in `.vscode/settings.json` so the `scripts/` folder 
 This means inside any new VS Code terminal, you can directly run:
 
 ```bash
-# In Bash (Fedora / Linux)
-deploy
-# or
-deploy.sh -m "feat: add crop harvest calendar"
+# In Bash (Fedora / Linux):
+deploy -dev                               # Build/verify for Development
+deploy -preview                           # Build/verify for Preview
+deploy -prod -m "feat: release new tools" # Deploy to Production (message required if uncommitted changes exist)
 
-# In PowerShell / Windows Terminal
-deploy
-# or
-deploy.ps1 -CommitMessage "feat: add crop harvest calendar"
+# In PowerShell / Windows Terminal:
+deploy -dev                               # Build/verify for Development
+deploy -preview                           # Build/verify for Preview
+deploy -prod -m "feat: release new tools" # Deploy to Production (message required if uncommitted changes exist)
 ```
+
+### Environment Target Switches `{-dev; -preview; -prod;}`
+
+The deployment scripts enforce **mutually exclusive environment switches** (exactly one target switch is permitted per run):
+
+| Target Switch | Environment       | Vite Build Mode | Remote Branch    | Commit Message Behavior                                                                          |
+| :------------ | :---------------- | :-------------- | :--------------- | :----------------------------------------------------------------------------------------------- |
+| `-dev`        | Development       | `development`   | `origin dev`     | Optional; prompts in interactive mode, non-fatal if omitted.                                     |
+| `-preview`    | Preview / Staging | `preview`       | `origin preview` | Optional; prompts in interactive mode, non-fatal if omitted.                                     |
+| `-prod`       | Production        | `production`    | `origin main`    | **Mandatory** when uncommitted changes exist (`-m` / `-CommitMessage`). Fails safely if missing. |
 
 ### Deployment Pipeline Steps & Safe Stops
 
 Both scripts run the exact same verification pipeline and **safely halt immediately** if any step encounters an error or fails validation:
 
-1. **Dependency Verification**: Ensures `node_modules` are installed.
-2. **Prettier Code Formatting**: Runs `npm run format:check` (or optional `--auto-format` / `-AutoFormat`).
-3. **ESLint Quality Check**: Runs `npm run lint`.
-4. **Vitest Unit Test Suite**: Runs `npm test` (or optional `--skip-tests` / `-SkipTests`).
-5. **Vite Production Build**: Runs `npm run build`.
-6. **Git Status & Commit**: Checks repository state, stages files, and commits with co-authorship.
-7. **Push to GitHub (`origin main`)**: Pushes to `main`, which triggers automatic CI/CD and **Render** static site redeployment.
-8. **Summary & Live Monitoring**: Reports GitHub Actions CI status, Render live site link, and W3C validation URLs.
+1. **Environment Target Validation**: Enforces that exactly one switch (`-dev`, `-preview`, or `-prod`) is supplied. Aborts safely if none or multiple are specified.
+2. **Dependency Verification**: Ensures `node_modules` are installed.
+3. **Prettier Code Formatting**: Runs `npm run format:check` (or optional `--auto-format` / `-AutoFormat`).
+4. **ESLint Quality Check**: Runs `npm run lint`.
+5. **Vitest Unit Test Suite**: Runs `npm test` (or optional `--skip-tests` / `-SkipTests`).
+6. **Vite Target Build**: Builds the application for the targeted mode (`development`, `preview`, or `production`).
+7. **Git Status & Commit Guard**: Checks repository state. For `-prod`, strictly requires a non-empty string message argument (`-m` / `-CommitMessage`) if uncommitted changes exist, stages files, and commits with co-authorship.
+8. **Push to GitHub**: Pushes to the corresponding remote branch (`origin main` for prod; `origin dev` or `origin preview` for pre-production), triggering CI/CD and **Render** static site redeployment.
+9. **Summary & Live Monitoring**: Reports target environment status, GitHub Actions CI status, Render live site link, and W3C validation URLs.
 
 ---
 

@@ -30,3 +30,13 @@ In addition to manual W3C online validation, the project includes automated CI c
 - **Vite Production Build Verification**: `npm run build`
 
 ---
+
+## 3. Environment-Targeted Deployment Quality Gates
+
+The cross-platform deployment automation scripts (`scripts/deploy.ps1` and `scripts/deploy.sh`) enforce targeted quality gates per environment switch:
+
+- **Target Switch Validation**: Requires exactly one target switch from `{-dev; -preview; -prod; }`. Any attempt to combine multiple target switches or omit the target causes an immediate safe abort.
+- **Pre-deployment Verification**: Every target executes Prettier formatting, ESLint validation, Vitest test suite, and Vite mode-specific compilation prior to touching Git.
+- **Production Git Commit Guard**: When deploying with `-prod`, the script inspects repository status for uncommitted changes (`git status --porcelain`). If changes are detected, a non-empty message argument (`-m` / `-CommitMessage`) is strictly required; deployments without an explicit message argument abort immediately with exit code 1.
+
+---
