@@ -1,0 +1,15 @@
+{
+  "name": "wurm-tools",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A modular toolkit and dashboard for Wurm Online and Wurm Unlimited players",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^6.2.0"
+  }
+}

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wurm Tools — Companion Suite for Wurm Online & Unlimited</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="description" content="A fast, client-side toolkit for Wurm Online and Wurm Unlimited players: Deed upkeep calculators, prayer & action timers, coordinate distance & travel calculators, and player notes." />
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-badge">⚔️</div>
+        <div>
+          <div class="sidebar-title">Wurm Tools</div>
+          <div class="sidebar-subtitle">Companion Suite</div>
+        </div>
+      </div>
+
+      <div class="sidebar-search">
+        <div class="search-input-wrapper">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="tool-search-input" class="search-input" placeholder="Search tools..." aria-label="Search tools" />
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" id="sidebar-navigation">
+        <!-- Dynamically rendered tool list -->
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="open-concepts-modal-btn" class="concepts-btn" type="button">
+          <span>📜</span> View Suite Concepts & Roadmap
+        </button>
+        <div class="render-badge">
+          Ready for Render Static Hosting
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <div class="main-wrapper">
+      <header class="top-header">
+        <div class="header-left">
+          <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-label="Toggle Menu">☰</button>
+          <div class="header-title-container">
+            <h1 id="header-tool-title">Deed & Upkeep Calculator</h1>
+            <p id="header-tool-desc">Calculate deed dimensions, creation fees, monthly upkeep costs, and deed bank runway.</p>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <span class="badge-tag">Offline-Ready Client</span>
+        </div>
+      </header>
+
+      <main class="tool-viewport" id="tool-viewport">
+        <!-- Active Tool is mounted here -->
+      </main>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container"></div>
+
+  <!-- Suite Concepts Modal -->
+  <div class="modal-backdrop" id="concepts-modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 style="font-size: 1.15rem; color: var(--accent-gold); display: flex; align-items: center; gap: 0.5rem;">
+          <span>📜</span> Wurm Tools — Comprehensive Suite Concepts
+        </h3>
+        <button id="close-concepts-modal" class="modal-close-btn" aria-label="Close modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Wurm Tools</strong> is engineered as a clean, modular, client-side dashboard with starter tools built to expand. Below is an overview of the planned suite roadmap documented in <code>CONCEPTS.md</code>:</p>
+        
+        <h2>🏰 Settlement & Deed Operations</h2>
+        <ul>
+          <li><strong>Deed Upkeep & Size Calculator (Active)</strong>: Size ($W \times H$), perimeter buffers, guard upkeep, and runway days based on bank silver.</li>
+          <li><strong>Perimeter & Border Planner</strong>: Neighbor buffer rules, expansion pacing, and perimeter tile costs.</li>
+          <li><strong>House & Building Material Estimator</strong>: Brick, mortar, plank, and roofing requirements for multi-story buildings.</li>
+          <li><strong>Deed Roles & Permissions Matrix</strong>: Cheat sheet for Citizen, Ally, Non-citizen, and Enemy permissions.</li>
+        </ul>
+
+        <h2>⏳ Timers, Rituals & Religion</h2>
+        <ul>
+          <li><strong>Action & Prayer Timers (Active)</strong>: 20-minute favor cooldown, 30-minute meditation, 3-hour path ability, and custom timers with audio chime and browser notification alerts.</li>
+          <li><strong>Priest Favor & Spell Matrix</strong>: Favor regeneration, alignment requirements, and deity spell lists (Fo, Magranon, Vynora, Libila).</li>
+          <li><strong>Sleep Bonus Duration Tracker</strong>: Sleep powder duration and bonus tick optimization.</li>
+        </ul>
+
+        <h2>🧭 Navigation, Cartography & Travel</h2>
+        <ul>
+          <li><strong>Distance & Bearing Calculator (Active)</strong>: Euclidean tile distance, metric conversion (1 tile = 4 meters), compass bearings, and travel time by foot, mount, cart, or ship.</li>
+          <li><strong>Waypoint Log (Active)</strong>: Store favorite deed, mine, and waypoint coordinates locally.</li>
+          <li><strong>Slope & Terraforming Helper</strong>: Elevation difference and cart slope safety rules.</li>
+        </ul>
+
+        <h2>⚒️ Crafting, Metallurgy & Smithing</h2>
+        <ul>
+          <li><strong>Alloy Ratios & Smelting Matrix</strong>: Exact mass formulas for bronze, brass, steel, and electrum.</li>
+          <li><strong>Item Improvement & Max QL Guide</strong>: Skill vs. tool QL caps, repair math, and failure thresholds.</li>
+          <li><strong>God Rune Compendium</strong>: Rune bonuses, combinations, and conflict resolution.</li>
+        </ul>
+
+        <h2>🌾 Farming, Agriculture & Cooking</h2>
+        <ul>
+          <li><strong>Crop & Forestry Starfall Calendar</strong>: Optimal planting and harvesting periods across Wurm's seasonal calendar.</li>
+          <li><strong>CCFP Nutrition Balancer</strong>: Calorie, Carbohydrate, Fat, and Protein optimization for skill gain bonuses.</li>
+          <li><strong>Animal Breeding & Trait Matrix</strong>: Speed, strength, and stamina trait inheritance tracking.</li>
+        </ul>
+
+        <h2>📝 Player Log & Notebook</h2>
+        <ul>
+          <li><strong>Settlement & Player Notes (Active)</strong>: Record vein coordinates, chore lists, and crafting milestones with <code>localStorage</code> persistence and JSON export.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
