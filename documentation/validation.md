@@ -30,7 +30,3 @@ In addition to manual W3C online validation, the project includes automated CI c
 - **Vite Production Build Verification**: `npm run build`
 
 ---
-
-## 3. Prior Reference Project Links
-
-- [Chow Hall Final Project (WDD 330)](https://validator.w3.org/nu/?doc=https%3A%2F%2Fwdd330-final-project-chow-hall-tracy-mann.onrender.com%2Fcountry%2F%3Fcountry%3DESP%26returnTo%3D%252Frecipe%252F%253Fweek%253Dcurrent%2526recipe%253D53182%2526returnTo%253D%25252Fmealplan%25252F%25253Fweek%25253Dcurrent%252526day%25253DMon)

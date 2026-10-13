@@ -106,6 +106,46 @@ npm run preview
 
 ---
 
+## Automated Deployment Scripts
+
+Automated deployment scripts with safe stops are located in [`scripts/`](./scripts) for both **PowerShell (Windows)** and **Bash (Fedora / Linux)**.
+
+### Automatic PATH Integration in VS Code
+
+The workspace is configured in `.vscode/settings.json` so the `scripts/` folder is automatically prepended to the system `PATH` in all integrated terminals:
+
+- **Windows (PowerShell / Command Prompt)**: `${workspaceFolder}\scripts`
+- **Linux (Fedora / Ubuntu Bash)**: `${workspaceFolder}/scripts`
+
+This means inside any new VS Code terminal, you can directly run:
+
+```bash
+# In Bash (Fedora / Linux)
+deploy
+# or
+deploy.sh -m "feat: add crop harvest calendar"
+
+# In PowerShell / Windows Terminal
+deploy
+# or
+deploy.ps1 -CommitMessage "feat: add crop harvest calendar"
+```
+
+### Deployment Pipeline Steps & Safe Stops
+
+Both scripts run the exact same verification pipeline and **safely halt immediately** if any step encounters an error or fails validation:
+
+1. **Dependency Verification**: Ensures `node_modules` are installed.
+2. **Prettier Code Formatting**: Runs `npm run format:check` (or optional `--auto-format` / `-AutoFormat`).
+3. **ESLint Quality Check**: Runs `npm run lint`.
+4. **Vitest Unit Test Suite**: Runs `npm test` (or optional `--skip-tests` / `-SkipTests`).
+5. **Vite Production Build**: Runs `npm run build`.
+6. **Git Status & Commit**: Checks repository state, stages files, and commits with co-authorship.
+7. **Push to GitHub (`origin main`)**: Pushes to `main`, which triggers automatic CI/CD and **Render** static site redeployment.
+8. **Summary & Live Monitoring**: Reports GitHub Actions CI status, Render live site link, and W3C validation URLs.
+
+---
+
 ## Deploying to Render
 
 This repository is pre-configured for **Render Static Sites** via [`render.yaml`](./render.yaml) and manual deployment.
@@ -139,8 +179,21 @@ This repository is pre-configured for **Render Static Sites** via [`render.yaml`
 
 ```text
 WurmTools/
-├── .gitignore               # Ignored files (node_modules, dist)
-├── CONCEPTS.md              # Detailed concept roadmap for future tools
+├── .github/
+│   └── workflows/ci.yml     # Automated CI (Prettier, ESLint, Vitest, Build)
+├── .vscode/
+│   └── settings.json        # Integrated terminal PATH configuration
+├── documentation/
+│   ├── CONCEPTS.md          # Comprehensive concept roadmap for future tools
+│   ├── render.md            # Render deployment dashboard links
+│   └── validation.md        # W3C HTML & CSS live validation links
+├── scripts/
+│   ├── deploy.ps1           # Deployment automation for Windows PowerShell
+│   ├── deploy.sh            # Deployment automation for Bash (Fedora / Linux)
+│   ├── deploy.cmd           # Windows Command Prompt / terminal wrapper
+│   └── deploy               # Linux executable wrapper
+├── tests/
+│   └── calculators.test.js  # Vitest unit test suite
 ├── index.html               # Main application HTML entry point
 ├── package.json             # NPM project manifest & scripts
 ├── render.yaml              # Render Blueprint deployment configuration

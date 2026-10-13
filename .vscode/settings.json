@@ -1,0 +1,29 @@
+{
+  "terminal.integrated.env.windows": {
+    "PATH": "${workspaceFolder}\\scripts;${env:PATH}"
+  },
+  "terminal.integrated.env.linux": {
+    "PATH": "${workspaceFolder}/scripts:${env:PATH}"
+  },
+  "terminal.integrated.env.osx": {
+    "PATH": "${workspaceFolder}/scripts:${env:PATH}"
+  },
+  "chat.tools.terminal.autoApprove": {
+    "/^npm install$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^npm run build$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^git add \\.$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^git commit -m \"feat: initial commit of Wurm Tools static web app\n\n- Modular dashboard with Vite, HTML, CSS, JavaScript \\(ES modules\\)\n- Deed cost & upkeep calculator with runway estimates\n- Action & prayer timers with Web Audio chime and notifications\n- Coordinate distance & travel time estimator\n- Settlement & player task notes with localStorage persistence\n- Render Blueprint deployment configuration \\(render\\.yaml\\)\n- Comprehensive suite concepts and roadmap documentation \\(CONCEPTS\\.md\\)\n\nCo-authored-by: Copilot <223556219\\+Copilot@users\\.noreply\\.github\\.com>\"$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  }
+}
