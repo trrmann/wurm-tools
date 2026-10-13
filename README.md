@@ -2,7 +2,7 @@
 
 A fast, modern, and modular companion suite for **Wurm Online** and **Wurm Unlimited** players. Built with pure **HTML, CSS, JavaScript (ES Modules), Node.js, and Vite**, designed for high performance, zero external framework bloat, and instantaneous static hosting on **Render**.
 
-![Wurm Tools Preview](public/favicon.svg)
+![Wurm Tools Preview](public/images/favicon.svg)
 
 ---
 
@@ -58,8 +58,7 @@ WurmTools/
 │   ├── dashboard/index.html       # Standalone dashboard page
 │   └── concepts/index.html        # Comprehensive concepts & roadmap page
 ├── public/                        # Static assets served at root
-│   ├── favicon.svg                # Browser favicon
-│   └── images/                    # Static image directory (logo.svg, favicon.svg)
+│   └── images/                    # Static images (logo.svg, favicon.svg)
 ├── src/
 │   ├── images/                    # Source brand and interface images
 │   ├── styles/                    # Stylesheets (style.css with theme variables & layout)
@@ -176,7 +175,7 @@ Both scripts run the exact same verification pipeline and **safely halt immediat
 
 1. **Environment Target Validation**: Enforces that exactly one switch (`-dev`, `-preview`, or `-prod`) is supplied. Aborts safely if none or multiple are specified.
 2. **Dependency Verification**: Ensures `node_modules` are installed.
-3. **Prettier Code Formatting**: Runs `npm run format:check` (or optional `--auto-format` / `-AutoFormat`).
+3. **Prettier Code Formatting**: Runs `npm run format:check` (auto-fixed by default; skip with `--no-auto-format` / `-NoAutoFormat`).
 4. **ESLint Quality Check**: Runs `npm run lint`.
 5. **Vitest Unit Test Suite**: Runs `npm test` (or optional `--skip-tests` / `-SkipTests`).
 6. **Vite Target Build**: Builds the application for the targeted mode (`development`, `preview`, or `production`).
@@ -242,7 +241,7 @@ WurmTools/
 ├── render.yaml              # Render Blueprint deployment configuration
 ├── vite.config.js           # Vite build configuration
 ├── public/
-│   └── favicon.svg          # Application vector icon
+│   └── images/favicon.svg   # Application vector icon (see Favicon location)
 └── src/
     ├── main.js              # Application router, toast, search & modal logic
     ├── style.css            # Dark fantasy responsive styling & components
@@ -273,3 +272,7 @@ The architecture is built for easy expansion:
 ## License
 
 MIT License. Designed with passion for the Wurm Online and Wurm Unlimited community.
+
+## Favicon location
+
+The favicon lives at `public/images/favicon.svg` (served at `/images/favicon.svg`) and every page references it with `<link rel="icon" href="/images/favicon.svg">`. It does not need to be in the site root: Google's guidelines state the `href` can be any relative or absolute URL (https://developers.google.com/search/docs/appearance/favicon-in-search), and the HTML Standard defines `rel=icon` as an explicit link (https://html.spec.whatwg.org/#rel-icon). The root `/favicon.ico` fallback only applies to pages without a link tag.

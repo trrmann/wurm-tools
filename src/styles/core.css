@@ -1108,3 +1108,25 @@ body {
   cursor: pointer;
   font-size: 0.78rem;
 }
+
+/* Navigation partial (lives in the header) */
+.header-nav {
+  display: none;
+}
+
+.nav-list {
+  display: flex;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav-link {
+  color: var(--accent-gold);
+  text-decoration: none;
+}
+
+.nav-link:hover {
+  text-decoration: underline;
+}

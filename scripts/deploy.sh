@@ -78,10 +78,6 @@ while [[ $# -gt 0 ]]; do
       AUTO_FORMAT=false
       shift
       ;;
-    -a|--auto-format|-AutoFormat|--AutoFormat)
-      AUTO_FORMAT=true
-      shift
-      ;;
     -s|--skip-tests|-SkipTests|--SkipTests)
       SKIP_TESTS=true
       shift
@@ -156,7 +152,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Options:"
       echo "  -m, --message <msg>   Commit message for pending changes (REQUIRED for -prod if uncommitted changes exist)"
-      echo "  -a, --auto-format     Auto-fix formatting with Prettier before checking"
+      echo "  --no-auto-format      Skip Prettier auto-formatting (enabled by default)"
       echo "  -s, --skip-tests      Skip the unit test suite"
       echo "  --no-open             Skip opening the live Render site in Google Chrome on prod deployment"
       echo "  --no-push             Verify and build without pushing to GitHub"

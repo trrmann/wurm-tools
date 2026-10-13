@@ -74,7 +74,6 @@ param(
     [string]$CommitMessage = "",
 
     [switch]$NoAutoFormat,
-    [switch]$AutoFormat, # Kept for backward compatibility
     [switch]$SkipTests,
     [switch]$NoLaunch,
     [switch]$NoOpen, # Alias for NoLaunch
@@ -114,7 +113,7 @@ if ($Prod) { $targetList += "prod" }
 
 if ($targetList.Count -eq 0) {
     Write-Host "`n[FAIL] Missing environment target switch. Exactly one target is required: -dev, -preview, or -prod." -ForegroundColor Red
-    Write-Host "Usage: deploy {-dev | -preview | -prod} [-m <message>] [-AutoFormat] [-SkipTests] [-NoOpen] [-NoPush]`n" -ForegroundColor Yellow
+    Write-Host "Usage: deploy {-dev | -preview | -prod} [-m <message>] [-NoAutoFormat] [-SkipTests] [-NoOpen] [-NoPush]`n" -ForegroundColor Yellow
     exit 1
 }
 

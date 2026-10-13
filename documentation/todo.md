@@ -25,12 +25,12 @@
 - [x] Eliminate file duplication between `/src` and `/public` (static assets consolidated in `/public`)
 - [x] Main home `index.html` configured as clean client redirect to `/site/dashboard/` with external JS module and no inline styles
 - [x] Refactor all remaining style info out of JS/HTML into CSS classes so all style info is in CSS, HTML uses templates/partials, and JS is in external script modules
+- [x] note: w3c tests can only be fixed by production pushes and only of use in prod. w3c tests may require a human input to authentication(anti-bot tests) so need to address this as well from time to time.
+- [x] ensure no extranious backwards compatibility files exist, this should be the definitive single point to call the files and this is still base version, so there is no reversion at this point.
+
+- [x] Navigation partial (`site/partials/nav.html`, `src/js/modules/partials/nav.js`) loaded like the header/footer/sidebar; mounts in the header's `#nav-slot` (hidden by default until the site uses it)
 
 ## Planned Items & Backlog
-
-- note: w3c tests can only be fixed by production pushes and only of use in prod. w3c tests may require a human input to authentication(anti-bot tests) so need to address this as well from time to time.
-
-- ensure no extranious backwards compatibility files exist, this should be the definitive single point to call the files and this is still base version, so there is no reversion at this point.
 
 ::::::do not proceed past this point without approval:::::
 
