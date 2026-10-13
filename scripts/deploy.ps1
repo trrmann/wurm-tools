@@ -97,7 +97,11 @@ param(
     [switch]$Chrome,
     [switch]$Lighthouse,
     [switch]$CssOverview,
-    [switch]$Memory
+    [switch]$Memory,
+
+    # Seconds to wait after a push for Render to build and publish (default 5 minutes, 0 = no wait)
+    [ValidateRange(0, 86400)]
+    [int]$RenderWait = 300
 )
 
 $ErrorActionPreference = 'Stop'
@@ -388,6 +392,19 @@ if ($TargetEnv -eq "prod") {
     Write-Host "[INFO] Environment is local $DisplayName (matches 'npm run $TargetEnv'). Skipping push to GitHub.`n" -ForegroundColor Cyan
 }
 
+# Wait for Render to pull the new commit from GitHub and publish it before any live-site testing
+if ($TargetEnv -eq "prod" -and $hasPushed -and $RenderWait -gt 0) {
+    Write-Host ">>> Waiting $RenderWait seconds for Render to build and publish the pushed commit (override with -RenderWait <seconds>)..." -ForegroundColor Cyan
+    $waitEnd = (Get-Date).AddSeconds($RenderWait)
+    while ((Get-Date) -lt $waitEnd) {
+        $left = [int][math]::Ceiling(($waitEnd - (Get-Date)).TotalSeconds)
+        Write-Progress -Activity "Waiting for Render deployment" -Status "$left seconds remaining" -PercentComplete ([math]::Max(0, [math]::Min(100, 100 * ($RenderWait - $left) / $RenderWait)))
+        Start-Sleep -Seconds ([math]::Min(5, [math]::Max(1, $left)))
+    }
+    Write-Progress -Activity "Waiting for Render deployment" -Completed
+    Write-Host "[INFO] Render wait complete.`n" -ForegroundColor Cyan
+}
+
 # 6. W3C Standards Validation Suite
 # Automatically run for production when code was pushed to origin/main.
 # Not run if no code was pushed to prod, unless an explicit switch (-w3c, -w3c-HTML, or -w3c-CSS) was passed.
@@ -411,11 +428,6 @@ if (${w3c-HTML}) {
 
 if ($runW3c) {
     Write-Host ">>> [W3C Standards Check] Testing site pages against official W3C validators..." -ForegroundColor Cyan
-    if ($TargetEnv -eq "prod" -and $hasPushed) {
-        Write-Host ">>> Pausing 5 seconds for Render webhook to register live build..." -ForegroundColor DarkGray
-        Start-Sleep -Seconds 5
-    }
-
     switch ($w3cMode) {
         "html" {
             Invoke-SafeStep "W3C HTML5 Validation Suite (All Pages)" {

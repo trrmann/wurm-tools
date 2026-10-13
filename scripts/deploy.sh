@@ -48,6 +48,9 @@ LIGHTHOUSE=false
 CSS_OVERVIEW=false
 MEMORY=false
 
+# Seconds to wait after a push for Render to build and publish (default 5 minutes, 0 = no wait)
+RENDER_WAIT=300
+
 # Parse command-line flags
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -135,6 +138,14 @@ while [[ $# -gt 0 ]]; do
       MEMORY=true
       shift
       ;;
+    -RenderWait|--render-wait|-render-wait)
+      if [ -z "${2:-}" ] || ! [[ "$2" =~ ^[0-9]+$ ]]; then
+        echo "Error: $1 requires a non-negative number of seconds." >&2
+        exit 1
+      fi
+      RENDER_WAIT="$2"
+      shift 2
+      ;;
     -h|--help)
       echo "Usage: ./deploy.sh {-dev | -preview | -prod} [OPTIONS]"
       echo ""
@@ -156,6 +167,7 @@ while [[ $# -gt 0 ]]; do
       echo "  -Lighthouse           Run Chrome Lighthouse audit (Performance, Accessibility, Best Practices, SEO)"
       echo "  -CssOverview          Run Chrome CSS Overview audit"
       echo "  -Memory               Run Chrome Memory & DOM node leak testing"
+      echo "  -RenderWait <secs>    Seconds to wait after a prod push for Render to publish (default 300, 0 = none)"
       echo "  -h, --help            Show this help dialog"
       exit 0
       ;;
@@ -378,6 +390,17 @@ else
   echo -e "${CYAN}[INFO] Environment is local ${DISPLAY_NAME} (matches 'npm run ${TARGET_ENV}'). Skipping push to GitHub.${NC}\n"
 fi
 
+# Wait for Render to pull the new commit from GitHub and publish it before any live-site testing
+if [ "${TARGET_ENV}" = "prod" ] && [ "${HAS_PUSHED}" = true ] && [ "${RENDER_WAIT}" -gt 0 ]; then
+  echo -e "${CYAN}>>> Waiting ${RENDER_WAIT} seconds for Render to build and publish the pushed commit (override with -RenderWait <seconds>)...${NC}"
+  for ((remaining = RENDER_WAIT; remaining > 0; remaining -= 5)); do
+    printf "\r  %4d seconds remaining " "${remaining}"
+    if [ "${remaining}" -ge 5 ]; then sleep 5; else sleep "${remaining}"; fi
+  done
+  printf "\r%40s\r" ""
+  echo -e "${CYAN}[INFO] Render wait complete.${NC}\n"
+fi
+
 # 6. W3C Standards Validation Suite
 # Automatically run for production when code was pushed to origin/main.
 # Not run if no code was pushed to prod, unless an explicit switch (-w3c, -w3c-HTML, or -w3c-CSS) was passed.
@@ -401,11 +424,6 @@ fi
 
 if [ "${RUN_W3C}" = true ]; then
   echo -e "${CYAN}>>> [W3C Standards Check] Testing site pages against official W3C validators...${NC}"
-  if [ "${TARGET_ENV}" = "prod" ] && [ "${HAS_PUSHED}" = true ]; then
-    echo -e "${GRAY}>>> Pausing 5 seconds for Render webhook to register live build...${NC}"
-    sleep 5
-  fi
-
   case "${W3C_MODE}" in
     html)
       invoke_step "W3C HTML5 Validation Suite (All Pages)" npm run test:w3c:html

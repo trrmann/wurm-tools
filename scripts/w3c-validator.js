@@ -154,28 +154,69 @@ async function validateCss(targetUrl) {
   }
 }
 
+const WAIT_TIMEOUT_MS = parseInt(process.env.W3C_WAIT_TIMEOUT_MS || '300000', 10);
+const WAIT_INTERVAL_MS = 10000;
+const SERVICE_RETRIES = 3;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Retries W3C service calls that fail with transient 5xx or network errors
+async function withRetry(fn) {
+  let result;
+  for (let attempt = 1; attempt <= SERVICE_RETRIES; attempt++) {
+    result = await fn();
+    const transient = result.error && /HTTP 5\d\d|fetch failed|ECONN|ETIMEDOUT/i.test(result.error);
+    if (!transient) return result;
+    if (attempt < SERVICE_RETRIES) await sleep(3000 * attempt);
+  }
+  return result;
+}
+
+// Waits until every page responds 200 so a deploy still building is not validated
+async function waitForDeployment() {
+  const deadline = Date.now() + WAIT_TIMEOUT_MS;
+  let pending = [...SITE_PAGES];
+  let announced = false;
+
+  while (pending.length > 0) {
+    const stillPending = [];
+    for (const pagePath of pending) {
+      try {
+        const res = await fetch(`${baseUrl}${pagePath}`, { method: 'HEAD' });
+        if (!res.ok) stillPending.push(`${pagePath} (HTTP ${res.status})`);
+      } catch (e) {
+        stillPending.push(`${pagePath} (${e.message})`);
+      }
+    }
+    if (stillPending.length === 0) return true;
+    pending = stillPending.map((p) => p.split(' ')[0]);
+    if (Date.now() >= deadline) {
+      console.log(
+        `[FAIL] Site not fully live after ${WAIT_TIMEOUT_MS / 1000}s: ${stillPending.join(', ')}\n`
+      );
+      return false;
+    }
+    if (!announced) console.log('Waiting for deployment to go live (all pages must return 200)...');
+    announced = true;
+    console.log(`  • Pending: ${stillPending.join(', ')}`);
+    await sleep(WAIT_INTERVAL_MS);
+  }
+  return true;
+}
+
 async function run() {
   let anyErrors = false;
+
+  if (!(await waitForDeployment())) process.exit(1);
+  console.log('All pages are live.\n');
 
   for (const pagePath of SITE_PAGES) {
     const fullUrl = `${baseUrl}${pagePath}`;
     console.log(`>>> Validating Page: ${pagePath} (${fullUrl})`);
 
-    try {
-      const probeRes = await fetch(fullUrl, { method: 'HEAD' });
-      if (!probeRes.ok) {
-        console.log(
-          `  [WARN] Target URL returned HTTP ${probeRes.status} (deployment may still be building on remote host).`
-        );
-      }
-    } catch (e) {
-      console.log(`  [WARN] Target URL probe failed (${e.message}).`);
-    }
-
     // 1. HTML Validation
     if (checkHtml) {
       process.stdout.write('  • Nu HTML Checker: ');
-      const htmlResult = await validateHtml(fullUrl);
+      const htmlResult = await withRetry(() => validateHtml(fullUrl));
 
       if (htmlResult.error) {
         console.log(`[FAIL] Connection/Service Error (${htmlResult.error})`);
@@ -201,7 +242,7 @@ async function run() {
     // 2. CSS Validation
     if (checkCss) {
       process.stdout.write('  • Jigsaw CSS Validator: ');
-      const cssResult = await validateCss(fullUrl);
+      const cssResult = await withRetry(() => validateCss(fullUrl));
 
       if (cssResult.error) {
         console.log(`[FAIL] Connection/Service Error (${cssResult.error})`);
