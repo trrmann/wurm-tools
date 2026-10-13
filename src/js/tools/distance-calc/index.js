@@ -75,9 +75,9 @@ export function mount(container) {
       </div>
 
       <div class="form-grid">
-        <div style="background: var(--bg-secondary); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-          <h4 style="color: var(--accent-gold); font-size: 0.9rem; margin-bottom: 0.75rem; text-transform: uppercase;">Origin / Start Point</h4>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+        <div class="coord-box">
+          <h4 class="coord-header-origin">Origin / Start Point</h4>
+          <div class="coord-grid-2col">
             <div class="input-group">
               <label class="input-label" for="start-x">X Coordinate</label>
               <input type="number" id="start-x" class="custom-input" value="1000">
@@ -89,9 +89,9 @@ export function mount(container) {
           </div>
         </div>
 
-        <div style="background: var(--bg-secondary); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-          <h4 style="color: var(--accent-blue); font-size: 0.9rem; margin-bottom: 0.75rem; text-transform: uppercase;">Destination Point</h4>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+        <div class="coord-box">
+          <h4 class="coord-header-dest">Destination Point</h4>
+          <div class="coord-grid-2col">
             <div class="input-group">
               <label class="input-label" for="dest-x">X Coordinate</label>
               <input type="number" id="dest-x" class="custom-input" value="1450">
@@ -104,7 +104,7 @@ export function mount(container) {
         </div>
       </div>
 
-      <div class="results-grid" style="margin-top: 1rem;">
+      <div class="results-grid results-grid-spaced">
         <div class="stat-card">
           <div class="stat-title">Straight-Line Tile Distance</div>
           <div class="stat-value" id="dist-tiles">0 tiles</div>
@@ -113,33 +113,33 @@ export function mount(container) {
 
         <div class="stat-card">
           <div class="stat-title">Compass Heading</div>
-          <div class="stat-value" id="dist-bearing" style="color: var(--accent-gold);">-</div>
+          <div class="stat-value stat-value-gold" id="dist-bearing">-</div>
           <div class="stat-desc" id="dist-bearing-text">-</div>
         </div>
 
         <div class="stat-card">
           <div class="stat-title">ΔX (East/West) & ΔY (North/South)</div>
-          <div class="stat-value" id="dist-deltas" style="font-size: 1.15rem;">+0 X, +0 Y</div>
+          <div class="stat-value stat-value-medium" id="dist-deltas">+0 X, +0 Y</div>
           <div class="stat-desc">Coordinate offset values</div>
         </div>
       </div>
 
-      <div style="margin-top: 2rem;">
-        <h3 style="font-size: 1.1rem; color: var(--text-main); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+      <div class="coord-section-spacing">
+        <h3 class="coord-section-title">
           <span>🐎</span> Estimated Travel Times by Transport Mode
         </h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.85rem;" id="travel-modes-grid">
+        <div class="travel-modes-grid" id="travel-modes-grid">
           <!-- Populated dynamically -->
         </div>
       </div>
 
       <!-- Waypoint Saver -->
-      <div style="margin-top: 2.25rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem;">
-        <h3 style="font-size: 1.1rem; color: var(--text-main); margin-bottom: 0.75rem;">
+      <div class="coord-divider-section">
+        <h3 class="coord-divider-title">
           <span>📍</span> Saved Waypoints
         </h3>
-        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
-          <input type="text" id="wp-name" placeholder="Waypoint Name (e.g. Home Mine)" class="custom-input" style="flex: 1; min-width: 180px;">
+        <div class="waypoint-input-row">
+          <input type="text" id="wp-name" placeholder="Waypoint Name (e.g. Home Mine)" class="custom-input waypoint-name-input">
           <button id="save-dest-wp-btn" class="btn btn-secondary btn-sm">+ Save Current Destination</button>
         </div>
         <div id="waypoints-list" class="chips-group">
@@ -198,12 +198,12 @@ export function mount(container) {
         const tilesPerSec = (mode.speedKmh * 1000) / 3600 / 4;
         const durationSec = tilesPerSec > 0 ? tiles / tilesPerSec : 0;
         return `
-        <div class="stat-card" style="padding: 0.9rem;">
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-            <span style="font-size: 0.8rem; color: var(--text-muted);">${mode.icon} ${mode.label}</span>
-            <span style="font-size: 0.72rem; color: var(--text-dim);">${mode.speedKmh} km/h</span>
+        <div class="stat-card travel-mode-card">
+          <div class="travel-mode-header">
+            <span class="travel-mode-label">${mode.icon} ${mode.label}</span>
+            <span class="travel-mode-speed">${mode.speedKmh} km/h</span>
           </div>
-          <div style="font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin-top: 0.35rem;">
+          <div class="travel-mode-time">
             ${formatDuration(durationSec)}
           </div>
         </div>
@@ -215,18 +215,18 @@ export function mount(container) {
   function renderWaypoints() {
     const waypoints = JSON.parse(localStorage.getItem('wurm_waypoints') || '[]');
     if (waypoints.length === 0) {
-      waypointsList.innerHTML = `<span style="font-size: 0.82rem; color: var(--text-dim);">No saved waypoints yet. Enter a name above to save coordinates.</span>`;
+      waypointsList.innerHTML = `<span class="wp-empty-msg">No saved waypoints yet. Enter a name above to save coordinates.</span>`;
       return;
     }
 
     waypointsList.innerHTML = waypoints
       .map(
         (wp, idx) => `
-      <div style="display: inline-flex; align-items: center; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 9999px; padding: 0.2rem 0.6rem; gap: 0.4rem; font-size: 0.78rem;">
-        <span style="color: var(--accent-gold); font-weight: 600;">${wp.name}</span>
-        <span style="color: var(--text-dim);">(${wp.x}, ${wp.y})</span>
-        <button type="button" class="btn-load-wp" data-idx="${idx}" style="background: none; border: none; color: var(--accent-blue); cursor: pointer; font-size: 0.75rem;">Set Dest</button>
-        <button type="button" class="btn-del-wp" data-idx="${idx}" style="background: none; border: none; color: var(--accent-red); cursor: pointer; font-size: 0.75rem;">✕</button>
+      <div class="waypoint-pill">
+        <span class="waypoint-name">${wp.name}</span>
+        <span class="waypoint-coords">(${wp.x}, ${wp.y})</span>
+        <button type="button" class="btn-load-wp" data-idx="${idx}">Set Dest</button>
+        <button type="button" class="btn-del-wp" data-idx="${idx}">✕</button>
       </div>
     `
       )

@@ -49,6 +49,33 @@ A fast, modern, and modular companion suite for **Wurm Online** and **Wurm Unlim
 
 ---
 
+## Project Structure & Architecture
+
+```text
+WurmTools/
+├── index.html                     # Primary SPA entry point
+├── site/                          # Site page folders for Vite & Render
+│   ├── dashboard/index.html       # Standalone dashboard page
+│   └── concepts/index.html        # Comprehensive concepts & roadmap page
+├── public/                        # Static assets served at root
+│   ├── favicon.svg                # Browser favicon
+│   └── images/                    # Static image directory (logo.svg, favicon.svg)
+├── src/
+│   ├── images/                    # Source brand and interface images
+│   ├── styles/                    # Stylesheets (style.css with theme variables & layout)
+│   └── js/
+│       ├── main.js                # Application entry point & controller bootstrap
+│       ├── modules/               # Reusable core modules (toast, modal, navigation)
+│       │   └── pages/             # Page Objects (BasePage, DashboardPage, ConceptsPage)
+│       └── tools/                 # Modular tools (deed-calculator, action-timers, etc.)
+│           └── registry.js        # Central catalog of active tool modules
+├── scripts/                       # Cross-platform automated deployment scripts
+├── tests/                         # Vitest unit test suite (calculators, page objects)
+└── documentation/                 # Concepts, roadmap, Render notes, validation
+```
+
+---
+
 ## Quick Start (Local Development)
 
 ### 1. Prerequisites
@@ -76,17 +103,19 @@ The site will be available at `http://localhost:3000`.
 
 ### 4. Code Quality & Formatting
 
+Linting and formatting cover all **HTML (`.html`)**, **CSS (`.css`)**, and **JavaScript (`.js`)** files across the project:
+
 ```bash
-# Check formatting with Prettier
+# Check formatting across all HTML, CSS, and JS files with Prettier
 npm run format:check
 
-# Auto-format files with Prettier
+# Auto-format all HTML, CSS, and JS files with Prettier
 npm run format
 
-# Run ESLint
+# Run multi-language ESLint (validates HTML, CSS, and JS)
 npm run lint
 
-# Auto-fix lint issues
+# Auto-fix lint issues across HTML, CSS, and JS
 npm run lint:fix
 ```
 

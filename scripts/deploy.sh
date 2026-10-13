@@ -31,10 +31,22 @@ DEV_SET=false
 PREVIEW_SET=false
 PROD_SET=false
 COMMIT_MESSAGE=""
-AUTO_FORMAT=false
+AUTO_FORMAT=true
 SKIP_TESTS=false
-NO_OPEN=false
+NO_LAUNCH=false
 NO_PUSH=false
+
+BUMP_TYPE=""
+NO_VERSION_COMMIT=false
+
+W3C_ALL=false
+W3C_HTML=false
+W3C_CSS=false
+
+CHROME_ALL=false
+LIGHTHOUSE=false
+CSS_OVERVIEW=false
+MEMORY=false
 
 # Parse command-line flags
 while [[ $# -gt 0 ]]; do
@@ -59,6 +71,10 @@ while [[ $# -gt 0 ]]; do
       COMMIT_MESSAGE="$2"
       shift 2
       ;;
+    --no-auto-format|-NoAutoFormat)
+      AUTO_FORMAT=false
+      shift
+      ;;
     -a|--auto-format|-AutoFormat|--AutoFormat)
       AUTO_FORMAT=true
       shift
@@ -67,12 +83,56 @@ while [[ $# -gt 0 ]]; do
       SKIP_TESTS=true
       shift
       ;;
-    --no-open|-NoOpen)
-      NO_OPEN=true
+    --no-launch|-NoLaunch|--no-open|-NoOpen)
+      NO_LAUNCH=true
       shift
       ;;
     --no-push|-NoPush)
       NO_PUSH=true
+      shift
+      ;;
+    --major|-Major)
+      BUMP_TYPE="major"
+      shift
+      ;;
+    --minor|-Minor)
+      BUMP_TYPE="minor"
+      shift
+      ;;
+    --patch|-Patch|--point|-Point)
+      BUMP_TYPE="patch"
+      shift
+      ;;
+    --no-version|--no-version-commit|-NoVersion|-NoVersionInCommit)
+      NO_VERSION_COMMIT=true
+      shift
+      ;;
+    -w3c|--w3c)
+      W3C_ALL=true
+      shift
+      ;;
+    -w3c-HTML|--w3c-html|-w3c-html)
+      W3C_HTML=true
+      shift
+      ;;
+    -w3c-CSS|--w3c-css|-w3c-css)
+      W3C_CSS=true
+      shift
+      ;;
+    -Chrome|--chrome|-chrome)
+      CHROME_ALL=true
+      shift
+      ;;
+    -Lighthouse|--lighthouse|-lighthouse)
+      LIGHTHOUSE=true
+      shift
+      ;;
+    -CssOverview|--css-overview|-css-overview)
+      CSS_OVERVIEW=true
+      shift
+      ;;
+    -Memory|--memory|-memory)
+      MEMORY=true
       shift
       ;;
     -h|--help)
@@ -89,6 +149,13 @@ while [[ $# -gt 0 ]]; do
       echo "  -s, --skip-tests      Skip the unit test suite"
       echo "  --no-open             Skip opening the live Render site in Google Chrome on prod deployment"
       echo "  --no-push             Verify and build without pushing to GitHub"
+      echo "  -w3c, --w3c           Run full W3C validation (HTML + CSS) against live production site"
+      echo "  -w3c-HTML             Run W3C HTML5 validation only against live production site"
+      echo "  -w3c-CSS              Run W3C CSS validation only against live production site"
+      echo "  -Chrome, --chrome     Run full Chrome test suite (Lighthouse, CSS Overview, Memory)"
+      echo "  -Lighthouse           Run Chrome Lighthouse audit (Performance, Accessibility, Best Practices, SEO)"
+      echo "  -CssOverview          Run Chrome CSS Overview audit"
+      echo "  -Memory               Run Chrome Memory & DOM node leak testing"
       echo "  -h, --help            Show this help dialog"
       exit 0
       ;;
@@ -184,14 +251,29 @@ open_render_in_chrome() {
   fi
 }
 
+launch_when_ready() {
+  local url="${1:-http://localhost:3000}"
+  local timeout="${2:-30}"
+  local timeout_ms=$((timeout * 1000))
+  echo -e "${CYAN}>>> Forking background monitor (polling ${url} for HTTP 200 within ${timeout}s)...${NC}"
+  node "${SCRIPT_DIR}/launch-when-ready.js" "${url}" "${timeout_ms}" >/dev/null 2>&1 &
+}
+
 # 0. Check dependencies
 if [ ! -d "node_modules" ]; then
   invoke_step "Install Dependencies" npm install
 fi
 
-# 1. Formatting Check
+# Clean up legacy .vite cache in node_modules if present to avoid OneDrive lock issues
+if [ -d "node_modules/.vite" ]; then
+  rm -rf "node_modules/.vite" 2>/dev/null || true
+fi
+
+# 1. Formatting Check (AutoFormat is default true unless --no-auto-format is passed)
 if [ "${AUTO_FORMAT}" = true ]; then
-  invoke_step "Format Code (Prettier)" npm run format
+  invoke_step "Auto-Format Code (Prettier)" npm run format
+else
+  echo -e "${GRAY}[INFO] Skipping auto-format (--no-auto-format flag specified).${NC}"
 fi
 
 invoke_step "Prettier Code Style Check" npm run format:check
@@ -216,6 +298,12 @@ STATUS_OUTPUT="$(git status --porcelain)"
 HAS_PUSHED=false
 
 if [ "${TARGET_ENV}" = "prod" ]; then
+  # Advance project version if bump flag was provided
+  if [ -n "${BUMP_TYPE}" ]; then
+    invoke_step "Advance Project Version (${BUMP_TYPE})" node "${SCRIPT_DIR}/version.js" "${BUMP_TYPE}"
+    STATUS_OUTPUT="$(git status --porcelain)"
+  fi
+
   if [ -n "${STATUS_OUTPUT}" ]; then
     echo -e "${YELLOW}[INFO] Uncommitted changes detected for production deployment:${NC}"
     git status --short
@@ -230,8 +318,18 @@ if [ "${TARGET_ENV}" = "prod" ]; then
 
     invoke_step "Stage Changes" git add -A
 
+    # Resolve version to prefix commit message automatically
+    CURRENT_VERSION="$(node "${SCRIPT_DIR}/version.js" --get 2>/dev/null || echo "")"
+    PROCESSED_MSG="${TRIMMED_MSG}"
+    if [ "${NO_VERSION_COMMIT}" = false ] && [ -n "${CURRENT_VERSION}" ]; then
+      if [[ ! "${PROCESSED_MSG}" =~ ^\[?v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+        PROCESSED_MSG="[v${CURRENT_VERSION}] ${PROCESSED_MSG}"
+        echo -e "${CYAN}[INFO] Attached project version v${CURRENT_VERSION} to commit message.${NC}"
+      fi
+    fi
+
     TRAILER="Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
-    FULL_MSG="${TRIMMED_MSG}
+    FULL_MSG="${PROCESSED_MSG}
 
 ${TRAILER}"
 
@@ -280,12 +378,86 @@ else
   echo -e "${CYAN}[INFO] Environment is local ${DISPLAY_NAME} (matches 'npm run ${TARGET_ENV}'). Skipping push to GitHub.${NC}\n"
 fi
 
-# 6. Post-Deployment Summary & Actions
+# 6. W3C Standards Validation Suite
+# Automatically run for production when code was pushed to origin/main.
+# Not run if no code was pushed to prod, unless an explicit switch (-w3c, -w3c-HTML, or -w3c-CSS) was passed.
+RUN_W3C=false
+W3C_MODE="all"
+
+if [ "${W3C_HTML}" = true ]; then
+  RUN_W3C=true
+  W3C_MODE="html"
+elif [ "${W3C_CSS}" = true ]; then
+  RUN_W3C=true
+  W3C_MODE="css"
+elif [ "${W3C_ALL}" = true ]; then
+  RUN_W3C=true
+  W3C_MODE="all"
+elif [ "${TARGET_ENV}" = "prod" ] && [ "${HAS_PUSHED}" = true ]; then
+  # Automatic post-deploy W3C test on newly deployed code
+  RUN_W3C=true
+  W3C_MODE="all"
+fi
+
+if [ "${RUN_W3C}" = true ]; then
+  echo -e "${CYAN}>>> [W3C Standards Check] Testing site pages against official W3C validators...${NC}"
+  if [ "${TARGET_ENV}" = "prod" ] && [ "${HAS_PUSHED}" = true ]; then
+    echo -e "${GRAY}>>> Pausing 5 seconds for Render webhook to register live build...${NC}"
+    sleep 5
+  fi
+
+  case "${W3C_MODE}" in
+    html)
+      invoke_step "W3C HTML5 Validation Suite (All Pages)" npm run test:w3c:html
+      ;;
+    css)
+      invoke_step "W3C CSS Validation Suite (All Pages)" npm run test:w3c:css
+      ;;
+    *)
+      invoke_step "W3C Full Validation Suite (HTML5 & CSS across All Pages)" npm run test:w3c
+      ;;
+  esac
+elif [ "${TARGET_ENV}" = "prod" ] && [ "${HAS_PUSHED}" = false ]; then
+  echo -e "${CYAN}[INFO] No code was pushed to prod. W3C testing skipped (use -w3c, -w3c-HTML, or -w3c-CSS to run on demand).${NC}\n"
+fi
+
+# 7. Chrome Automated Testing Suite (Lighthouse, CSS Overview, Memory)
+CHROME_RESULT="NOT RUN (use --chrome, --lighthouse, --css-overview, --memory)"
+CHROME_FLAGS=()
+if [ "${CHROME_ALL}" = true ] || { [ "${LIGHTHOUSE}" = true ] && [ "${CSS_OVERVIEW}" = true ] && [ "${MEMORY}" = true ]; }; then
+  CHROME_FLAGS=(--all)
+else
+  [ "${LIGHTHOUSE}" = true ] && CHROME_FLAGS+=(--lighthouse)
+  [ "${CSS_OVERVIEW}" = true ] && CHROME_FLAGS+=(--css-overview)
+  [ "${MEMORY}" = true ] && CHROME_FLAGS+=(--memory)
+fi
+# Preview runs the full Chrome suite automatically against the local preview build
+if [ ${#CHROME_FLAGS[@]} -eq 0 ] && [ "${TARGET_ENV}" = "preview" ]; then
+  CHROME_FLAGS=(--all)
+fi
+
+if [ ${#CHROME_FLAGS[@]} -gt 0 ]; then
+  echo -e "${CYAN}>>> [Chrome Testing] Executing headless Chrome automated test suites (${CHROME_FLAGS[*]})...${NC}"
+  if [ "${TARGET_ENV}" = "prod" ]; then
+    invoke_step "Chrome Tests against Render (https://wurm-tools.onrender.com)" \
+      node "${SCRIPT_DIR}/test-chrome.js" "${CHROME_FLAGS[@]}"
+  else
+    LOCAL_MODE="dev"; LOCAL_PORT=3000
+    if [ "${TARGET_ENV}" = "preview" ]; then LOCAL_MODE="preview"; LOCAL_PORT=4173; fi
+    invoke_step "Chrome Tests against local ${LOCAL_MODE} (http://localhost:${LOCAL_PORT})" \
+      node "${SCRIPT_DIR}/run-with-server.js" "${LOCAL_MODE}" "${LOCAL_PORT}" -- \
+      node "${SCRIPT_DIR}/test-chrome.js" "${CHROME_FLAGS[@]}" --url "http://localhost:${LOCAL_PORT}"
+  fi
+  CHROME_RESULT="PASSED (${CHROME_FLAGS[*]})"
+fi
+
+# 8. Post-Deployment Summary & Actions
 echo -e "${GREEN}==========================================================${NC}"
 echo -e "${GREEN}  [SUCCESS] ${DISPLAY_NAME} Verification Completed!${NC}"
 echo -e "${GREEN}==========================================================${NC}"
 echo -e "Environment : ${DISPLAY_NAME} (${TARGET_ENV})"
 echo -e "Target Mode : Vite mode '${VITE_MODE}'"
+echo -e "Chrome Tests: ${CHROME_RESULT}"
 
 if [ "${TARGET_ENV}" = "prod" ]; then
   if [ "${HAS_PUSHED}" = true ]; then
@@ -304,18 +476,40 @@ if [ "${TARGET_ENV}" = "prod" ]; then
     gh run list --repo trrmann/wurm-tools --limit 2 || true
   fi
 
-  # Open Render live site in Chrome
-  if [ "${NO_OPEN}" = false ]; then
+  # Open Render live site in Chrome (default unless --no-launch / --no-open is passed)
+  if [ "${NO_LAUNCH}" = false ]; then
     open_render_in_chrome "https://wurm-tools.onrender.com"
+  else
+    echo -e "${GRAY}[INFO] Chrome launch skipped (--no-launch flag set).${NC}\n"
   fi
+
+  echo -e "\n${GREEN}Deployment workflow finished.${NC}\n"
 elif [ "${TARGET_ENV}" = "preview" ]; then
   echo -e "GitHub Push : Skipped (local preview environment)"
-  echo -e "\n${CYAN}Tip: Run 'npm run preview' to launch local preview server on http://localhost:4173${NC}"
+  echo -e "Local URL   : http://localhost:4173"
+
+  # Fork background monitor to poll HTTP 200 and refork Chrome
+  if [ "${NO_LAUNCH}" = false ]; then
+    launch_when_ready "http://localhost:4173" 30
+  else
+    echo -e "${GRAY}[INFO] Chrome launch skipped (--no-launch flag set)."
+  fi
+
+  echo -e "\n${CYAN}>>> Starting Vite preview server (running in foreground; press Ctrl+C to stop)...${NC}\n"
+  npm run preview
 else
   echo -e "GitHub Push : Skipped (local development environment)"
-  echo -e "\n${CYAN}Tip: Run 'npm run dev' to launch local development server on http://localhost:3000${NC}"
-fi
+  echo -e "Local URL   : http://localhost:3000"
 
-echo -e "\n${GREEN}Deployment workflow finished.${NC}\n"
+  # Fork background monitor to poll HTTP 200 and refork Chrome
+  if [ "${NO_LAUNCH}" = false ]; then
+    launch_when_ready "http://localhost:3000" 30
+  else
+    echo -e "${GRAY}[INFO] Chrome launch skipped (--no-launch flag set)."
+  fi
+
+  echo -e "\n${CYAN}>>> Starting Vite development server (running in foreground; press Ctrl+C to stop)...${NC}\n"
+  npm run dev
+fi
 
 

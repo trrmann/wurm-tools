@@ -1,0 +1,15 @@
+/* Wurm Tools — Desktop / Wide Screen Breakpoint Styles (min-width: 1440px) */
+@media (min-width: 1440px) {
+  .tool-viewport {
+    max-width: 1400px;
+    padding: 2.5rem;
+  }
+
+  .stat-value {
+    font-size: 1.6rem;
+  }
+
+  .form-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+}

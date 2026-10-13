@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { ironToCoins, calculateDeedMetrics } from '../src/tools/deed-calculator/index.js';
+import { ironToCoins, calculateDeedMetrics } from '../src/js/tools/deed-calculator/index.js';
 import {
   getCompassHeading,
   formatDuration,
   calculateDistanceMetrics,
-} from '../src/tools/distance-calc/index.js';
+} from '../src/js/tools/distance-calc/index.js';
 
 describe('Deed Calculator & Currency Math', () => {
   it('converts iron denominations correctly', () => {

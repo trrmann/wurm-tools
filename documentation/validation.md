@@ -22,10 +22,10 @@ This document tracks HTML, CSS, and standards validation for the **Wurm Tools** 
 
 ## 2. Automated CI & Code Quality Suite
 
-In addition to manual W3C online validation, the project includes automated CI checks executed on every push and pull request via GitHub Actions:
+In addition to manual W3C online validation, the project includes automated CI checks executed on every push and pull request via GitHub Actions, covering all **HTML**, **CSS**, and **JavaScript** files:
 
-- **Prettier Code Formatting**: `npm run format:check`
-- **ESLint Code Quality**: `npm run lint`
+- **Prettier Code Formatting**: `npm run format:check` (validates all `.html`, `.css`, and `.js` files)
+- **ESLint Code Quality**: `npm run lint` (multi-language linting covering `.html` via `@html-eslint`, `.css` via `@eslint/css`, and `.js` via `@eslint/js`)
 - **Vitest Unit Test Suite**: `npm test`
 - **Vite Production Build Verification**: `npm run build`
 

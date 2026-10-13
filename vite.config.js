@@ -1,13 +1,29 @@
+import { fileURLToPath } from 'url';
+import { resolve, join } from 'path';
+import os from 'os';
 import { defineConfig } from 'vite';
 
+const rootDir = fileURLToPath(new URL('.', import.meta.url));
+
 export default defineConfig({
+  // Relocate Vite cache outside synced cloud folders (e.g. OneDrive) to prevent EPERM file-lock errors on Windows
+  cacheDir: join(os.tmpdir(), 'vite-wurm-tools'),
   base: '/',
   build: {
     outDir: 'dist',
     sourcemap: true,
+    rollupOptions: {
+      input: {
+        main: resolve(rootDir, 'index.html'),
+        dashboard: resolve(rootDir, 'site/dashboard/index.html'),
+        concepts: resolve(rootDir, 'site/concepts/index.html'),
+      },
+    },
   },
   server: {
     port: 3000,
-    open: true,
+  },
+  preview: {
+    port: 4173,
   },
 });

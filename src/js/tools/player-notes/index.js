@@ -54,14 +54,14 @@ export function mount(container) {
           <h2><span>📝</span> Settlement & Player Notes</h2>
           <p>Organize prospecting veins, building supplies, skill benchmarks, and deed chores with local persistence.</p>
         </div>
-        <div style="display: flex; gap: 0.5rem;">
+        <div class="notes-header-actions">
           <button id="export-notes-btn" class="btn btn-secondary btn-sm">💾 Export JSON</button>
         </div>
       </div>
 
-      <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.5rem;">
-        <h4 style="color: var(--accent-gold); font-size: 0.9rem; margin-bottom: 0.75rem; text-transform: uppercase;">+ New Note or Task</h4>
-        <div class="form-grid" style="margin-bottom: 0.75rem;">
+      <div class="notes-form-box">
+        <h4 class="notes-section-title">+ New Note or Task</h4>
+        <div class="form-grid notes-form-grid">
           <div class="input-group">
             <label class="input-label" for="note-title">Title / Objective</label>
             <input type="text" id="note-title" class="custom-input" placeholder="e.g., Forge 50QL Steel Anvil">
@@ -84,7 +84,7 @@ export function mount(container) {
             </select>
           </div>
         </div>
-        <div class="input-group" style="margin-bottom: 0.75rem;">
+        <div class="input-group notes-input-group-spaced">
           <label class="input-label" for="note-text">Details / Coordinates / Supply List</label>
           <textarea id="note-text" class="custom-input" rows="2" placeholder="Coordinates, materials needed, notes..."></textarea>
         </div>
@@ -92,8 +92,8 @@ export function mount(container) {
       </div>
 
       <!-- Filter Chips -->
-      <div class="chips-group" style="margin-bottom: 1.25rem;">
-        <span style="font-size: 0.8rem; color: var(--text-dim); align-self: center;">Filter:</span>
+      <div class="chips-group notes-filter-chips">
+        <span class="notes-filter-label">Filter:</span>
         <button type="button" class="chip-btn active" data-filter="All">All</button>
         <button type="button" class="chip-btn" data-filter="Deed Tasks">Deed Tasks</button>
         <button type="button" class="chip-btn" data-filter="Mining & Veins">Mining & Veins</button>
@@ -102,7 +102,7 @@ export function mount(container) {
       </div>
 
       <!-- Notes Grid -->
-      <div id="notes-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">
+      <div id="notes-container" class="notes-grid">
         <!-- Dynamically rendered -->
       </div>
     </div>
@@ -117,7 +117,7 @@ export function mount(container) {
 
     if (filtered.length === 0) {
       notesListEl.innerHTML = `
-        <div style="grid-column: 1 / -1; padding: 2rem; text-align: center; color: var(--text-dim); font-size: 0.9rem;">
+        <div class="notes-empty-state">
           No notes found in this category. Use the form above to add one!
         </div>
       `;
@@ -126,36 +126,36 @@ export function mount(container) {
 
     notesListEl.innerHTML = filtered
       .map((note) => {
-        const priorityColor =
+        const priorityClass =
           note.priority === 'High'
-            ? 'var(--accent-red)'
+            ? 'priority-high'
             : note.priority === 'Low'
-              ? 'var(--text-dim)'
-              : 'var(--accent-gold)';
+              ? 'priority-low'
+              : 'priority-normal';
         return `
-        <div class="stat-card" style="padding: 1rem; opacity: ${note.completed ? '0.6' : '1'};">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
-            <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); text-decoration: ${note.completed ? 'line-through' : 'none'};">
+        <div class="stat-card notes-card ${note.completed ? 'completed' : ''}">
+          <div class="notes-card-header">
+            <h4 class="notes-card-title ${note.completed ? 'completed' : ''}">
               ${note.title}
             </h4>
-            <span style="font-size: 0.7rem; color: ${priorityColor}; font-weight: 700; border: 1px solid ${priorityColor}; padding: 0.1rem 0.4rem; border-radius: 4px;">
+            <span class="notes-priority-badge ${priorityClass}">
               ${note.priority}
             </span>
           </div>
 
-          <div style="font-size: 0.75rem; color: var(--text-dim); margin: 0.25rem 0 0.5rem;">
+          <div class="notes-meta">
             ${note.category} • ${note.date}
           </div>
 
-          <div style="font-size: 0.85rem; color: var(--text-muted); white-space: pre-wrap; line-height: 1.4; margin-bottom: 0.75rem; flex: 1;">
+          <div class="notes-body-text">
             ${note.text}
           </div>
 
-          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 0.5rem;">
-            <label style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+          <div class="notes-footer-row">
+            <label class="notes-checkbox-label">
               <input type="checkbox" class="chk-complete" data-id="${note.id}" ${note.completed ? 'checked' : ''}> Completed
             </label>
-            <button type="button" class="btn-delete-note" data-id="${note.id}" style="background: none; border: none; color: var(--accent-red); cursor: pointer; font-size: 0.78rem;">Delete</button>
+            <button type="button" class="btn-delete-note" data-id="${note.id}">Delete</button>
           </div>
         </div>
       `;

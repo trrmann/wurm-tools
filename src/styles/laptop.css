@@ -1,0 +1,20 @@
+/* Wurm Tools — Laptop Breakpoint Styles (min-width: 1024px) */
+@media (min-width: 1024px) {
+  .top-header {
+    padding: 0 2rem;
+  }
+
+  .tool-viewport {
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .form-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+
+  .results-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+}

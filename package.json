@@ -10,17 +10,32 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:w3c": "node scripts/w3c-validator.js",
+    "test:w3c:html": "node scripts/w3c-validator.js --html",
+    "test:w3c:css": "node scripts/w3c-validator.js --css",
+    "test:lighthouse": "node scripts/test-lighthouse.js",
+    "test:css-overview": "node scripts/test-css-overview.js",
+    "test:memory": "node scripts/test-memory.js",
+    "test:chrome": "node scripts/test-chrome.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "version:major": "node scripts/version.js major",
+    "version:minor": "node scripts/version.js minor",
+    "version:patch": "node scripts/version.js patch",
+    "storage:clear": "node scripts/clear-chrome-storage.js"
   },
   "devDependencies": {
+    "@eslint/css": "^2.0.0",
     "@eslint/js": "^10.0.1",
+    "@html-eslint/eslint-plugin": "^0.66.1",
+    "@html-eslint/parser": "^0.66.1",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
     "prettier": "^3.9.10",
     "vite": "^6.2.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "ws": "^8.22.0"
   }
 }

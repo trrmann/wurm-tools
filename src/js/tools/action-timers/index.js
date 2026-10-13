@@ -76,8 +76,8 @@ export function mount(container) {
         </div>
       </div>
 
-      <div class="chips-group" style="margin-bottom: 1.5rem;">
-        <span style="font-size: 0.8rem; color: var(--text-dim); align-self: center;">Select Preset:</span>
+      <div class="chips-group timer-chip-group">
+        <span class="timer-preset-label">Select Preset:</span>
         <button type="button" class="chip-btn active" data-timer-name="Prayer / Favor Cycle" data-seconds="1200">20m Prayer (Favor)</button>
         <button type="button" class="chip-btn" data-timer-name="Meditation Path Cooldown" data-seconds="1800">30m Meditation</button>
         <button type="button" class="chip-btn" data-timer-name="Path Ability (3 Hours)" data-seconds="10800">3h Path Ability</button>
@@ -85,38 +85,38 @@ export function mount(container) {
         <button type="button" class="chip-btn" data-timer-name="Custom 5 Min" data-seconds="300">5m Quick</button>
       </div>
 
-      <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 2rem; text-align: center; margin-bottom: 1.5rem;">
-        <div id="timer-label" style="font-size: 0.95rem; color: var(--accent-gold); font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;">
+      <div class="timer-display-box">
+        <div id="timer-label" class="timer-label">
           ${timerState.activeTitle}
         </div>
         
-        <div id="timer-display" style="font-size: 4.5rem; font-weight: 800; font-family: monospace; letter-spacing: 2px; color: var(--text-main); line-height: 1.1; margin-bottom: 1.5rem;">
+        <div id="timer-display" class="timer-display-digits">
           20:00
         </div>
 
-        <div style="background: var(--bg-primary); border-radius: 9999px; height: 10px; width: 100%; max-width: 480px; margin: 0 auto 1.5rem; overflow: hidden; border: 1px solid var(--border-color);">
-          <div id="timer-progress" style="background: linear-gradient(90deg, var(--accent-gold), var(--accent-green)); height: 100%; width: 100%; transition: width 0.3s linear;"></div>
+        <div class="timer-progress-track">
+          <div id="timer-progress" class="timer-progress-bar"></div>
         </div>
 
-        <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
-          <button id="timer-toggle-btn" class="btn btn-primary" style="min-width: 130px;">▶ Start</button>
+        <div class="timer-btn-group">
+          <button id="timer-toggle-btn" class="btn btn-primary timer-btn-start">▶ Start</button>
           <button id="timer-reset-btn" class="btn btn-secondary">↺ Reset</button>
           <button id="timer-test-sound" class="btn btn-secondary btn-sm" title="Test audio chime">🔊 Test Sound</button>
         </div>
       </div>
 
-      <div class="form-grid" style="margin-bottom: 0;">
+      <div class="form-grid timer-custom-grid">
         <div class="input-group">
           <label class="input-label" for="custom-minutes">Custom Duration (Minutes)</label>
-          <div style="display: flex; gap: 0.5rem;">
-            <input type="number" id="custom-minutes" class="custom-input" min="1" max="720" value="15" style="flex: 1;">
+          <div class="input-flex-row">
+            <input type="number" id="custom-minutes" class="custom-input timer-custom-input" min="1" max="720" value="15">
             <button id="apply-custom-btn" class="btn btn-secondary">Set</button>
           </div>
         </div>
         <div class="input-group">
           <label class="input-label">Audio & Alert Settings</label>
-          <div style="display: flex; align-items: center; gap: 0.75rem; margin-top: 0.5rem;">
-            <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; cursor: pointer;">
+          <div class="timer-options-row">
+            <label class="timer-checkbox-label">
               <input type="checkbox" id="sound-checkbox" checked> Play audio chime on completion
             </label>
           </div>

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard — Wurm Tools Companion Suite</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta
+      name="description"
+      content="Wurm Tools Dashboard — Calculators, timers, coordinates, and notes for Wurm Online and Wurm Unlimited."
+    />
+  </head>
+  <body>
+    <div id="app">
+      <!-- App container mounted by DashboardPage -->
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container"></div>
+
+    <!-- Suite Concepts Modal -->
+    <div class="modal-backdrop modal-hidden" id="concepts-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title-custom">
+            <span>📜</span> Wurm Tools — Comprehensive Suite Concepts
+          </h2>
+          <button id="close-concepts-modal" class="modal-close-btn" aria-label="Close modal">
+            ✕
+          </button>
+        </div>
+        <div class="modal-body">
+          <p>
+            <strong>Wurm Tools</strong> is engineered as a clean, modular, client-side dashboard
+            with starter tools built to expand.
+          </p>
+          <p>
+            Visit the full
+            <a href="/site/concepts/" class="link-accent">Concepts & Roadmap Page</a>
+            to explore detailed feature specifications.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/js/main.js"></script>
+  </body>
+</html>

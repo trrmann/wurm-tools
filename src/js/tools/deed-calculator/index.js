@@ -117,8 +117,8 @@ export function mount(container) {
         </div>
       </div>
 
-      <div class="chips-group" style="margin-bottom: 1.5rem;">
-        <span style="font-size: 0.8rem; color: var(--text-dim); align-self: center;">Quick Presets:</span>
+      <div class="chips-group deed-chips-group">
+        <span class="deed-preset-label">Quick Presets:</span>
         <button type="button" class="chip-btn" data-preset="5,5,5,1">5x5 Homestead</button>
         <button type="button" class="chip-btn" data-preset="11,11,5,1">11x11 Farmstead</button>
         <button type="button" class="chip-btn" data-preset="21,21,5,2">21x21 Village</button>
@@ -204,7 +204,7 @@ export function mount(container) {
 
         <div class="stat-card">
           <div class="stat-title">Deed Bank Remaining Runway</div>
-          <div class="stat-value" id="res-runway-days" style="color: var(--accent-green);">-</div>
+          <div class="stat-value stat-value-green" id="res-runway-days">-</div>
           <div class="stat-desc" id="res-runway-text">Based on current silver balance</div>
         </div>
       </div>
