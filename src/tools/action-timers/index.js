@@ -4,7 +4,8 @@ export const toolMetadata = {
   name: 'Action & Prayer Timers',
   category: 'Timers',
   icon: '⏳',
-  description: 'Interactive countdowns for prayer favor cycles, meditation path cooldowns, and custom alerts.'
+  description:
+    'Interactive countdowns for prayer favor cycles, meditation path cooldowns, and custom alerts.',
 };
 
 let activeInterval = null;
@@ -50,7 +51,7 @@ function sendNotification(title, message) {
   if ('Notification' in window && Notification.permission === 'granted') {
     new Notification(title, {
       body: message,
-      icon: '/favicon.svg'
+      icon: '/favicon.svg',
     });
   }
 }
@@ -60,7 +61,7 @@ export function mount(container) {
     totalSeconds: 20 * 60, // Default 20 mins (Prayer cycle)
     remainingSeconds: 20 * 60,
     isRunning: false,
-    activeTitle: 'Prayer / Favor Gain Cycle'
+    activeTitle: 'Prayer / Favor Gain Cycle',
   };
 
   container.innerHTML = `
@@ -145,7 +146,10 @@ export function mount(container) {
 
   function updateUI() {
     displayEl.textContent = formatTime(timerState.remainingSeconds);
-    const percent = timerState.totalSeconds > 0 ? (timerState.remainingSeconds / timerState.totalSeconds) * 100 : 0;
+    const percent =
+      timerState.totalSeconds > 0
+        ? (timerState.remainingSeconds / timerState.totalSeconds) * 100
+        : 0;
     progressEl.style.width = `${percent}%`;
     toggleBtn.textContent = timerState.isRunning ? '⏸ Pause' : '▶ Start';
     toggleBtn.className = timerState.isRunning ? 'btn btn-secondary' : 'btn btn-primary';
@@ -210,15 +214,15 @@ export function mount(container) {
   });
 
   // Preset buttons
-  container.querySelectorAll('[data-timer-name]').forEach(btn => {
+  container.querySelectorAll('[data-timer-name]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      container.querySelectorAll('[data-timer-name]').forEach(b => b.classList.remove('active'));
+      container.querySelectorAll('[data-timer-name]').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
 
       clearInterval(activeInterval);
       activeInterval = null;
       timerState.isRunning = false;
-      
+
       const seconds = parseInt(btn.getAttribute('data-seconds'));
       timerState.totalSeconds = seconds;
       timerState.remainingSeconds = seconds;

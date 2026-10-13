@@ -4,16 +4,31 @@ export const toolMetadata = {
   name: 'Distance & Travel Estimator',
   category: 'Navigation',
   icon: '🧭',
-  description: 'Compute tile distance, real-world metric conversion, compass heading, and travel time by mount, cart, or foot.'
+  description:
+    'Compute tile distance, real-world metric conversion, compass heading, and travel time by mount, cart, or foot.',
 };
 
-let containerRef = null;
+export function unmount() {
+  // Cleanup if needed
+}
 
 const COMPASS_DIRECTIONS = [
-  'North (N)', 'North-Northeast (NNE)', 'Northeast (NE)', 'East-Northeast (ENE)',
-  'East (E)', 'East-Southeast (ESE)', 'Southeast (SE)', 'South-Southeast (SSE)',
-  'South (S)', 'South-Southwest (SSW)', 'Southwest (SW)', 'West-Southwest (WSW)',
-  'West (W)', 'West-Northwest (WNW)', 'Northwest (NW)', 'North-Northwest (NNW)'
+  'North (N)',
+  'North-Northeast (NNE)',
+  'Northeast (NE)',
+  'East-Northeast (ENE)',
+  'East (E)',
+  'East-Southeast (ESE)',
+  'Southeast (SE)',
+  'South-Southeast (SSE)',
+  'South (S)',
+  'South-Southwest (SSW)',
+  'Southwest (SW)',
+  'West-Southwest (WSW)',
+  'West (W)',
+  'West-Northwest (WNW)',
+  'Northwest (NW)',
+  'North-Northwest (NNW)',
 ];
 
 function getCompassHeading(dx, dy) {
@@ -36,10 +51,6 @@ function formatDuration(seconds) {
 }
 
 export function mount(container) {
-  containerRef = container;
-
-  const savedWaypoints = JSON.parse(localStorage.getItem('wurm_waypoints') || '[]');
-
   container.innerHTML = `
     <div class="tool-card">
       <div class="tool-header-block">
@@ -140,7 +151,7 @@ export function mount(container) {
     { label: 'Ridden Horse', speedKmh: 24.0, icon: '🐎' },
     { label: 'Bred / Fast Mount', speedKmh: 35.0, icon: '⚡' },
     { label: 'Cart / Wagon', speedKmh: 12.0, icon: '🛒' },
-    { label: 'Sailing Ship', speedKmh: 20.0, icon: '⛵' }
+    { label: 'Sailing Ship', speedKmh: 20.0, icon: '⛵' },
   ];
 
   function update() {
@@ -157,9 +168,11 @@ export function mount(container) {
 
     const heading = getCompassHeading(dx, dy);
 
-    container.querySelector('#dist-tiles').textContent = `${Math.round(tiles).toLocaleString()} tiles`;
-    container.querySelector('#dist-metric').textContent = `${km.toFixed(2)} km (${Math.round(meters).toLocaleString()} meters)`;
-    
+    container.querySelector('#dist-tiles').textContent =
+      `${Math.round(tiles).toLocaleString()} tiles`;
+    container.querySelector('#dist-metric').textContent =
+      `${km.toFixed(2)} km (${Math.round(meters).toLocaleString()} meters)`;
+
     container.querySelector('#dist-bearing').textContent = `${heading.angle}°`;
     container.querySelector('#dist-bearing-text').textContent = heading.dir;
 
@@ -168,11 +181,12 @@ export function mount(container) {
     container.querySelector('#dist-deltas').textContent = `${signX}, ${signY}`;
 
     // Travel times
-    modesGrid.innerHTML = speeds.map(mode => {
-      // Speed in tiles/sec: (speedKmh * 1000 / 3600) / 4 meters per tile
-      const tilesPerSec = (mode.speedKmh * 1000 / 3600) / 4;
-      const durationSec = tilesPerSec > 0 ? (tiles / tilesPerSec) : 0;
-      return `
+    modesGrid.innerHTML = speeds
+      .map((mode) => {
+        // Speed in tiles/sec: (speedKmh * 1000 / 3600) / 4 meters per tile
+        const tilesPerSec = (mode.speedKmh * 1000) / 3600 / 4;
+        const durationSec = tilesPerSec > 0 ? tiles / tilesPerSec : 0;
+        return `
         <div class="stat-card" style="padding: 0.9rem;">
           <div style="display: flex; align-items: center; justify-content: space-between;">
             <span style="font-size: 0.8rem; color: var(--text-muted);">${mode.icon} ${mode.label}</span>
@@ -183,7 +197,8 @@ export function mount(container) {
           </div>
         </div>
       `;
-    }).join('');
+      })
+      .join('');
   }
 
   function renderWaypoints() {
@@ -193,16 +208,20 @@ export function mount(container) {
       return;
     }
 
-    waypointsList.innerHTML = waypoints.map((wp, idx) => `
+    waypointsList.innerHTML = waypoints
+      .map(
+        (wp, idx) => `
       <div style="display: inline-flex; align-items: center; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 9999px; padding: 0.2rem 0.6rem; gap: 0.4rem; font-size: 0.78rem;">
         <span style="color: var(--accent-gold); font-weight: 600;">${wp.name}</span>
         <span style="color: var(--text-dim);">(${wp.x}, ${wp.y})</span>
         <button type="button" class="btn-load-wp" data-idx="${idx}" style="background: none; border: none; color: var(--accent-blue); cursor: pointer; font-size: 0.75rem;">Set Dest</button>
         <button type="button" class="btn-del-wp" data-idx="${idx}" style="background: none; border: none; color: var(--accent-red); cursor: pointer; font-size: 0.75rem;">✕</button>
       </div>
-    `).join('');
+    `
+      )
+      .join('');
 
-    waypointsList.querySelectorAll('.btn-load-wp').forEach(btn => {
+    waypointsList.querySelectorAll('.btn-load-wp').forEach((btn) => {
       btn.addEventListener('click', () => {
         const idx = parseInt(btn.getAttribute('data-idx'));
         const wp = waypoints[idx];
@@ -214,7 +233,7 @@ export function mount(container) {
       });
     });
 
-    waypointsList.querySelectorAll('.btn-del-wp').forEach(btn => {
+    waypointsList.querySelectorAll('.btn-del-wp').forEach((btn) => {
       btn.addEventListener('click', () => {
         const idx = parseInt(btn.getAttribute('data-idx'));
         waypoints.splice(idx, 1);
@@ -231,21 +250,17 @@ export function mount(container) {
     waypoints.push({
       name,
       x: parseInt(destX.value) || 0,
-      y: parseInt(destY.value) || 0
+      y: parseInt(destY.value) || 0,
     });
     localStorage.setItem('wurm_waypoints', JSON.stringify(waypoints));
     nameInput.value = '';
     renderWaypoints();
   });
 
-  [startX, startY, destX, destY].forEach(input => {
+  [startX, startY, destX, destY].forEach((input) => {
     input.addEventListener('input', update);
   });
 
   update();
   renderWaypoints();
-}
-
-export function unmount() {
-  containerRef = null;
 }

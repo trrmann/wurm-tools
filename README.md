@@ -52,30 +52,54 @@ A fast, modern, and modular companion suite for **Wurm Online** and **Wurm Unlim
 ## Quick Start (Local Development)
 
 ### 1. Prerequisites
+
 Ensure you have Node.js (v18 or newer) installed:
+
 ```bash
 node -v
 npm -v
 ```
 
 ### 2. Install Dependencies
+
 ```bash
 npm install
 ```
 
 ### 3. Start Development Server
+
 ```bash
 npm run dev
 ```
+
 The site will be available at `http://localhost:3000`.
 
-### 4. Build for Production
+### 4. Code Quality & Formatting
+
+```bash
+# Check formatting with Prettier
+npm run format:check
+
+# Auto-format files with Prettier
+npm run format
+
+# Run ESLint
+npm run lint
+
+# Auto-fix lint issues
+npm run lint:fix
+```
+
+### 5. Build for Production
+
 ```bash
 npm run build
 ```
+
 The compiled, optimized production files will be placed into the `dist/` directory.
 
-### 5. Preview Production Build
+### 6. Preview Production Build
+
 ```bash
 npm run preview
 ```
@@ -87,6 +111,7 @@ npm run preview
 This repository is pre-configured for **Render Static Sites** via [`render.yaml`](./render.yaml) and manual deployment.
 
 ### Method 1: Render Blueprint (Zero-Config)
+
 1. Push this repository to GitHub:
    ```bash
    git push -u origin main
@@ -96,6 +121,7 @@ This repository is pre-configured for **Render Static Sites** via [`render.yaml`
 4. Render will automatically detect [`render.yaml`](./render.yaml), build with `npm install && npm run build`, and publish `dist/`.
 
 ### Method 2: Manual Static Site on Render
+
 1. Go to [Render Dashboard](https://dashboard.render.com/).
 2. Click **New +** > **Static Site**.
 3. Connect your GitHub repository (`wurm-tools`).

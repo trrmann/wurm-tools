@@ -4,14 +4,15 @@ export const toolMetadata = {
   name: 'Settlement & Player Notes',
   category: 'Settlement',
   icon: '📝',
-  description: 'Keep track of deed construction tasks, prospecting veins, skill goals, and project checklists.'
+  description:
+    'Keep track of deed construction tasks, prospecting veins, skill goals, and project checklists.',
 };
 
-let containerRef = null;
+export function unmount() {
+  // Cleanup if needed
+}
 
 export function mount(container) {
-  containerRef = container;
-
   let activeFilter = 'All';
 
   function getNotes() {
@@ -32,7 +33,7 @@ export function mount(container) {
         priority: 'High',
         completed: false,
         text: 'Need 120 stone bricks and 40 mortar for the south deed wall extension.',
-        date: new Date().toLocaleDateString()
+        date: new Date().toLocaleDateString(),
       },
       {
         id: '2',
@@ -41,8 +42,8 @@ export function mount(container) {
         priority: 'Medium',
         completed: false,
         text: 'Found 78QL iron vein at tile (1420, 1180), 4 tiles underground.',
-        date: new Date().toLocaleDateString()
-      }
+        date: new Date().toLocaleDateString(),
+      },
     ]);
   }
 
@@ -111,7 +112,8 @@ export function mount(container) {
 
   function renderNotes() {
     const notes = getNotes();
-    const filtered = activeFilter === 'All' ? notes : notes.filter(n => n.category === activeFilter);
+    const filtered =
+      activeFilter === 'All' ? notes : notes.filter((n) => n.category === activeFilter);
 
     if (filtered.length === 0) {
       notesListEl.innerHTML = `
@@ -122,9 +124,15 @@ export function mount(container) {
       return;
     }
 
-    notesListEl.innerHTML = filtered.map(note => {
-      const priorityColor = note.priority === 'High' ? 'var(--accent-red)' : (note.priority === 'Low' ? 'var(--text-dim)' : 'var(--accent-gold)');
-      return `
+    notesListEl.innerHTML = filtered
+      .map((note) => {
+        const priorityColor =
+          note.priority === 'High'
+            ? 'var(--accent-red)'
+            : note.priority === 'Low'
+              ? 'var(--text-dim)'
+              : 'var(--accent-gold)';
+        return `
         <div class="stat-card" style="padding: 1rem; opacity: ${note.completed ? '0.6' : '1'};">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
             <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); text-decoration: ${note.completed ? 'line-through' : 'none'};">
@@ -151,14 +159,15 @@ export function mount(container) {
           </div>
         </div>
       `;
-    }).join('');
+      })
+      .join('');
 
     // Toggle complete
-    notesListEl.querySelectorAll('.chk-complete').forEach(chk => {
+    notesListEl.querySelectorAll('.chk-complete').forEach((chk) => {
       chk.addEventListener('change', (e) => {
         const id = e.target.getAttribute('data-id');
         const notes = getNotes();
-        const found = notes.find(n => n.id === id);
+        const found = notes.find((n) => n.id === id);
         if (found) {
           found.completed = e.target.checked;
           saveNotes(notes);
@@ -168,10 +177,10 @@ export function mount(container) {
     });
 
     // Delete note
-    notesListEl.querySelectorAll('.btn-delete-note').forEach(btn => {
+    notesListEl.querySelectorAll('.btn-delete-note').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const id = e.target.getAttribute('data-id');
-        const notes = getNotes().filter(n => n.id !== id);
+        const notes = getNotes().filter((n) => n.id !== id);
         saveNotes(notes);
         renderNotes();
       });
@@ -179,9 +188,9 @@ export function mount(container) {
   }
 
   // Filter chips
-  container.querySelectorAll('[data-filter]').forEach(btn => {
+  container.querySelectorAll('[data-filter]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      container.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
+      container.querySelectorAll('[data-filter]').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       activeFilter = btn.getAttribute('data-filter');
       renderNotes();
@@ -208,7 +217,7 @@ export function mount(container) {
       priority: prioritySelect.value,
       completed: false,
       text: textInput.value.trim(),
-      date: new Date().toLocaleDateString()
+      date: new Date().toLocaleDateString(),
     };
 
     const notes = getNotes();
@@ -222,18 +231,18 @@ export function mount(container) {
 
   // Export
   container.querySelector('#export-notes-btn').addEventListener('click', () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(getNotes(), null, 2));
+    const dataStr =
+      'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(getNotes(), null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `wurm-tools-notes-${new Date().toISOString().slice(0, 10)}.json`);
+    downloadAnchor.setAttribute(
+      'download',
+      `wurm-tools-notes-${new Date().toISOString().slice(0, 10)}.json`
+    );
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
   });
 
   renderNotes();
-}
-
-export function unmount() {
-  containerRef = null;
 }

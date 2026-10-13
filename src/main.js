@@ -1,5 +1,5 @@
 // Wurm Tools - Main Application Controller
-import { TOOLS_LIST, CATEGORIES, getToolById } from './tools/registry.js';
+import { TOOLS_LIST, getToolById } from './tools/registry.js';
 import './style.css';
 
 let currentMountedTool = null;
@@ -13,7 +13,7 @@ export function showToast(message, type = 'info') {
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
   toast.innerHTML = `
-    <span>${type === 'success' ? '✓' : (type === 'warn' ? '⚠️' : 'ℹ️')}</span>
+    <span>${type === 'success' ? '✓' : type === 'warn' ? '⚠️' : 'ℹ️'}</span>
     <span>${message}</span>
   `;
 
@@ -31,12 +31,14 @@ function renderSidebar(searchFilter = '') {
   if (!navContainer) return;
 
   const query = searchFilter.trim().toLowerCase();
-  
-  const filteredTools = TOOLS_LIST.filter(tool => {
+
+  const filteredTools = TOOLS_LIST.filter((tool) => {
     const meta = tool.toolMetadata;
-    return meta.name.toLowerCase().includes(query) ||
-           meta.description.toLowerCase().includes(query) ||
-           meta.category.toLowerCase().includes(query);
+    return (
+      meta.name.toLowerCase().includes(query) ||
+      meta.description.toLowerCase().includes(query) ||
+      meta.category.toLowerCase().includes(query)
+    );
   });
 
   if (filteredTools.length === 0) {
@@ -50,7 +52,7 @@ function renderSidebar(searchFilter = '') {
 
   // Group by category
   const grouped = {};
-  filteredTools.forEach(tool => {
+  filteredTools.forEach((tool) => {
     const cat = tool.toolMetadata.category || 'General';
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(tool);
@@ -62,10 +64,11 @@ function renderSidebar(searchFilter = '') {
       <div class="nav-group">
         <div class="nav-group-title">${category}</div>
         <ul class="nav-list">
-          ${tools.map(tool => {
-            const meta = tool.toolMetadata;
-            const isActive = meta.id === currentToolId;
-            return `
+          ${tools
+            .map((tool) => {
+              const meta = tool.toolMetadata;
+              const isActive = meta.id === currentToolId;
+              return `
               <li>
                 <button class="nav-item-btn ${isActive ? 'active' : ''}" data-tool-id="${meta.id}">
                   <span class="nav-item-icon">${meta.icon}</span>
@@ -73,7 +76,8 @@ function renderSidebar(searchFilter = '') {
                 </button>
               </li>
             `;
-          }).join('')}
+            })
+            .join('')}
         </ul>
       </div>
     `;
@@ -82,7 +86,7 @@ function renderSidebar(searchFilter = '') {
   navContainer.innerHTML = html;
 
   // Bind click handlers to tool switch buttons
-  navContainer.querySelectorAll('.nav-item-btn').forEach(btn => {
+  navContainer.querySelectorAll('.nav-item-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const toolId = btn.getAttribute('data-tool-id');
       switchTool(toolId);
@@ -112,7 +116,7 @@ function switchTool(toolId) {
   if (headerDesc) headerDesc.textContent = tool.toolMetadata.description;
 
   // Update sidebar active status
-  document.querySelectorAll('.nav-item-btn').forEach(btn => {
+  document.querySelectorAll('.nav-item-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.getAttribute('data-tool-id') === currentToolId);
   });
 

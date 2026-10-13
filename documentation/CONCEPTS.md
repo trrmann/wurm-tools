@@ -17,7 +17,7 @@ This document outlines the architectural roadmap and modular feature concepts fo
 
 ### Module Group A: Settlement & Deed Operations
 
-1. **Deed Cost & Upkeep Calculator** *(Implemented in starter dashboard)*
+1. **Deed Cost & Upkeep Calculator** _(Implemented in starter dashboard)_
    - Calculate deed creation cost, monthly upkeep, and yearly maintenance in Gold, Silver, Copper, and Iron.
    - Size dimension calculator ($X \times Y$ tiles, perimeter tiles).
    - Guard count calculation (Spirit guards, upkeep increments).
@@ -40,7 +40,7 @@ This document outlines the architectural roadmap and modular feature concepts fo
 
 ### Module Group B: Timers, Rituals & Religion
 
-1. **Action & Prayer Timers** *(Implemented in starter dashboard)*
+1. **Action & Prayer Timers** _(Implemented in starter dashboard)_
    - Prayer cooldown tracker (20-minute cycle for favor gains).
    - Audio chime and browser notifications when timers elapse.
    - Meditation path ability countdowns (Cool-down resets for tier 1–5 abilities).
@@ -60,7 +60,7 @@ This document outlines the architectural roadmap and modular feature concepts fo
 
 ### Module Group C: Navigation, Cartography & Travel
 
-1. **Coordinate Distance & Travel Estimator** *(Implemented in starter dashboard)*
+1. **Coordinate Distance & Travel Estimator** _(Implemented in starter dashboard)_
    - Distance calculation between two tile coordinates $(X_1, Y_1)$ and $(X_2, Y_2)$ in tiles and meters (1 tile = 4 meters).
    - Compass heading calculation (degrees and 16-point cardinal compass directions).
    - Travel time estimation across different transport methods:
@@ -150,7 +150,7 @@ Adding a new tool to Wurm Tools is simple thanks to the modular architecture:
      name: 'Tool Display Name',
      category: 'Settlement' | 'Timers' | 'Travel' | 'Crafting' | 'Reference',
      icon: '🗺️',
-     description: 'Short summary of the tool functionality.'
+     description: 'Short summary of the tool functionality.',
    };
 
    export function mount(containerElement) {

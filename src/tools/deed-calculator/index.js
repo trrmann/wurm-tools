@@ -4,10 +4,13 @@ export const toolMetadata = {
   name: 'Deed & Upkeep Calculator',
   category: 'Settlement',
   icon: '🏰',
-  description: 'Calculate deed dimensions, creation fees, monthly upkeep costs, and deed bank runway.'
+  description:
+    'Calculate deed dimensions, creation fees, monthly upkeep costs, and deed bank runway.',
 };
 
-let containerRef = null;
+export function unmount() {
+  // Cleanup if needed
+}
 
 // Currency conversion helper: 1G = 100S = 10,000C = 1,000,000I
 function ironToCoins(totalIron) {
@@ -25,14 +28,13 @@ function ironToCoins(totalIron) {
   if (gold > 0) parts.push(`<span class="coin-pill coin-gold">${gold}g</span>`);
   if (silver > 0) parts.push(`<span class="coin-pill coin-silver">${silver}s</span>`);
   if (copper > 0) parts.push(`<span class="coin-pill coin-copper">${copper}c</span>`);
-  if (iron > 0 || parts.length === 0) parts.push(`<span class="coin-pill coin-iron">${iron}i</span>`);
+  if (iron > 0 || parts.length === 0)
+    parts.push(`<span class="coin-pill coin-iron">${iron}i</span>`);
 
   return { gold, silver, copper, iron, html: parts.join(' ') };
 }
 
 export function mount(container) {
-  containerRef = container;
-
   // Restore saved state or defaults
   const savedState = JSON.parse(localStorage.getItem('wurm_deed_calc_state') || '{}');
   const width = savedState.width || 11;
@@ -166,14 +168,17 @@ export function mount(container) {
     const rate = parseFloat(rateSelect.value) || 0;
 
     // Save state
-    localStorage.setItem('wurm_deed_calc_state', JSON.stringify({
-      width: w,
-      height: h,
-      perimeter: p,
-      guards: g,
-      currentBankSilver: bankSilver,
-      serverMultiplier: rate
-    }));
+    localStorage.setItem(
+      'wurm_deed_calc_state',
+      JSON.stringify({
+        width: w,
+        height: h,
+        perimeter: p,
+        guards: g,
+        currentBankSilver: bankSilver,
+        serverMultiplier: rate,
+      })
+    );
 
     // Deed tiles
     const deedTiles = w * h;
@@ -188,7 +193,7 @@ export function mount(container) {
     const extraDeedTiles = Math.max(0, deedTiles - 25);
     const deedTileCostIron = extraDeedTiles * 10;
     const perimTileCostIron = perimTiles * 2;
-    
+
     // Guard costs: First guard is base upkeep, additional guards cost 1 Silver (10,000 iron) per month
     const extraGuards = Math.max(0, g - 1);
     const guardCostIron = extraGuards * 10000;
@@ -196,8 +201,10 @@ export function mount(container) {
     // Base settlement upkeep = 2 silver (20,000 iron)
     const baseSettlementIron = 20000;
 
-    const totalMonthlyIron = Math.round((baseSettlementIron + deedTileCostIron + perimTileCostIron + guardCostIron) * rate);
-    
+    const totalMonthlyIron = Math.round(
+      (baseSettlementIron + deedTileCostIron + perimTileCostIron + guardCostIron) * rate
+    );
+
     // Setup cost: 10 silver base + tile fees
     const setupCostIron = 100000 + Math.round(deedTiles * 5);
 
@@ -209,12 +216,15 @@ export function mount(container) {
     }
 
     // Update DOM
-    container.querySelector('#res-total-tiles').textContent = `${totalWithPerim.toLocaleString()} tiles`;
-    container.querySelector('#res-tile-details').textContent = `${deedTiles.toLocaleString()} deed + ${perimTiles.toLocaleString()} perimeter`;
-    
+    container.querySelector('#res-total-tiles').textContent =
+      `${totalWithPerim.toLocaleString()} tiles`;
+    container.querySelector('#res-tile-details').textContent =
+      `${deedTiles.toLocaleString()} deed + ${perimTiles.toLocaleString()} perimeter`;
+
     container.querySelector('#res-setup-cost').innerHTML = ironToCoins(setupCostIron).html;
     container.querySelector('#res-monthly-upkeep').innerHTML = ironToCoins(totalMonthlyIron).html;
-    container.querySelector('#res-upkeep-breakdown').textContent = `Tiles: ${ironToCoins(Math.round((deedTileCostIron + perimTileCostIron) * rate)).formatted || ''} | Guards: ${extraGuards} extra`;
+    container.querySelector('#res-upkeep-breakdown').textContent =
+      `Tiles: ${ironToCoins(Math.round((deedTileCostIron + perimTileCostIron) * rate)).formatted || ''} | Guards: ${extraGuards} extra`;
 
     const runwayEl = container.querySelector('#res-runway-days');
     const runwayTextEl = container.querySelector('#res-runway-text');
@@ -232,7 +242,8 @@ export function mount(container) {
         runwayTextEl.textContent = '⚠️ Danger: Upkeep balance low!';
       } else if (runwayDays < 45) {
         runwayEl.style.color = 'var(--accent-gold)';
-        runwayTextEl.textContent = 'Moderate balance (~' + (runwayDays / 30).toFixed(1) + ' months)';
+        runwayTextEl.textContent =
+          'Moderate balance (~' + (runwayDays / 30).toFixed(1) + ' months)';
       } else {
         runwayEl.style.color = 'var(--accent-green)';
         runwayTextEl.textContent = `Safe runway (~${(runwayDays / 30).toFixed(1)} months remaining)`;
@@ -241,7 +252,7 @@ export function mount(container) {
   }
 
   // Quick preset chips
-  container.querySelectorAll('[data-preset]').forEach(btn => {
+  container.querySelectorAll('[data-preset]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const [w, h, p, g] = btn.getAttribute('data-preset').split(',').map(Number);
       widthInput.value = w;
@@ -257,8 +268,4 @@ export function mount(container) {
 
   // Initial calculation
   calculate();
-}
-
-export function unmount() {
-  containerRef = null;
 }
