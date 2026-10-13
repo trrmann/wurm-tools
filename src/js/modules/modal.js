@@ -1,42 +1,57 @@
 // Modal Controller Module
-export function setupModal(modalElement, openTriggerElement, closeTriggerElement) {
-  if (!modalElement) return null;
-
-  const open = () => {
-    modalElement.style.display = 'flex';
+export class Modal {
+  #modalElementId;
+  #openTriggerElementId;
+  #closeTriggerElementId;
+  #modalElement() {
+    return document.getElementById(this.#modalElementId);
+  }
+  #openTriggerElement() {
+    return document.getElementById(this.#openTriggerElementId);
+  }
+  #closeTriggerElement() {
+    return document.getElementById(this.#closeTriggerElementId);
+  }
+  #open = () => {
+    this.#modalElement().style.display = 'flex';
     document.body.style.overflow = 'hidden';
   };
-
-  const close = () => {
-    modalElement.style.display = 'none';
+  #close = () => {
+    this.#modalElement().style.display = 'none';
     document.body.style.overflow = '';
   };
-
-  if (openTriggerElement) {
-    openTriggerElement.addEventListener('click', (e) => {
-      e.preventDefault();
-      open();
-    });
-  }
-
-  if (closeTriggerElement) {
-    closeTriggerElement.addEventListener('click', (e) => {
-      e.preventDefault();
-      close();
-    });
-  }
-
-  modalElement.addEventListener('click', (e) => {
-    if (e.target === modalElement) {
-      close();
+  constructor(modalElementId, openTriggerElementId, closeTriggerElementId) {
+    if (!modalElementId || !document.getElementById(modalElementId)) {
+      throw new Error('Modal element is required');
+    } else {
+      this.#modalElementId = modalElementId;
+      this.#openTriggerElementId = openTriggerElementId;
+      this.#closeTriggerElementId = closeTriggerElementId;
+      if (this.#openTriggerElement()) {
+        this.#openTriggerElement().addEventListener('click', (e) => {
+          e.preventDefault();
+          this.#open();
+        });
+      }
+      if (this.#closeTriggerElement()) {
+        this.#closeTriggerElement().addEventListener('click', (e) => {
+          e.preventDefault();
+          this.#close();
+        });
+      }
+      this.#modalElement().addEventListener('click', (e) => {
+        if (e.target === this.#modalElement()) {
+          this.#close();
+        }
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && this.#modalElement().style.display === 'flex') {
+          this.#close();
+        }
+      });
     }
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modalElement.style.display === 'flex') {
-      close();
-    }
-  });
-
-  return { open, close };
+  }
+  get Triggers() {
+    return { open: this.#open, close: this.#close };
+  }
 }

@@ -1,0 +1,111 @@
+<div class="tool-card">
+  <div class="tool-header-block">
+    <div>
+      <h2><span>🧭</span> Coordinate Distance & Travel Estimator</h2>
+      <p>
+        Measure distance between two Wurm map tile coordinates, compass bearing, and travel times
+        across travel modes.
+      </p>
+    </div>
+    <div>
+      <span class="badge-tag">1 Tile = 4 Meters</span>
+    </div>
+  </div>
+
+  <div class="form-grid">
+    <div class="coord-box">
+      <h4 class="coord-header-origin">Origin / Start Point</h4>
+      <div class="coord-grid-2col">
+        <div class="input-group">
+          <label class="input-label" for="start-x">X Coordinate</label>
+          <input type="number" id="start-x" class="custom-input" value="1000" />
+        </div>
+        <div class="input-group">
+          <label class="input-label" for="start-y">Y Coordinate</label>
+          <input type="number" id="start-y" class="custom-input" value="1000" />
+        </div>
+      </div>
+    </div>
+
+    <div class="coord-box">
+      <h4 class="coord-header-dest">Destination Point</h4>
+      <div class="coord-grid-2col">
+        <div class="input-group">
+          <label class="input-label" for="dest-x">X Coordinate</label>
+          <input type="number" id="dest-x" class="custom-input" value="1450" />
+        </div>
+        <div class="input-group">
+          <label class="input-label" for="dest-y">Y Coordinate</label>
+          <input type="number" id="dest-y" class="custom-input" value="1600" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="results-grid results-grid-spaced">
+    <div class="stat-card">
+      <div class="stat-title">Straight-Line Tile Distance</div>
+      <div class="stat-value" id="dist-tiles">0 tiles</div>
+      <div class="stat-desc" id="dist-metric">0 km (0 m)</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-title">Compass Heading</div>
+      <div class="stat-value stat-value-gold" id="dist-bearing">-</div>
+      <div class="stat-desc" id="dist-bearing-text">-</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-title">ΔX (East/West) & ΔY (North/South)</div>
+      <div class="stat-value stat-value-medium" id="dist-deltas">+0 X, +0 Y</div>
+      <div class="stat-desc">Coordinate offset values</div>
+    </div>
+  </div>
+
+  <div class="coord-section-spacing">
+    <h3 class="coord-section-title"><span>🐎</span> Estimated Travel Times by Transport Mode</h3>
+    <div class="travel-modes-grid" id="travel-modes-grid">
+      <!-- Populated dynamically -->
+    </div>
+  </div>
+
+  <!-- Waypoint Saver -->
+  <div class="coord-divider-section">
+    <h3 class="coord-divider-title"><span>📍</span> Saved Waypoints</h3>
+    <div class="waypoint-input-row">
+      <input
+        type="text"
+        id="wp-name"
+        placeholder="Waypoint Name (e.g. Home Mine)"
+        class="custom-input waypoint-name-input"
+      />
+      <button id="save-dest-wp-btn" class="btn btn-secondary btn-sm">
+        + Save Current Destination
+      </button>
+    </div>
+    <div id="waypoints-list" class="chips-group">
+      <!-- Populated from localStorage -->
+    </div>
+  </div>
+</div>
+
+<template id="travel-mode-template">
+  <div class="stat-card travel-mode-card">
+    <div class="travel-mode-header">
+      <span class="travel-mode-label">{{label}}</span>
+      <span class="travel-mode-speed">{{speed}}</span>
+    </div>
+    <div class="travel-mode-time">{{time}}</div>
+  </div>
+</template>
+<template id="waypoint-template">
+  <div class="waypoint-pill">
+    <span class="waypoint-name">{{name}}</span>
+    <span class="waypoint-coords">({{x}}, {{y}})</span>
+    <button type="button" class="btn-load-wp" data-idx="{{idx}}">Set Dest</button>
+    <button type="button" class="btn-del-wp" data-idx="{{idx}}">✕</button>
+  </div>
+</template>
+<template id="waypoint-empty-template">
+  <span class="wp-empty-msg">No saved waypoints yet. Enter a name above to save coordinates.</span>
+</template>

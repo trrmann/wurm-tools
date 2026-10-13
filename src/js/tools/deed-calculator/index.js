@@ -1,4 +1,7 @@
 // Deed Cost & Upkeep Calculator Module
+import template from './template.html?raw';
+import coinTemplate from './coin.html?raw';
+import { fill, getShell } from '../../modules/template.js';
 export const toolMetadata = {
   id: 'deed-calculator',
   name: 'Deed & Upkeep Calculator',
@@ -12,6 +15,8 @@ export function unmount() {
   // Cleanup if needed
 }
 
+const coin = (type, amount, unit) => fill(coinTemplate.trim(), { type, amount, unit });
+
 // Currency conversion helper: 1G = 100S = 10,000C = 1,000,000I
 export function ironToCoins(totalIron) {
   if (totalIron <= 0) {
@@ -21,7 +26,7 @@ export function ironToCoins(totalIron) {
       copper: 0,
       iron: 0,
       formatted: '0i',
-      html: '<span class="coin-pill coin-iron">0i</span>',
+      html: coin('iron', 0, 'i'),
     };
   }
   const gold = Math.floor(totalIron / 1000000);
@@ -32,11 +37,10 @@ export function ironToCoins(totalIron) {
   const iron = Math.floor(rem % 100);
 
   const parts = [];
-  if (gold > 0) parts.push(`<span class="coin-pill coin-gold">${gold}g</span>`);
-  if (silver > 0) parts.push(`<span class="coin-pill coin-silver">${silver}s</span>`);
-  if (copper > 0) parts.push(`<span class="coin-pill coin-copper">${copper}c</span>`);
-  if (iron > 0 || parts.length === 0)
-    parts.push(`<span class="coin-pill coin-iron">${iron}i</span>`);
+  if (gold > 0) parts.push(coin('gold', gold, 'g'));
+  if (silver > 0) parts.push(coin('silver', silver, 's'));
+  if (copper > 0) parts.push(coin('copper', copper, 'c'));
+  if (iron > 0 || parts.length === 0) parts.push(coin('iron', iron, 'i'));
 
   return { gold, silver, copper, iron, html: parts.join(' ') };
 }
@@ -105,111 +109,17 @@ export function mount(container) {
   const currentBankSilver = savedState.currentBankSilver || 5;
   const serverMultiplier = savedState.serverMultiplier || 1.0;
 
-  container.innerHTML = `
-    <div class="tool-card">
-      <div class="tool-header-block">
-        <div>
-          <h2><span>🏰</span> Deed Cost & Upkeep Calculator</h2>
-          <p>Plan settlement dimensions, calculate monthly upkeep in Gold/Silver/Copper/Iron, and estimate deed bank lifetime.</p>
-        </div>
-        <div>
-          <span class="badge-tag">Wurm Online & Unlimited</span>
-        </div>
-      </div>
-
-      <div class="chips-group deed-chips-group">
-        <span class="deed-preset-label">Quick Presets:</span>
-        <button type="button" class="chip-btn" data-preset="5,5,5,1">5x5 Homestead</button>
-        <button type="button" class="chip-btn" data-preset="11,11,5,1">11x11 Farmstead</button>
-        <button type="button" class="chip-btn" data-preset="21,21,5,2">21x21 Village</button>
-        <button type="button" class="chip-btn" data-preset="31,31,10,3">31x31 Township</button>
-        <button type="button" class="chip-btn" data-preset="51,51,15,5">51x51 Fortress</button>
-      </div>
-
-      <form id="deed-form">
-        <div class="form-grid">
-          <div class="input-group">
-            <label class="input-label" for="deed-width">
-              Width (East-West Tiles)
-              <span class="input-hint">Min: 5</span>
-            </label>
-            <input type="number" id="deed-width" class="custom-input" min="5" max="500" value="${width}">
-          </div>
-
-          <div class="input-group">
-            <label class="input-label" for="deed-height">
-              Height (North-South Tiles)
-              <span class="input-hint">Min: 5</span>
-            </label>
-            <input type="number" id="deed-height" class="custom-input" min="5" max="500" value="${height}">
-          </div>
-
-          <div class="input-group">
-            <label class="input-label" for="deed-perimeter">
-              Perimeter Buffer (Tiles)
-              <span class="input-hint">Min: 0</span>
-            </label>
-            <input type="number" id="deed-perimeter" class="custom-input" min="0" max="100" value="${perimeter}">
-          </div>
-
-          <div class="input-group">
-            <label class="input-label" for="deed-guards">
-              Spirit Guards
-              <span class="input-hint">Included: 1</span>
-            </label>
-            <input type="number" id="deed-guards" class="custom-input" min="0" max="50" value="${guards}">
-          </div>
-
-          <div class="input-group">
-            <label class="input-label" for="current-bank">
-              Current Deed Bank (Silver)
-              <span class="input-hint">For runway estimate</span>
-            </label>
-            <input type="number" id="current-bank" class="custom-input" min="0" step="0.5" value="${currentBankSilver}">
-          </div>
-
-          <div class="input-group">
-            <label class="input-label" for="server-rate">
-              Server Upkeep Rate
-              <span class="input-hint">1.0 = Default</span>
-            </label>
-            <select id="server-rate" class="custom-select">
-              <option value="1.0" ${serverMultiplier === 1.0 ? 'selected' : ''}>Wurm Online (1.0x Official)</option>
-              <option value="0.5" ${serverMultiplier === 0.5 ? 'selected' : ''}>Wurm Unlimited (0.5x Half)</option>
-              <option value="0.25" ${serverMultiplier === 0.25 ? 'selected' : ''}>Wurm Unlimited (0.25x Quarter)</option>
-              <option value="0.0" ${serverMultiplier === 0.0 ? 'selected' : ''}>Free Upkeep (0.0x)</option>
-            </select>
-          </div>
-        </div>
-      </form>
-
-      <div class="results-grid">
-        <div class="stat-card">
-          <div class="stat-title">Total Settlement Area</div>
-          <div class="stat-value" id="res-total-tiles">0 tiles</div>
-          <div class="stat-desc" id="res-tile-details">0 deed + 0 perimeter</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-title">Founding / Setup Fee</div>
-          <div class="stat-value" id="res-setup-cost">-</div>
-          <div class="stat-desc">One-time initial deed founding payment</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-title">Monthly Upkeep Cost</div>
-          <div class="stat-value" id="res-monthly-upkeep">-</div>
-          <div class="stat-desc" id="res-upkeep-breakdown">Per 30 real days</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-title">Deed Bank Remaining Runway</div>
-          <div class="stat-value stat-value-green" id="res-runway-days">-</div>
-          <div class="stat-desc" id="res-runway-text">Based on current silver balance</div>
-        </div>
-      </div>
-    </div>
-  `;
+  container.innerHTML = fill(getShell(template), {
+    width,
+    height,
+    perimeter,
+    guards,
+    currentBankSilver,
+    sel1_0: serverMultiplier === 1.0 ? 'selected' : '',
+    sel0_5: serverMultiplier === 0.5 ? 'selected' : '',
+    sel0_25: serverMultiplier === 0.25 ? 'selected' : '',
+    sel0_0: serverMultiplier === 0.0 ? 'selected' : '',
+  });
 
   // Bind calculation events
   const form = container.querySelector('#deed-form');

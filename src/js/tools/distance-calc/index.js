@@ -1,4 +1,6 @@
 // Coordinate Distance & Travel Estimator
+import template from './template.html?raw';
+import { fill, getShell, getTemplate } from '../../modules/template.js';
 export const toolMetadata = {
   id: 'distance-calc',
   name: 'Distance & Travel Estimator',
@@ -62,92 +64,10 @@ export function calculateDistanceMetrics(x1, y1, x2, y2) {
 }
 
 export function mount(container) {
-  container.innerHTML = `
-    <div class="tool-card">
-      <div class="tool-header-block">
-        <div>
-          <h2><span>🧭</span> Coordinate Distance & Travel Estimator</h2>
-          <p>Measure distance between two Wurm map tile coordinates, compass bearing, and travel times across travel modes.</p>
-        </div>
-        <div>
-          <span class="badge-tag">1 Tile = 4 Meters</span>
-        </div>
-      </div>
-
-      <div class="form-grid">
-        <div class="coord-box">
-          <h4 class="coord-header-origin">Origin / Start Point</h4>
-          <div class="coord-grid-2col">
-            <div class="input-group">
-              <label class="input-label" for="start-x">X Coordinate</label>
-              <input type="number" id="start-x" class="custom-input" value="1000">
-            </div>
-            <div class="input-group">
-              <label class="input-label" for="start-y">Y Coordinate</label>
-              <input type="number" id="start-y" class="custom-input" value="1000">
-            </div>
-          </div>
-        </div>
-
-        <div class="coord-box">
-          <h4 class="coord-header-dest">Destination Point</h4>
-          <div class="coord-grid-2col">
-            <div class="input-group">
-              <label class="input-label" for="dest-x">X Coordinate</label>
-              <input type="number" id="dest-x" class="custom-input" value="1450">
-            </div>
-            <div class="input-group">
-              <label class="input-label" for="dest-y">Y Coordinate</label>
-              <input type="number" id="dest-y" class="custom-input" value="1600">
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="results-grid results-grid-spaced">
-        <div class="stat-card">
-          <div class="stat-title">Straight-Line Tile Distance</div>
-          <div class="stat-value" id="dist-tiles">0 tiles</div>
-          <div class="stat-desc" id="dist-metric">0 km (0 m)</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-title">Compass Heading</div>
-          <div class="stat-value stat-value-gold" id="dist-bearing">-</div>
-          <div class="stat-desc" id="dist-bearing-text">-</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-title">ΔX (East/West) & ΔY (North/South)</div>
-          <div class="stat-value stat-value-medium" id="dist-deltas">+0 X, +0 Y</div>
-          <div class="stat-desc">Coordinate offset values</div>
-        </div>
-      </div>
-
-      <div class="coord-section-spacing">
-        <h3 class="coord-section-title">
-          <span>🐎</span> Estimated Travel Times by Transport Mode
-        </h3>
-        <div class="travel-modes-grid" id="travel-modes-grid">
-          <!-- Populated dynamically -->
-        </div>
-      </div>
-
-      <!-- Waypoint Saver -->
-      <div class="coord-divider-section">
-        <h3 class="coord-divider-title">
-          <span>📍</span> Saved Waypoints
-        </h3>
-        <div class="waypoint-input-row">
-          <input type="text" id="wp-name" placeholder="Waypoint Name (e.g. Home Mine)" class="custom-input waypoint-name-input">
-          <button id="save-dest-wp-btn" class="btn btn-secondary btn-sm">+ Save Current Destination</button>
-        </div>
-        <div id="waypoints-list" class="chips-group">
-          <!-- Populated from localStorage -->
-        </div>
-      </div>
-    </div>
-  `;
+  container.innerHTML = fill(getShell(template), {});
+  const modeTpl = getTemplate(template, 'travel-mode-template');
+  const wpTpl = getTemplate(template, 'waypoint-template');
+  const wpEmptyTpl = getTemplate(template, 'waypoint-empty-template');
 
   const startX = container.querySelector('#start-x');
   const startY = container.querySelector('#start-y');
@@ -197,17 +117,11 @@ export function mount(container) {
         // Speed in tiles/sec: (speedKmh * 1000 / 3600) / 4 meters per tile
         const tilesPerSec = (mode.speedKmh * 1000) / 3600 / 4;
         const durationSec = tilesPerSec > 0 ? tiles / tilesPerSec : 0;
-        return `
-        <div class="stat-card travel-mode-card">
-          <div class="travel-mode-header">
-            <span class="travel-mode-label">${mode.icon} ${mode.label}</span>
-            <span class="travel-mode-speed">${mode.speedKmh} km/h</span>
-          </div>
-          <div class="travel-mode-time">
-            ${formatDuration(durationSec)}
-          </div>
-        </div>
-      `;
+        return fill(modeTpl, {
+          label: `${mode.icon} ${mode.label}`,
+          speed: `${mode.speedKmh} km/h`,
+          time: formatDuration(durationSec),
+        });
       })
       .join('');
   }
@@ -215,21 +129,12 @@ export function mount(container) {
   function renderWaypoints() {
     const waypoints = JSON.parse(localStorage.getItem('wurm_waypoints') || '[]');
     if (waypoints.length === 0) {
-      waypointsList.innerHTML = `<span class="wp-empty-msg">No saved waypoints yet. Enter a name above to save coordinates.</span>`;
+      waypointsList.innerHTML = wpEmptyTpl;
       return;
     }
 
     waypointsList.innerHTML = waypoints
-      .map(
-        (wp, idx) => `
-      <div class="waypoint-pill">
-        <span class="waypoint-name">${wp.name}</span>
-        <span class="waypoint-coords">(${wp.x}, ${wp.y})</span>
-        <button type="button" class="btn-load-wp" data-idx="${idx}">Set Dest</button>
-        <button type="button" class="btn-del-wp" data-idx="${idx}">✕</button>
-      </div>
-    `
-      )
+      .map((wp, idx) => fill(wpTpl, { name: wp.name, x: wp.x, y: wp.y, idx }))
       .join('');
 
     waypointsList.querySelectorAll('.btn-load-wp').forEach((btn) => {

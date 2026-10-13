@@ -1,0 +1,46 @@
+<div class="concepts-page-container">
+  <div class="concepts-filter-bar">{{{filters}}}</div>
+  <div class="concepts-categories-grid" id="concepts-grid">{{{categories}}}</div>
+</div>
+
+<template id="concepts-filter-template">
+  <button class="filter-btn btn {{variant}}" data-filter="{{filter}}">{{label}}</button>
+</template>
+
+<template id="concepts-card-template">
+  <div class="card concepts-card" id="concept-{{index}}">
+    <div class="card-header concepts-category-header">
+      <h2 class="concepts-category-title">{{category}}</h2>
+      <p class="concepts-category-desc">{{description}}</p>
+    </div>
+    <div class="card-body concepts-items-list">{{{items}}}</div>
+  </div>
+</template>
+
+<template id="concepts-item-template">
+  <div class="concepts-item-box {{state}}">
+    <div class="concepts-item-header">
+      <h3 class="concepts-item-title">{{title}}</h3>
+      <span class="badge-tag {{badgeClass}}">{{badge}}</span>
+    </div>
+    <p class="concepts-item-desc">{{description}}</p>
+  </div>
+</template>
+
+<template id="concepts-nav-template">
+  <div class="nav-group">
+    <div class="nav-group-title">Topics</div>
+    <ul class="nav-list">
+      {{{items}}}
+    </ul>
+  </div>
+</template>
+
+<template id="concepts-nav-item-template">
+  <!-- eslint-disable-next-line @html-eslint/require-li-container -->
+  <li>
+    <button class="nav-item-btn" data-topic="concept-{{index}}">
+      <span>{{category}}</span>
+    </button>
+  </li>
+</template>

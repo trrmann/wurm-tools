@@ -1,4 +1,6 @@
 // Action & Prayer Timers Module
+import template from './template.html?raw';
+import { fill, getShell } from '../../modules/template.js';
 export const toolMetadata = {
   id: 'action-timers',
   name: 'Action & Prayer Timers',
@@ -64,66 +66,7 @@ export function mount(container) {
     activeTitle: 'Prayer / Favor Gain Cycle',
   };
 
-  container.innerHTML = `
-    <div class="tool-card">
-      <div class="tool-header-block">
-        <div>
-          <h2><span>⏳</span> Action & Prayer Timers</h2>
-          <p>Track priest favor gain ticks, meditation path abilities, or custom countdowns with sound alerts.</p>
-        </div>
-        <div>
-          <button id="notify-perm-btn" class="btn btn-secondary btn-sm">🔔 Enable Notifications</button>
-        </div>
-      </div>
-
-      <div class="chips-group timer-chip-group">
-        <span class="timer-preset-label">Select Preset:</span>
-        <button type="button" class="chip-btn active" data-timer-name="Prayer / Favor Cycle" data-seconds="1200">20m Prayer (Favor)</button>
-        <button type="button" class="chip-btn" data-timer-name="Meditation Path Cooldown" data-seconds="1800">30m Meditation</button>
-        <button type="button" class="chip-btn" data-timer-name="Path Ability (3 Hours)" data-seconds="10800">3h Path Ability</button>
-        <button type="button" class="chip-btn" data-timer-name="Sleep Powder (2 Hours)" data-seconds="7200">2h Sleep Powder</button>
-        <button type="button" class="chip-btn" data-timer-name="Custom 5 Min" data-seconds="300">5m Quick</button>
-      </div>
-
-      <div class="timer-display-box">
-        <div id="timer-label" class="timer-label">
-          ${timerState.activeTitle}
-        </div>
-        
-        <div id="timer-display" class="timer-display-digits">
-          20:00
-        </div>
-
-        <div class="timer-progress-track">
-          <div id="timer-progress" class="timer-progress-bar"></div>
-        </div>
-
-        <div class="timer-btn-group">
-          <button id="timer-toggle-btn" class="btn btn-primary timer-btn-start">▶ Start</button>
-          <button id="timer-reset-btn" class="btn btn-secondary">↺ Reset</button>
-          <button id="timer-test-sound" class="btn btn-secondary btn-sm" title="Test audio chime">🔊 Test Sound</button>
-        </div>
-      </div>
-
-      <div class="form-grid timer-custom-grid">
-        <div class="input-group">
-          <label class="input-label" for="custom-minutes">Custom Duration (Minutes)</label>
-          <div class="input-flex-row">
-            <input type="number" id="custom-minutes" class="custom-input timer-custom-input" min="1" max="720" value="15">
-            <button id="apply-custom-btn" class="btn btn-secondary">Set</button>
-          </div>
-        </div>
-        <div class="input-group">
-          <label class="input-label">Audio & Alert Settings</label>
-          <div class="timer-options-row">
-            <label class="timer-checkbox-label">
-              <input type="checkbox" id="sound-checkbox" checked> Play audio chime on completion
-            </label>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+  container.innerHTML = fill(getShell(template), { activeTitle: timerState.activeTitle });
 
   const displayEl = container.querySelector('#timer-display');
   const labelEl = container.querySelector('#timer-label');

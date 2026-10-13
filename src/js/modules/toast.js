@@ -1,4 +1,7 @@
 // Toast Notification Module
+import toastTemplate from './toast.html?raw';
+import { fill } from './template.js';
+
 export function showToast(message, type = 'info') {
   let container = document.getElementById('toast-container');
   if (!container) {
@@ -9,10 +12,8 @@ export function showToast(message, type = 'info') {
 
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
-  toast.innerHTML = `
-    <span>${type === 'success' ? '✓' : type === 'warn' ? '⚠️' : 'ℹ️'}</span>
-    <span>${message}</span>
-  `;
+  const icon = type === 'success' ? '✓' : type === 'warn' ? '⚠️' : 'ℹ️';
+  toast.innerHTML = fill(toastTemplate, { icon, message });
 
   container.appendChild(toast);
   setTimeout(() => {

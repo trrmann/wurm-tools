@@ -1,0 +1,20 @@
+<div class="nav-empty-state">No tools matched "{{query}}"</div>
+
+<template id="nav-group-template">
+  <div class="nav-group">
+    <div class="nav-group-title">{{category}}</div>
+    <ul class="nav-list">
+      {{{items}}}
+    </ul>
+  </div>
+</template>
+
+<template id="nav-item-template">
+  <!-- eslint-disable-next-line @html-eslint/require-li-container -->
+  <li>
+    <button class="nav-item-btn {{active}}" data-tool-id="{{id}}">
+      <span class="nav-item-icon">{{icon}}</span>
+      <span>{{name}}</span>
+    </button>
+  </li>
+</template>

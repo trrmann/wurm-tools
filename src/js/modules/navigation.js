@@ -1,5 +1,7 @@
 // Navigation & Sidebar Module
 import { TOOLS_LIST } from '../tools/registry.js';
+import navTemplate from './navigation.html?raw';
+import { fill, getShell, getTemplate } from './template.js';
 
 export function renderSidebarNavigation({
   container,
@@ -21,15 +23,13 @@ export function renderSidebarNavigation({
   });
 
   if (filteredTools.length === 0) {
-    container.innerHTML = `
-      <div class="nav-empty-state">
-        No tools matched "${searchFilter}"
-      </div>
-    `;
+    container.innerHTML = fill(getShell(navTemplate), { query: searchFilter });
     return;
   }
 
-  // Group tools by category
+  const groupTpl = getTemplate(navTemplate, 'nav-group-template');
+  const itemTpl = getTemplate(navTemplate, 'nav-item-template');
+
   const grouped = {};
   filteredTools.forEach((tool) => {
     const cat = tool.toolMetadata.category || 'General';
@@ -37,31 +37,23 @@ export function renderSidebarNavigation({
     grouped[cat].push(tool);
   });
 
-  let html = '';
-  for (const [category, tools] of Object.entries(grouped)) {
-    html += `
-      <div class="nav-group">
-        <div class="nav-group-title">${category}</div>
-        <ul class="nav-list">
-          ${tools
-            .map((tool) => {
-              const meta = tool.toolMetadata;
-              const isActive = meta.id === currentToolId;
-              return `
-              <li>
-                <button class="nav-item-btn ${isActive ? 'active' : ''}" data-tool-id="${meta.id}">
-                  <span class="nav-item-icon">${meta.icon}</span>
-                  <span>${meta.name}</span>
-                </button>
-              </li>
-            `;
+  const html = Object.entries(grouped)
+    .map(([category, tools]) =>
+      fill(groupTpl, {
+        category,
+        items: tools
+          .map(({ toolMetadata: meta }) =>
+            fill(itemTpl, {
+              id: meta.id,
+              icon: meta.icon,
+              name: meta.name,
+              active: meta.id === currentToolId ? 'active' : '',
             })
-            .join('')}
-        </ul>
-      </div>
-    `;
-  }
-
+          )
+          .join(''),
+      })
+    )
+    .join('');
   container.innerHTML = html;
 
   if (typeof onSelectTool === 'function') {

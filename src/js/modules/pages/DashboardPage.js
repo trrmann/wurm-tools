@@ -2,106 +2,99 @@
 import { BasePage } from './BasePage.js';
 import { TOOLS_LIST, getToolById } from '../../tools/registry.js';
 import { renderSidebarNavigation } from '../navigation.js';
-import { setupModal } from '../modal.js';
+import { Modal } from '../modal.js';
+import { renderShell } from '../shell.js';
 
 export class DashboardPage extends BasePage {
+  static pageId = 'dashboard';
   static pageAppID = 'dashboard-app';
+  static sidebarNavigationID = 'sidebar-navigation';
+  static sidebarID = 'sidebar';
+  static toolSearchInputID = 'tool-search-input';
+  static toolViewportID = 'tool-viewport';
+  static mobileMenuToggleID = 'mobile-menu-toggle';
+  static conceptsModalID = 'concepts-modal';
+  static openConceptsModalBtnID = 'open-concepts-modal-btn';
+  static closeConceptsModalBtnID = 'close-concepts-modal';
+  static headerToolTitleID = 'header-tool-title';
+  static headerToolDescID = 'header-tool-desc';
+  static navItemBtnClass = '.nav-item-btn';
+  static navItemActiveClass = 'active';
+  static navItemDataToolId = 'data-tool-id';
+  static activeToolKey = 'wurm_active_tool';
+  static defaultToolId = 'deed-calculator';
+  static toolSearchFunction = 'function';
+  static sidebarOpenClass = 'open';
+  static toolSearchInputEvent = 'input';
+  static mobileMenuToggleEvent = 'click';
+  static emptyString = '';
+  static modalDisplayBlock = 'block';
+  static modalDisplayNone = 'none';
+  #dashboardViewport() {
+    return document.getElementById(DashboardPage.toolViewportID);
+  }
+  #conceptsModal() {
+    return document.getElementById(DashboardPage.conceptsModalID);
+  }
+  #sidebarNavigation() {
+    return document.getElementById(DashboardPage.sidebarNavigationID);
+  }
+  #headerToolTitle() {
+    return document.getElementById(DashboardPage.headerToolTitleID);
+  }
+  #headerToolDesc() {
+    return document.getElementById(DashboardPage.headerToolDescID);
+  }
+  #navItemBtns() {
+    return document.querySelectorAll(DashboardPage.navItemBtnClass);
+  }
+  #toolSearchInput() {
+    return document.getElementById(DashboardPage.toolSearchInputID);
+  }
+  #mobileMenuToggle() {
+    return document.getElementById(DashboardPage.mobileMenuToggleID);
+  }
+  #sidebar() {
+    return document.getElementById(DashboardPage.sidebarID);
+  }
+
   constructor() {
     super({
-      id: 'dashboard',
+      id: DashboardPage.pageId,
       title: 'Companion Suite Dashboard',
       description: 'Modular toolkit and calculators for Wurm Online and Wurm Unlimited',
     });
-
-    this.currentToolId = localStorage.getItem('wurm_active_tool') || 'deed-calculator';
+    this.currentToolId =
+      localStorage.getItem(DashboardPage.activeToolKey) || DashboardPage.defaultToolId;
     this.currentMountedTool = null;
     this.modalController = null;
     this.handleSearchInput = this.handleSearchInput.bind(this);
     this.handleMobileToggle = this.handleMobileToggle.bind(this);
+    this.handleOpenConceptsModal = this.handleOpenConceptsModal.bind(this);
+    this.handleCloseConceptsModal = this.handleCloseConceptsModal.bind(this);
   }
 
-  mount(container = document.getElementById('app')) {
+  handleOpenConceptsModal() {
+    const modal = this.#conceptsModal();
+    if (modal) modal.style.display = DashboardPage.modalDisplayBlock;
+  }
+
+  handleCloseConceptsModal() {
+    const modal = this.#conceptsModal();
+    if (modal) modal.style.display = DashboardPage.modalDisplayNone;
+  }
+  mount(container = document.getElementById(DashboardPage.pageAppID)) {
     super.mount(container);
   }
 
   render() {
-    // If container already contains the HTML shell (from static HTML), wire it; otherwise generate it
-    if (!this.container.querySelector('#tool-viewport')) {
-      this.container.innerHTML = this.template();
-    }
-
+    renderShell(this.container);
     this.renderNavigation();
     this.switchTool(this.currentToolId);
   }
 
-  template() {
-    return `
-      <!-- Sidebar Navigation -->
-      <aside class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-          <div class="logo-badge">
-            <img src="/images/logo.svg" alt="Wurm Tools" width="24" height="24" />
-          </div>
-          <div>
-            <div class="sidebar-title">Wurm Tools</div>
-            <div class="sidebar-subtitle">Companion Suite</div>
-          </div>
-        </div>
-
-        <div class="sidebar-search">
-          <div class="search-input-wrapper">
-            <span class="search-icon">🔍</span>
-            <input
-              type="text"
-              id="tool-search-input"
-              class="search-input"
-              placeholder="Search tools..."
-              aria-label="Search tools"
-            />
-          </div>
-        </div>
-
-        <nav class="sidebar-nav" id="sidebar-navigation">
-          <!-- Dynamically rendered tool list -->
-        </nav>
-
-        <div class="sidebar-footer">
-          <button id="open-concepts-modal-btn" class="concepts-btn" type="button">
-            <span>📜</span> View Suite Concepts & Roadmap
-          </button>
-          <div class="render-badge">Ready for Render Static Hosting</div>
-        </div>
-      </aside>
-
-      <!-- Main Workspace -->
-      <div class="main-wrapper">
-        <header class="top-header">
-          <div class="header-left">
-            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-label="Toggle Menu">
-              ☰
-            </button>
-            <div class="header-title-container">
-              <h1 id="header-tool-title">Deed & Upkeep Calculator</h1>
-              <p id="header-tool-desc">
-                Calculate deed dimensions, creation fees, monthly upkeep costs, and deed bank runway.
-              </p>
-            </div>
-          </div>
-
-          <div class="header-actions">
-            <span class="badge-tag">Offline-Ready Client</span>
-          </div>
-        </header>
-
-        <main class="tool-viewport" id="tool-viewport">
-          <!-- Active Tool is mounted here -->
-        </main>
-      </div>
-    `;
-  }
-
-  renderNavigation(searchFilter = '') {
-    const navContainer = document.getElementById('sidebar-navigation');
+  renderNavigation(searchFilter = DashboardPage.emptyString) {
+    const navContainer = this.#sidebarNavigation();
     if (!navContainer) return;
 
     renderSidebarNavigation({
@@ -110,7 +103,7 @@ export class DashboardPage extends BasePage {
       searchFilter,
       onSelectTool: (toolId) => {
         this.switchTool(toolId);
-        document.getElementById('sidebar')?.classList.remove('open');
+        this.#sidebar()?.classList.remove(DashboardPage.sidebarOpenClass);
       },
     });
   }
@@ -120,64 +113,72 @@ export class DashboardPage extends BasePage {
     if (!tool) return;
 
     this.currentToolId = tool.toolMetadata.id;
-    localStorage.setItem('wurm_active_tool', this.currentToolId);
+    localStorage.setItem(DashboardPage.activeToolKey, this.currentToolId);
 
     // Unmount previous tool
-    if (this.currentMountedTool && typeof this.currentMountedTool.unmount === 'function') {
+    if (
+      this.currentMountedTool &&
+      typeof this.currentMountedTool.unmount === DashboardPage.toolSearchFunction
+    ) {
       this.currentMountedTool.unmount();
     }
 
     // Update header info
-    const headerTitle = document.getElementById('header-tool-title');
-    const headerDesc = document.getElementById('header-tool-desc');
+    const headerTitle = this.#headerToolTitle();
+    const headerDesc = this.#headerToolDesc();
     if (headerTitle) headerTitle.textContent = tool.toolMetadata.name;
     if (headerDesc) headerDesc.textContent = tool.toolMetadata.description;
 
     // Update sidebar navigation buttons
-    document.querySelectorAll('.nav-item-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.getAttribute('data-tool-id') === this.currentToolId);
+    this.#navItemBtns().forEach((btn) => {
+      btn.classList.toggle(
+        DashboardPage.navItemActiveClass,
+        btn.getAttribute(DashboardPage.navItemDataToolId) === this.currentToolId
+      );
     });
 
     // Mount active tool into viewport
-    const viewport = document.getElementById('tool-viewport');
+    const viewport = this.#dashboardViewport();
     if (viewport) {
-      viewport.innerHTML = '';
+      viewport.innerHTML = DashboardPage.emptyString;
       tool.mount(viewport);
       this.currentMountedTool = tool;
     }
   }
 
   bindEvents() {
-    const searchInput = document.getElementById('tool-search-input');
+    const searchInput = this.#toolSearchInput();
     if (searchInput) {
-      searchInput.addEventListener('input', this.handleSearchInput);
+      searchInput.addEventListener(DashboardPage.toolSearchInputEvent, this.handleSearchInput);
     }
-
-    const mobileToggle = document.getElementById('mobile-menu-toggle');
+    const mobileToggle = this.#mobileMenuToggle();
     if (mobileToggle) {
-      mobileToggle.addEventListener('click', this.handleMobileToggle);
+      mobileToggle.addEventListener(DashboardPage.mobileMenuToggleEvent, this.handleMobileToggle);
     }
-
-    const modalBackdrop = document.getElementById('concepts-modal');
-    const openConceptsBtn = document.getElementById('open-concepts-modal-btn');
-    const closeConceptsBtn = document.getElementById('close-concepts-modal');
-    if (modalBackdrop && openConceptsBtn && closeConceptsBtn) {
-      this.modalController = setupModal(modalBackdrop, openConceptsBtn, closeConceptsBtn);
-    }
+    this.modalController = new Modal(
+      DashboardPage.conceptsModalID,
+      DashboardPage.openConceptsModalBtnID,
+      DashboardPage.closeConceptsModalBtnID
+    );
   }
 
   unbindEvents() {
-    const searchInput = document.getElementById('tool-search-input');
+    const searchInput = this.#toolSearchInput();
     if (searchInput) {
-      searchInput.removeEventListener('input', this.handleSearchInput);
+      searchInput.removeEventListener(DashboardPage.toolSearchInputEvent, this.handleSearchInput);
     }
-
-    const mobileToggle = document.getElementById('mobile-menu-toggle');
+    const mobileToggle = this.#mobileMenuToggle();
     if (mobileToggle) {
-      mobileToggle.removeEventListener('click', this.handleMobileToggle);
+      mobileToggle.removeEventListener(
+        DashboardPage.mobileMenuToggleEvent,
+        this.handleMobileToggle
+      );
     }
 
-    if (this.currentMountedTool && typeof this.currentMountedTool.unmount === 'function') {
+    if (
+      this.currentMountedTool &&
+      typeof this.currentMountedTool.unmount === DashboardPage.toolSearchFunction
+    ) {
       this.currentMountedTool.unmount();
       this.currentMountedTool = null;
     }
@@ -188,9 +189,9 @@ export class DashboardPage extends BasePage {
   }
 
   handleMobileToggle() {
-    const sidebar = document.getElementById('sidebar');
+    const sidebar = this.#sidebar();
     if (sidebar) {
-      sidebar.classList.toggle('open');
+      sidebar.classList.toggle(DashboardPage.sidebarOpenClass);
     }
   }
 }

@@ -63,7 +63,9 @@ WurmTools/
 │   ├── styles/                    # Stylesheets (style.css with theme variables & layout)
 │   └── js/
 │       ├── main.js                # Application entry point & controller bootstrap
-│       ├── modules/               # Reusable core modules (toast, modal, navigation)
+│       ├── modules/               # Reusable core modules (shell, template, toast, modal, navigation, partials, pages)
+│       │                          #   shell.js assembles site/partials/* (sidebar, header+nav, footer, modal) for every page
+│       │                          #   HTML lives in .html templates (?raw + template.js fill/getTemplate), not in JS
 │       │   └── pages/             # Page Objects (BasePage, DashboardPage, ConceptsPage)
 │       └── tools/                 # Modular tools (deed-calculator, action-timers, etc.)
 │           └── registry.js        # Central catalog of active tool modules

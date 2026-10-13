@@ -1,5 +1,8 @@
 // Concepts & Roadmap Page Object
 import { BasePage } from './BasePage.js';
+import conceptsTemplate from '../../../../site/concepts/template.html?raw';
+import { fill, getShell, getTemplate } from '../template.js';
+import { renderShell, setHeader, initSidebar } from '../shell.js';
 
 export const ROADMAP_CATEGORIES = [
   {
@@ -142,6 +145,12 @@ export const ROADMAP_CATEGORIES = [
   },
 ];
 
+const FILTERS = [
+  { filter: 'All', label: 'All Concepts' },
+  { filter: 'Active', label: 'Active in Dashboard' },
+  { filter: 'Planned', label: 'Planned in Roadmap' },
+];
+
 export class ConceptsPage extends BasePage {
   static pageAppID = 'concepts-app';
   constructor() {
@@ -152,97 +161,93 @@ export class ConceptsPage extends BasePage {
     });
 
     this.filter = 'All';
+    this.teardownSidebar = null;
     this.handleFilterChange = this.handleFilterChange.bind(this);
   }
 
   render() {
     if (!this.container) return;
+    this.viewport = renderShell(this.container);
+    setHeader('Concepts & Roadmap', 'Modular companion suite for Wurm Online and Wurm Unlimited.');
+    this.renderContent();
+  }
 
-    this.container.innerHTML = `
-      <div class="concepts-page-container">
-        <header class="concepts-header">
-          <div>
-            <div class="concepts-title-row">
-              <span class="concepts-icon">📜</span>
-              <h1 class="concepts-title">Wurm Tools — Concepts & Roadmap</h1>
-            </div>
-            <p class="concepts-subtitle">
-              Modular client-side companion suite for Wurm Online and Wurm Unlimited.
-            </p>
-          </div>
-          <div class="concepts-header-actions">
-            <a href="/" class="btn btn-secondary concepts-back-btn">
-              <span>←</span> Back to Dashboard
-            </a>
-          </div>
-        </header>
-
-        <div class="concepts-filter-bar">
-          <button class="filter-btn btn ${this.filter === 'All' ? 'btn-primary' : 'btn-secondary'}" data-filter="All">All Concepts</button>
-          <button class="filter-btn btn ${this.filter === 'Active' ? 'btn-primary' : 'btn-secondary'}" data-filter="Active">Active in Dashboard</button>
-          <button class="filter-btn btn ${this.filter === 'Planned' ? 'btn-primary' : 'btn-secondary'}" data-filter="Planned">Planned in Roadmap</button>
-        </div>
-
-        <div class="concepts-categories-grid" id="concepts-grid">
-          ${this.renderCategories()}
-        </div>
-      </div>
-    `;
-
-    this.bindEvents();
+  renderContent() {
+    const filterTpl = getTemplate(conceptsTemplate, 'concepts-filter-template');
+    this.viewport.innerHTML = fill(getShell(conceptsTemplate), {
+      filters: FILTERS.map(({ filter, label }) =>
+        fill(filterTpl, {
+          filter,
+          label,
+          variant: this.filter === filter ? 'btn-primary' : 'btn-secondary',
+        })
+      ).join(''),
+      categories: this.renderCategories(),
+    });
+    this.viewport
+      .querySelectorAll('.filter-btn')
+      .forEach((btn) => btn.addEventListener('click', this.handleFilterChange));
   }
 
   renderCategories() {
-    return ROADMAP_CATEGORIES.map((cat) => {
-      const items = cat.items.filter((item) => {
-        if (this.filter === 'All') return true;
-        return item.status === this.filter;
-      });
+    const cardTpl = getTemplate(conceptsTemplate, 'concepts-card-template');
+    const itemTpl = getTemplate(conceptsTemplate, 'concepts-item-template');
 
+    return ROADMAP_CATEGORIES.map((cat, index) => {
+      const items = cat.items.filter(
+        (item) => this.filter === 'All' || item.status === this.filter
+      );
       if (items.length === 0) return '';
 
-      return `
-        <div class="card concepts-card">
-          <div class="card-header concepts-category-header">
-            <h2 class="concepts-category-title">${cat.category}</h2>
-            <p class="concepts-category-desc">${cat.description}</p>
-          </div>
-          <div class="card-body concepts-items-list">
-            ${items
-              .map(
-                (item) => `
-              <div class="concepts-item-box ${item.status === 'Active' ? 'active' : 'planned'}">
-                <div class="concepts-item-header">
-                  <h3 class="concepts-item-title">${item.title}</h3>
-                  <span class="badge-tag ${item.status === 'Active' ? 'badge-active' : 'badge-planned'}">
-                    ${item.status === 'Active' ? '✓ Active' : '⏳ Planned'}
-                  </span>
-                </div>
-                <p class="concepts-item-desc">${item.description}</p>
-              </div>
-            `
-              )
-              .join('')}
-          </div>
-        </div>
-      `;
+      return fill(cardTpl, {
+        index,
+        category: cat.category,
+        description: cat.description,
+        items: items
+          .map((item) => {
+            const active = item.status === 'Active';
+            return fill(itemTpl, {
+              state: active ? 'active' : 'planned',
+              badgeClass: active ? 'badge-active' : 'badge-planned',
+              badge: active ? '✓ Active' : '⏳ Planned',
+              title: item.title,
+              description: item.description,
+            });
+          })
+          .join(''),
+      });
     }).join('');
   }
 
-  bindEvents() {
-    if (!this.container) return;
+  renderTopics(nav, filter) {
+    const q = filter.trim().toLowerCase();
+    const itemTpl = getTemplate(conceptsTemplate, 'concepts-nav-item-template');
+    const items = ROADMAP_CATEGORIES.map((cat, index) => ({ cat, index }))
+      .filter(({ cat }) => cat.category.toLowerCase().includes(q))
+      .map(({ cat, index }) => fill(itemTpl, { index, category: cat.category }))
+      .join('');
+    nav.innerHTML = items
+      ? fill(getTemplate(conceptsTemplate, 'concepts-nav-template'), { items })
+      : '<div class="nav-empty-state">No topics matched</div>';
+    nav.querySelectorAll('.nav-item-btn').forEach((btn) =>
+      btn.addEventListener('click', () => {
+        document.getElementById('sidebar')?.classList.remove('open');
+        document.getElementById(btn.dataset.topic)?.scrollIntoView({ behavior: 'smooth' });
+      })
+    );
+  }
 
-    this.container.querySelectorAll('.filter-btn').forEach((btn) => {
-      btn.addEventListener('click', this.handleFilterChange);
+  bindEvents() {
+    this.teardownSidebar = initSidebar({
+      searchLabel: 'Search topics...',
+      renderList: (nav, filter) => this.renderTopics(nav, filter),
+      onSelectTool: () => {},
     });
   }
 
   unbindEvents() {
-    if (!this.container) return;
-
-    this.container.querySelectorAll('.filter-btn').forEach((btn) => {
-      btn.removeEventListener('click', this.handleFilterChange);
-    });
+    this.teardownSidebar?.();
+    this.teardownSidebar = null;
   }
 
   handleFilterChange(e) {
@@ -250,6 +255,6 @@ export class ConceptsPage extends BasePage {
     if (!targetFilter || targetFilter === this.filter) return;
 
     this.filter = targetFilter;
-    this.render();
+    this.renderContent();
   }
 }
