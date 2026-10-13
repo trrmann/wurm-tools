@@ -31,7 +31,7 @@ const COMPASS_DIRECTIONS = [
   'North-Northwest (NNW)',
 ];
 
-function getCompassHeading(dx, dy) {
+export function getCompassHeading(dx, dy) {
   // In Wurm coordinates: X increases East, Y increases South (standard screen/tile coords)
   // Angle: 0 is North (dy < 0), 90 is East (dx > 0), 180 is South (dy > 0), 270 is West (dx < 0)
   let angle = (Math.atan2(dx, -dy) * 180) / Math.PI;
@@ -40,7 +40,7 @@ function getCompassHeading(dx, dy) {
   return { angle: Math.round(angle), dir: COMPASS_DIRECTIONS[index] };
 }
 
-function formatDuration(seconds) {
+export function formatDuration(seconds) {
   if (seconds < 60) return `${Math.round(seconds)} sec`;
   const mins = Math.floor(seconds / 60);
   const secs = Math.round(seconds % 60);
@@ -48,6 +48,17 @@ function formatDuration(seconds) {
   const hours = Math.floor(mins / 60);
   const remMins = mins % 60;
   return `${hours}h ${remMins}m`;
+}
+
+export function calculateDistanceMetrics(x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const tiles = Math.sqrt(dx * dx + dy * dy);
+  const meters = tiles * 4;
+  const km = meters / 1000;
+  const heading = getCompassHeading(dx, dy);
+
+  return { dx, dy, tiles, meters, km, heading };
 }
 
 export function mount(container) {

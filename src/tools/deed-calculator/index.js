@@ -13,9 +13,16 @@ export function unmount() {
 }
 
 // Currency conversion helper: 1G = 100S = 10,000C = 1,000,000I
-function ironToCoins(totalIron) {
+export function ironToCoins(totalIron) {
   if (totalIron <= 0) {
-    return { gold: 0, silver: 0, copper: 0, iron: 0, formatted: '0i' };
+    return {
+      gold: 0,
+      silver: 0,
+      copper: 0,
+      iron: 0,
+      formatted: '0i',
+      html: '<span class="coin-pill coin-iron">0i</span>',
+    };
   }
   const gold = Math.floor(totalIron / 1000000);
   let rem = totalIron % 1000000;
@@ -32,6 +39,60 @@ function ironToCoins(totalIron) {
     parts.push(`<span class="coin-pill coin-iron">${iron}i</span>`);
 
   return { gold, silver, copper, iron, html: parts.join(' ') };
+}
+
+export function calculateDeedMetrics({
+  width = 11,
+  height = 11,
+  perimeter = 5,
+  guards = 1,
+  currentBankSilver = 0,
+  serverMultiplier = 1.0,
+}) {
+  const w = Math.max(5, parseInt(width) || 5);
+  const h = Math.max(5, parseInt(height) || 5);
+  const p = Math.max(0, parseInt(perimeter) || 0);
+  const g = Math.max(0, parseInt(guards) || 0);
+  const bankSilver = Math.max(0, parseFloat(currentBankSilver) || 0);
+  const rate = parseFloat(serverMultiplier) || 0;
+
+  const deedTiles = w * h;
+  const totalWithPerim = (w + 2 * p) * (h + 2 * p);
+  const perimTiles = totalWithPerim - deedTiles;
+
+  const extraDeedTiles = Math.max(0, deedTiles - 25);
+  const deedTileCostIron = extraDeedTiles * 10;
+  const perimTileCostIron = perimTiles * 2;
+
+  const extraGuards = Math.max(0, g - 1);
+  const guardCostIron = extraGuards * 10000;
+  const baseSettlementIron = 20000;
+
+  const totalMonthlyIron = Math.round(
+    (baseSettlementIron + deedTileCostIron + perimTileCostIron + guardCostIron) * rate
+  );
+  const setupCostIron = 100000 + Math.round(deedTiles * 5);
+
+  const currentBankIron = bankSilver * 10000;
+  let runwayDays = 0;
+  if (totalMonthlyIron > 0) {
+    runwayDays = Math.floor((currentBankIron / totalMonthlyIron) * 30);
+  }
+
+  return {
+    width: w,
+    height: h,
+    perimeter: p,
+    guards: g,
+    deedTiles,
+    totalWithPerim,
+    perimTiles,
+    extraGuards,
+    setupCostIron,
+    totalMonthlyIron,
+    runwayDays,
+    rate,
+  };
 }
 
 export function mount(container) {
@@ -160,93 +221,62 @@ export function mount(container) {
   const rateSelect = container.querySelector('#server-rate');
 
   function calculate() {
-    const w = Math.max(5, parseInt(widthInput.value) || 5);
-    const h = Math.max(5, parseInt(heightInput.value) || 5);
-    const p = Math.max(0, parseInt(perimeterInput.value) || 0);
-    const g = Math.max(0, parseInt(guardsInput.value) || 0);
-    const bankSilver = Math.max(0, parseFloat(bankInput.value) || 0);
-    const rate = parseFloat(rateSelect.value) || 0;
+    const metrics = calculateDeedMetrics({
+      width: widthInput.value,
+      height: heightInput.value,
+      perimeter: perimeterInput.value,
+      guards: guardsInput.value,
+      currentBankSilver: bankInput.value,
+      serverMultiplier: rateSelect.value,
+    });
 
     // Save state
     localStorage.setItem(
       'wurm_deed_calc_state',
       JSON.stringify({
-        width: w,
-        height: h,
-        perimeter: p,
-        guards: g,
-        currentBankSilver: bankSilver,
-        serverMultiplier: rate,
+        width: metrics.width,
+        height: metrics.height,
+        perimeter: metrics.perimeter,
+        guards: metrics.guards,
+        currentBankSilver: parseFloat(bankInput.value) || 0,
+        serverMultiplier: metrics.rate,
       })
     );
 
-    // Deed tiles
-    const deedTiles = w * h;
-    const totalWithPerim = (w + 2 * p) * (h + 2 * p);
-    const perimTiles = totalWithPerim - deedTiles;
-
-    // Upkeep calculation (Wurm Online rules):
-    // Minimum deed 5x5: Base includes 5x5 tiles.
-    // Each additional deed tile: 10 iron per month (30 days)
-    // Extra perimeter tiles: 2 iron per month
-    // Base 5 perimeter tiles free per side if included, but standard formula: 2 iron / perimeter tile beyond 5-tile baseline.
-    const extraDeedTiles = Math.max(0, deedTiles - 25);
-    const deedTileCostIron = extraDeedTiles * 10;
-    const perimTileCostIron = perimTiles * 2;
-
-    // Guard costs: First guard is base upkeep, additional guards cost 1 Silver (10,000 iron) per month
-    const extraGuards = Math.max(0, g - 1);
-    const guardCostIron = extraGuards * 10000;
-
-    // Base settlement upkeep = 2 silver (20,000 iron)
-    const baseSettlementIron = 20000;
-
-    const totalMonthlyIron = Math.round(
-      (baseSettlementIron + deedTileCostIron + perimTileCostIron + guardCostIron) * rate
-    );
-
-    // Setup cost: 10 silver base + tile fees
-    const setupCostIron = 100000 + Math.round(deedTiles * 5);
-
-    // Bank Runway calculation
-    const currentBankIron = bankSilver * 10000;
-    let runwayDays = 0;
-    if (totalMonthlyIron > 0) {
-      runwayDays = Math.floor((currentBankIron / totalMonthlyIron) * 30);
-    }
-
     // Update DOM
     container.querySelector('#res-total-tiles').textContent =
-      `${totalWithPerim.toLocaleString()} tiles`;
+      `${metrics.totalWithPerim.toLocaleString()} tiles`;
     container.querySelector('#res-tile-details').textContent =
-      `${deedTiles.toLocaleString()} deed + ${perimTiles.toLocaleString()} perimeter`;
+      `${metrics.deedTiles.toLocaleString()} deed + ${metrics.perimTiles.toLocaleString()} perimeter`;
 
-    container.querySelector('#res-setup-cost').innerHTML = ironToCoins(setupCostIron).html;
-    container.querySelector('#res-monthly-upkeep').innerHTML = ironToCoins(totalMonthlyIron).html;
+    container.querySelector('#res-setup-cost').innerHTML = ironToCoins(metrics.setupCostIron).html;
+    container.querySelector('#res-monthly-upkeep').innerHTML = ironToCoins(
+      metrics.totalMonthlyIron
+    ).html;
     container.querySelector('#res-upkeep-breakdown').textContent =
-      `Tiles: ${ironToCoins(Math.round((deedTileCostIron + perimTileCostIron) * rate)).formatted || ''} | Guards: ${extraGuards} extra`;
+      `Guards: ${metrics.extraGuards} extra`;
 
     const runwayEl = container.querySelector('#res-runway-days');
     const runwayTextEl = container.querySelector('#res-runway-text');
-    if (rate === 0) {
+    if (metrics.rate === 0) {
       runwayEl.textContent = 'Infinite (Free)';
       runwayEl.style.color = 'var(--accent-green)';
       runwayTextEl.textContent = 'Server upkeep is disabled';
-    } else if (totalMonthlyIron === 0) {
+    } else if (metrics.totalMonthlyIron === 0) {
       runwayEl.textContent = '0 days';
       runwayTextEl.textContent = 'No upkeep required';
     } else {
-      runwayEl.textContent = `${runwayDays} days`;
-      if (runwayDays < 15) {
+      runwayEl.textContent = `${metrics.runwayDays} days`;
+      if (metrics.runwayDays < 15) {
         runwayEl.style.color = 'var(--accent-red)';
         runwayTextEl.textContent = '⚠️ Danger: Upkeep balance low!';
-      } else if (runwayDays < 45) {
+      } else if (metrics.runwayDays < 45) {
         runwayEl.style.color = 'var(--accent-gold)';
         runwayTextEl.textContent =
-          'Moderate balance (~' + (runwayDays / 30).toFixed(1) + ' months)';
+          'Moderate balance (~' + (metrics.runwayDays / 30).toFixed(1) + ' months)';
       } else {
         runwayEl.style.color = 'var(--accent-green)';
-        runwayTextEl.textContent = `Safe runway (~${(runwayDays / 30).toFixed(1)} months remaining)`;
+        runwayTextEl.textContent = `Safe runway (~${(metrics.runwayDays / 30).toFixed(1)} months remaining)`;
       }
     }
   }
