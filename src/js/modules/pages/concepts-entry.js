@@ -1,5 +1,5 @@
 // Concepts Page Entry Point
-import '../../../styles/style.css';
+import '../../../styles/core.css';
 import { ConceptsPage } from './ConceptsPage.js';
 
 function initConceptsPage() {

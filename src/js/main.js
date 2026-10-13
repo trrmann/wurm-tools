@@ -1,5 +1,5 @@
 // Wurm Tools — Main Application Bootstrap
-import '../styles/style.css';
+import '../styles/core.css';
 import { DashboardPage } from './modules/pages/DashboardPage.js';
 import { showToast } from './modules/toast.js';
 
