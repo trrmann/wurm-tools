@@ -135,11 +135,11 @@ deploy -prod -m "feat: release new tools" # Deploy to Production (message requir
 
 The deployment scripts enforce **mutually exclusive environment switches** (exactly one target switch is permitted per run):
 
-| Target Switch | Environment       | Vite Build Mode | Remote Branch    | Commit Message Behavior                                                                          |
-| :------------ | :---------------- | :-------------- | :--------------- | :----------------------------------------------------------------------------------------------- |
-| `-dev`        | Development       | `development`   | `origin dev`     | Optional; prompts in interactive mode, non-fatal if omitted.                                     |
-| `-preview`    | Preview / Staging | `preview`       | `origin preview` | Optional; prompts in interactive mode, non-fatal if omitted.                                     |
-| `-prod`       | Production        | `production`    | `origin main`    | **Mandatory** when uncommitted changes exist (`-m` / `-CommitMessage`). Fails safely if missing. |
+| Target Switch | Environment | Scope  | Vite Build Mode | GitHub Push Behavior                                                                               | Live Browser Behavior                                                                                                 |
+| :------------ | :---------- | :----- | :-------------- | :------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
+| `-dev`        | Development | Local  | `development`   | **Never pushed** (local verification matching `npm run dev`)                                       | Stays local; prints tip to run `npm run dev`                                                                          |
+| `-preview`    | Preview     | Local  | `preview`       | **Never pushed** (local verification matching `npm run preview`)                                   | Stays local; prints tip to run `npm run preview`                                                                      |
+| `-prod`       | Production  | Remote | `production`    | Pushes to `origin main` **only if commits are ahead**. If nothing to push, push is safely skipped. | Automatically opens `https://wurm-tools.onrender.com` in **Google Chrome** (pass `-NoOpen` / `--no-open` to suppress) |
 
 ### Deployment Pipeline Steps & Safe Stops
 
@@ -152,8 +152,11 @@ Both scripts run the exact same verification pipeline and **safely halt immediat
 5. **Vitest Unit Test Suite**: Runs `npm test` (or optional `--skip-tests` / `-SkipTests`).
 6. **Vite Target Build**: Builds the application for the targeted mode (`development`, `preview`, or `production`).
 7. **Git Status & Commit Guard**: Checks repository state. For `-prod`, strictly requires a non-empty string message argument (`-m` / `-CommitMessage`) if uncommitted changes exist, stages files, and commits with co-authorship.
-8. **Push to GitHub**: Pushes to the corresponding remote branch (`origin main` for prod; `origin dev` or `origin preview` for pre-production), triggering CI/CD and **Render** static site redeployment.
-9. **Summary & Live Monitoring**: Reports target environment status, GitHub Actions CI status, Render live site link, and W3C validation URLs.
+8. **Intelligent Push to GitHub**:
+   - For `-dev` and `-preview`: Local only, push is completely skipped.
+   - For `-prod`: Fetches remote tracking refs. If there are new commits ahead of `origin/main`, pushes to `origin main` triggering Render static site deployment. If the repository is clean and already up to date, pushing is skipped with an informational notice.
+9. **Live Site Launch in Google Chrome (Production)**: For `-prod`, automatically opens `https://wurm-tools.onrender.com` in Google Chrome (with system browser fallback).
+10. **Summary & Live Monitoring**: Reports target environment status, GitHub Actions CI status, Render live site link, and W3C validation URLs.
 
 ---
 

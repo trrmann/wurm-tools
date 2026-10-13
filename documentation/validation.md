@@ -37,6 +37,9 @@ The cross-platform deployment automation scripts (`scripts/deploy.ps1` and `scri
 
 - **Target Switch Validation**: Requires exactly one target switch from `{-dev; -preview; -prod; }`. Any attempt to combine multiple target switches or omit the target causes an immediate safe abort.
 - **Pre-deployment Verification**: Every target executes Prettier formatting, ESLint validation, Vitest test suite, and Vite mode-specific compilation prior to touching Git.
+- **Local Scope for `-dev` and `-preview`**: Aligned with `npm run dev` and `npm run preview`, `-dev` and `-preview` are strictly local environments and will never push code to GitHub.
 - **Production Git Commit Guard**: When deploying with `-prod`, the script inspects repository status for uncommitted changes (`git status --porcelain`). If changes are detected, a non-empty message argument (`-m` / `-CommitMessage`) is strictly required; deployments without an explicit message argument abort immediately with exit code 1.
+- **Smart Push-to-Prod**: For `-prod`, if the working tree is clean and the local branch is already up to date with `origin/main`, the script skips pushing to GitHub.
+- **Live Render Verification in Chrome**: Once production verification/deployment completes, the script automatically opens the live Render site (`https://wurm-tools.onrender.com`) in Google Chrome.
 
 ---
