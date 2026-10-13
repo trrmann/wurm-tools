@@ -1,7 +1,7 @@
 // W3C HTML & CSS Validator for Wurm Tools
 // Validates all pages across the site against official W3C Nu HTML Checker & Jigsaw CSS Validator
 
-const SITE_PAGES = ['/', '/site/concepts/'];
+const SITE_PAGES = ['/', '/site/concepts/', '/site/server-status/'];
 const DEFAULT_BASE_URL = 'https://wurm-tools.onrender.com';
 
 // Parse arguments

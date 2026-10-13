@@ -1,5 +1,5 @@
 // Coordinate Distance & Travel Estimator
-import template from './template.html?raw';
+import template from '../../../../site/partials/tools/distance-calc.html?raw';
 import { fill, getShell, getTemplate } from '../../modules/template.js';
 export const toolMetadata = {
   id: 'distance-calc',

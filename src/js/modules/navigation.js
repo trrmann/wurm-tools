@@ -1,6 +1,6 @@
 // Navigation & Sidebar Module
 import { TOOLS_LIST } from '../tools/registry.js';
-import navTemplate from './navigation.html?raw';
+import navTemplate from '../../../site/partials/sidebar-nav.html?raw';
 import { fill, getShell, getTemplate } from './template.js';
 
 export function renderSidebarNavigation({

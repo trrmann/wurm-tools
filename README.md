@@ -65,7 +65,7 @@ WurmTools/
 │       ├── main.js                # Application entry point & controller bootstrap
 │       ├── modules/               # Reusable core modules (shell, template, toast, modal, navigation, partials, pages)
 │       │                          #   shell.js assembles site/partials/* (sidebar, header+nav, footer, modal) for every page
-│       │                          #   HTML lives in .html templates (?raw + template.js fill/getTemplate), not in JS
+│       │                          #   HTML lives in site/partials/*.html (?raw + template.js fill/getTemplate), not in JS
 │       │   └── pages/             # Page Objects (BasePage, DashboardPage, ConceptsPage)
 │       └── tools/                 # Modular tools (deed-calculator, action-timers, etc.)
 │           └── registry.js        # Central catalog of active tool modules
@@ -188,6 +188,21 @@ Both scripts run the exact same verification pipeline and **safely halt immediat
 10. **Summary & Live Monitoring**: Reports target environment status, GitHub Actions CI status, Render live site link, and W3C validation URLs.
 
 ---
+
+## Local Server Status Helper
+
+The **Server** page (`/site/server-status/`) shows whether a local Wurm Unlimited dedicated server and client are installed and running, and can start them. Browsers can't inspect local processes, so it talks to a small localhost-only helper:
+
+```bash
+npm run helper   # listens on 127.0.0.1:5180
+```
+
+- `GET /status` and `POST /start/server|client` (JSON). Starting uses Steam (`steam://rungameid/402370` server, `366220` client).
+- Installs are found in Steam libraries, or set `WURM_SERVER_DIR` / `WURM_CLIENT_DIR`.
+- `WURM_HELPER_PORT` changes the port; CORS allows `localhost:3000`/`4173` plus `WURM_ALLOWED_ORIGINS` (comma-separated).
+- Local-use only: the deployed Render site generally cannot reach your localhost helper.
+- On Fedora, `scripts/setup.sh` reports whether a Wurm install is detected; add `--helper-service` to install and start a systemd user service (`wurm-helper`) for the helper.
+- The Database Explorer reads the server's SQLite databases read-only (via `sql.js`) through `/db/...` endpoints. Map files are not covered yet.
 
 ## Deploying to Render
 

@@ -1122,26 +1122,113 @@ body {
 /* Navigation partial (lives in the header) */
 .header-nav {
   display: block;
+  position: relative;
+  margin-left: auto;
+  margin-right: 0.75rem;
 }
 
 .header-nav .nav-list {
-  display: flex;
-  gap: 1rem;
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  min-width: 11rem;
+  flex-direction: column;
+  gap: 0.25rem;
   margin: 0;
-  padding: 0;
+  padding: 0.5rem;
   list-style: none;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.header-nav .nav-list.open {
+  display: flex;
+}
+
+.nav-toggle {
+  display: block;
+  margin-left: auto;
+  padding: 0.3rem 0.6rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+  color: var(--text-main);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.nav-toggle:hover,
+.nav-toggle[aria-expanded='true'] {
+  border-color: var(--border-focus);
 }
 
 .nav-link {
-  color: var(--accent-gold);
+  display: block;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.375rem;
+  color: var(--text-muted);
+  font-weight: 600;
   text-decoration: none;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .nav-link:hover {
-  text-decoration: underline;
+  background: var(--bg-card-hover);
+  color: var(--text-main);
 }
 
 .nav-link[aria-current='page'] {
-  font-weight: 700;
-  text-decoration: underline;
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--accent-gold);
+}
+
+@media (min-width: 768px) {
+  .nav-toggle {
+    display: none;
+  }
+
+  .header-nav .nav-list {
+    display: flex;
+    position: static;
+    flex-direction: row;
+    min-width: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+  }
+}
+
+.db-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+  margin: 0.75rem 0;
+}
+.db-results {
+  overflow: auto;
+  max-height: 24rem;
+}
+.db-results table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.85rem;
+}
+.db-results th,
+.db-results td {
+  border: 1px solid #444;
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+}
+.server-cards {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
 }

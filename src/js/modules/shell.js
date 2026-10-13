@@ -21,6 +21,12 @@ export function renderShell(container) {
   const slot = container.querySelector('#nav-slot');
   if (slot) {
     slot.innerHTML = loadNavHtml();
+    const toggle = slot.querySelector('#nav-toggle');
+    const menu = slot.querySelector('#nav-menu');
+    toggle?.addEventListener('click', () => {
+      const open = menu.classList.toggle('open');
+      toggle.setAttribute('aria-expanded', String(open));
+    });
     const here = window.location.pathname.replace(/index\.html$/, '');
     slot.querySelectorAll('a.nav-link').forEach((a) => {
       if (a.getAttribute('href') === here) a.setAttribute('aria-current', 'page');

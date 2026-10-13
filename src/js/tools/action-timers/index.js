@@ -1,5 +1,5 @@
 // Action & Prayer Timers Module
-import template from './template.html?raw';
+import template from '../../../../site/partials/tools/action-timers.html?raw';
 import { fill, getShell } from '../../modules/template.js';
 export const toolMetadata = {
   id: 'action-timers',

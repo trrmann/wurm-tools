@@ -1,6 +1,6 @@
 // Concepts & Roadmap Page Object
 import { BasePage } from './BasePage.js';
-import conceptsTemplate from '../../../../site/concepts/template.html?raw';
+import conceptsTemplate from '../../../../site/partials/concepts.html?raw';
 import { fill, getShell, getTemplate } from '../template.js';
 import { renderShell, setHeader, initSidebar } from '../shell.js';
 

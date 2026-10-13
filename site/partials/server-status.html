@@ -1,0 +1,60 @@
+<div class="server-status-page">
+  <div class="card">
+    <div class="card-header">
+      <h2 class="concepts-category-title">Local Wurm Server</h2>
+      <p class="concepts-category-desc">
+        Detects a local Wurm Unlimited install and whether it is running. Requires the local helper:
+        <code>npm run helper</code>.
+      </p>
+    </div>
+    <div class="card-body">
+      <div id="helper-state" class="server-helper-state" role="status">Checking helper...</div>
+      <div id="server-cards" class="server-cards">{{{cards}}}</div>
+      <button type="button" id="status-refresh" class="btn btn-secondary">Refresh</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2 class="concepts-category-title">Database Explorer (read-only)</h2>
+      <p class="concepts-category-desc">
+        Browse the server's SQLite databases: players, skills, items and more. Map files (elevation,
+        tiles, borders) are binary and not covered yet.
+      </p>
+    </div>
+    <div class="card-body">
+      <div id="db-state" class="server-helper-state" role="status">Waiting for helper...</div>
+      <div class="db-controls">
+        <label
+          >World
+          <select id="db-world"></select
+        ></label>
+        <label
+          >Database
+          <select id="db-file"></select
+        ></label>
+        <label
+          >Table
+          <select id="db-table"></select
+        ></label>
+        <label>Search <input type="search" id="db-search" /></label>
+        <button type="button" id="db-load" class="btn btn-secondary">Load</button>
+        <button type="button" id="db-players" class="btn btn-secondary">Players</button>
+      </div>
+      <div class="db-results"><table id="db-grid"></table></div>
+    </div>
+  </div>
+</div>
+
+<template id="server-card-template">
+  <div class="concepts-item-box {{state}}">
+    <div class="concepts-item-header">
+      <h3 class="concepts-item-title">{{label}}</h3>
+      <span class="badge-tag {{badgeClass}}">{{badge}}</span>
+    </div>
+    <p class="concepts-item-desc">{{detail}}</p>
+    <button type="button" class="btn btn-primary start-btn" data-target="{{key}}" {{disabled}}>
+      Start
+    </button>
+  </div>
+</template>

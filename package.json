@@ -1,11 +1,12 @@
 {
   "name": "wurm-tools",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.1.0",
   "type": "module",
   "description": "A modular toolkit and dashboard for Wurm Online and Wurm Unlimited players",
   "scripts": {
     "dev": "vite",
+    "helper": "node scripts/wurm-local.js",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
@@ -37,5 +38,8 @@
     "vite": "^6.2.0",
     "vitest": "^4.1.11",
     "ws": "^8.22.0"
+  },
+  "dependencies": {
+    "sql.js": "^1.14.2"
   }
 }

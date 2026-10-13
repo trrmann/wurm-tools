@@ -3,7 +3,7 @@
 # Installs git/Node.js/Chrome (if missing), makes scripts executable and runs npm install.
 # A semaphore file (.setup-complete) prevents re-running; pass --force to override.
 #
-# Usage: scripts/setup.sh [--force] [--no-chrome] [-h|--help]
+# Usage: scripts/setup.sh [--force] [--no-chrome] [--helper-service] [-h|--help]
 
 set -euo pipefail
 
@@ -14,11 +14,13 @@ MIN_NODE_MAJOR=20
 
 FORCE=false
 INSTALL_CHROME=true
+HELPER_SERVICE=false
 
 for arg in "$@"; do
   case "$arg" in
     --force|-f) FORCE=true ;;
     --no-chrome) INSTALL_CHROME=false ;;
+    --helper-service) HELPER_SERVICE=true ;;
     -h|--help)
       sed -n '2,7p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
@@ -90,7 +92,39 @@ fi
 info "Running npm install..."
 (cd "${PROJECT_ROOT}" && npm install)
 
-# 6. git push readiness (informational only)
+# 6. Local Wurm helper: report install detection, optionally install a systemd user service
+info "Checking for a local Wurm server install..."
+(cd "${PROJECT_ROOT}" && node -e "
+import('./scripts/wurm-local.js').then(async (m) => {
+  const s = await m.getStatus();
+  for (const k of ['server', 'client']) console.log('  ' + s[k].label + ': ' + (s[k].installed ? s[k].path : 'not found (set WURM_' + k.toUpperCase() + '_DIR if installed elsewhere)'));
+});
+") || info "Could not run install detection (non-fatal)."
+
+if [ "${HELPER_SERVICE}" = true ]; then
+  info "Installing systemd user service 'wurm-helper'..."
+  UNIT_DIR="${HOME}/.config/systemd/user"
+  mkdir -p "${UNIT_DIR}"
+  cat > "${UNIT_DIR}/wurm-helper.service" <<EOF
+[Unit]
+Description=Wurm Tools local helper
+
+[Service]
+WorkingDirectory=${PROJECT_ROOT}
+ExecStart=$(command -v node) ${PROJECT_ROOT}/scripts/wurm-local.js
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+EOF
+  systemctl --user daemon-reload
+  systemctl --user enable --now wurm-helper.service \
+    || info "Could not start the service; run 'npm run helper' manually."
+  info "Optional: 'loginctl enable-linger \$USER' keeps it running when logged out."
+  info "Set WURM_SERVER_DIR / WURM_ALLOWED_ORIGINS via 'systemctl --user edit wurm-helper'."
+fi
+
+# 7. git push readiness (informational only)
 if ! (cd "${PROJECT_ROOT}" && git remote get-url origin >/dev/null 2>&1); then
   info "No git 'origin' remote configured; 'deploy -prod' will not be able to push."
 fi

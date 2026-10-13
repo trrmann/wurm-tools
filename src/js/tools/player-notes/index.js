@@ -1,5 +1,5 @@
 // Player Notes & Task Log Module
-import template from './template.html?raw';
+import template from '../../../../site/partials/tools/player-notes.html?raw';
 import { fill, getShell, getTemplate } from '../../modules/template.js';
 export const toolMetadata = {
   id: 'player-notes',

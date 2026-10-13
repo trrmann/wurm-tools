@@ -1,6 +1,6 @@
 // Deed Cost & Upkeep Calculator Module
-import template from './template.html?raw';
-import coinTemplate from './coin.html?raw';
+import template from '../../../../site/partials/tools/deed-calculator.html?raw';
+import coinTemplate from '../../../../site/partials/tools/deed-calculator-coin.html?raw';
 import { fill, getShell } from '../../modules/template.js';
 export const toolMetadata = {
   id: 'deed-calculator',

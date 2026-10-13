@@ -1,5 +1,5 @@
 // Toast Notification Module
-import toastTemplate from './toast.html?raw';
+import toastTemplate from '../../../site/partials/toast.html?raw';
 import { fill } from './template.js';
 
 export function showToast(message, type = 'info') {

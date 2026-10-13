@@ -32,7 +32,8 @@
 
 ## Planned Items & Backlog
 
-::::::do not proceed past this point without approval:::::
-
 - create a local wurm server status page - determine if there is a local server installed, if so, is it currently running. if possible create hooks to issue start commands to start it, and start the client to connect to it as a separate option.
+
 - if there is a local server installed, determine what we can see in the local stored database data. i would like to see if we can see characters and thier locations and character status(gm status, skill list, inventory), and pull map data such as at a given location coordinate the corner elevations and tile contents (object and terrian) and border contents. potentially even mine info at a given location. potentially even search for ore tiles, or specific terrain tiles nearby. also poentialy search for other objects including mobs.
+
+::::::do not proceed past this point without approval:::::
