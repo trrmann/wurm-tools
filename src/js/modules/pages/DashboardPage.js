@@ -5,6 +5,7 @@ import { renderSidebarNavigation } from '../navigation.js';
 import { setupModal } from '../modal.js';
 
 export class DashboardPage extends BasePage {
+  static pageAppID = 'dashboard-app';
   constructor() {
     super({
       id: 'dashboard',

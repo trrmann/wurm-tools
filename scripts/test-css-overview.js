@@ -3,7 +3,7 @@
 
 import { CdpSession } from './cdp-client.js';
 
-const DEFAULT_PAGES = ['/', '/site/dashboard/', '/site/concepts/'];
+const DEFAULT_PAGES = ['/', '/site/concepts/'];
 const DEFAULT_BASE_URL = 'https://wurm-tools.onrender.com';
 
 const args = process.argv.slice(2);

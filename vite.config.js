@@ -14,8 +14,7 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       input: {
-        main: resolve(rootDir, 'index.html'),
-        dashboard: resolve(rootDir, 'site/dashboard/index.html'),
+        dashboard: resolve(rootDir, 'index.html'),
         concepts: resolve(rootDir, 'site/concepts/index.html'),
       },
     },

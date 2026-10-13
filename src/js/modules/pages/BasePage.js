@@ -1,5 +1,20 @@
 // Base Page Object Model for Wurm Tools
 export class BasePage {
+  static pageAppID = 'page-app'; // Override in derived page classes
+  static initPage() {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', this.initThisPage);
+    } else {
+      this.initThisPage();
+    }
+  }
+  static initThisPage() {
+    const container = document.getElementById(this.pageAppID);
+    if (container) {
+      const page = new this();
+      page.mount(container);
+    }
+  }
   constructor({ id, title, description } = {}) {
     this.id = id || 'base-page';
     this.title = title || 'Wurm Tools';

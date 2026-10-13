@@ -3,24 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Wurm Tools — Companion Suite for Wurm Online &amp; Unlimited</title>
+    <title>Wurm Tools — Dashboard — Companion Suite for Wurm Online &amp; Unlimited</title>
     <link rel="icon" type="image/svg+xml" href="/images/favicon.svg" />
     <meta
       name="description"
-      content="A fast, client-side toolkit for Wurm Online and Wurm Unlimited players: Deed upkeep calculators, prayer &amp; action timers, coordinate distance &amp; travel calculators, and player notes."
+      content="A fast, client-side toolkit for Wurm Online and Wurm Unlimited players: Deed upkeep calculators, prayer &amp; action timers, coordinate distance &amp; travel calculators, and player notes.  Wurm Tools Dashboard — Calculators, timers, coordinates, and notes for Wurm Online and Wurm Unlimited."
     />
-    <meta http-equiv="refresh" content="0; url=/site/dashboard/" />
-    <link rel="canonical" href="https://wurm-tools.onrender.com/site/dashboard/" />
+    <link rel="canonical" href="https://wurm-tools.onrender.com/" />
     <link rel="stylesheet" href="/src/styles/core.css" />
-    <script type="module" src="/src/js/redirect.js"></script>
+    <script type="module" src="/src/js/modules/pages/entry/dashboard.js"></script>
   </head>
   <body>
-    <div class="redirect-wrapper">
-      <h1 class="redirect-heading">Wurm Tools</h1>
-      <p class="redirect-text">Redirecting to the companion dashboard...</p>
-      <p>
-        <a href="/site/dashboard/" class="redirect-link"> Open Dashboard Now </a>
-      </p>
+    <!-- App container mounted by DashboardPage -->
+    <div id="dashboard-app"></div>
+    <!-- Toast Notification Container -->
+    <div id="toast-container"></div>
+    <!-- Suite Concepts Modal -->
+    <div class="modal-backdrop modal-hidden" id="concepts-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title-custom">
+            <span>📜</span> Wurm Tools — Comprehensive Suite Concepts
+          </h2>
+          <button id="close-concepts-modal" class="modal-close-btn" aria-label="Close modal">
+            ✕
+          </button>
+        </div>
+        <div class="modal-body">
+          <p>
+            <strong>Wurm Tools</strong> is engineered as a clean, modular, client-side dashboard
+            with starter tools built to expand.
+          </p>
+          <p>
+            Visit the full
+            <a href="/site/concepts/" class="link-accent">Concepts & Roadmap Page</a>
+            to explore detailed feature specifications.
+          </p>
+        </div>
+      </div>
     </div>
   </body>
 </html>

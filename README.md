@@ -55,7 +55,6 @@ A fast, modern, and modular companion suite for **Wurm Online** and **Wurm Unlim
 WurmTools/
 ├── index.html                     # Primary SPA entry point
 ├── site/                          # Site page folders for Vite & Render
-│   ├── dashboard/index.html       # Standalone dashboard page
 │   └── concepts/index.html        # Comprehensive concepts & roadmap page
 ├── public/                        # Static assets served at root
 │   └── images/                    # Static images (logo.svg, favicon.svg)

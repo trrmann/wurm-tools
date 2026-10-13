@@ -143,6 +143,7 @@ export const ROADMAP_CATEGORIES = [
 ];
 
 export class ConceptsPage extends BasePage {
+  static pageAppID = 'concepts-app';
   constructor() {
     super({
       id: 'concepts',

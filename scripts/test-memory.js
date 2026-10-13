@@ -3,7 +3,7 @@
 
 import { CdpSession } from './cdp-client.js';
 
-const DEFAULT_PAGES = ['/', '/site/dashboard/', '/site/concepts/'];
+const DEFAULT_PAGES = ['/', '/site/concepts/'];
 const DEFAULT_BASE_URL = 'https://wurm-tools.onrender.com';
 const MAX_ALLOWED_HEAP_DELTA_MB = 10; // Max allowed heap growth after GC
 const MAX_ALLOWED_NODE_DELTA = 150; // Max allowed detached node growth after GC
