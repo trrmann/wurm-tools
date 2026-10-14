@@ -324,6 +324,19 @@ ${TRAILER}"
   # Check if there are any commits to push to origin main
   git fetch origin main --quiet 2>/dev/null || true
 
+  # If origin/main has commits this branch lacks (e.g. a merged PR), a push would be rejected
+  # as non-fast-forward. Rebase onto origin/main first; abort cleanly on conflicts.
+  BEHIND_COUNT="$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
+  BEHIND_COUNT="$(echo "${BEHIND_COUNT}" | tr -d '[:space:]')"
+  if [ "${BEHIND_COUNT:-0}" -gt 0 ] && [ "${NO_PUSH}" = false ]; then
+    echo -e "${YELLOW}[INFO] Branch is ${BEHIND_COUNT} commit(s) behind origin/main; rebasing before push.${NC}"
+    if ! git rebase origin/main; then
+      git rebase --abort 2>/dev/null || true
+      echo -e "${RED}[FAIL] Rebase onto origin/main hit conflicts and was aborted. Resolve manually, then re-run.${NC}"
+      exit 1
+    fi
+  fi
+
   AHEAD_COUNT=0
   if git rev-list --count origin/main..HEAD >/dev/null 2>&1; then
     AHEAD_COUNT="$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)"

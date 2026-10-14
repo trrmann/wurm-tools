@@ -347,6 +347,21 @@ if ($TargetEnv -eq "prod") {
     # Check whether there is anything to push to origin main
     git fetch origin main --quiet 2>$null
 
+    # If origin/main has commits this branch lacks (e.g. a merged PR), a push would be rejected
+    # as non-fast-forward. Rebase onto origin/main first; abort cleanly on conflicts.
+    $behindCount = 0
+    $behindOutput = (git rev-list --count HEAD..origin/main 2>$null)
+    if ($behindOutput) { $behindCount = [int]"$behindOutput".Trim() }
+    if ($behindCount -gt 0 -and -not $NoPush) {
+        Write-Host "[INFO] Branch is $behindCount commit(s) behind origin/main; rebasing before push." -ForegroundColor Yellow
+        git rebase origin/main
+        if ($LASTEXITCODE -ne 0) {
+            git rebase --abort 2>$null
+            Write-Host "[FAIL] Rebase onto origin/main hit conflicts and was aborted. Resolve manually, then re-run." -ForegroundColor Red
+            exit 1
+        }
+    }
+
     $aheadCount = 0
     try {
         $countOutput = (git rev-list --count origin/main..HEAD 2>$null)
