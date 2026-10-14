@@ -71,3 +71,40 @@
 - [ ] Player extras: `ACHIEVEMENTS`, `TITLES`, `AFFINITIES`, `SKILLCHANCES`, `CALENDAR`, `SERVERPROPERTIES`.
 - [ ] Id-to-name maps from the server jar for skills, item templates, creature templates and deities.
 - [ ] Sensitive tables (accounts, IP history, email history, tickets): schema and counts only unless approved.
+
+need a topographical view of the map as well, to demonstrate altititude.
+
+in the object classes, the thing name , needs classification nams, specification names, catogorization names, also these are a good replacement parent object to person and place names.
+
+also how about event and action names
+description names as well
+
+heroes special effect needs to be defined as a description for now
+
+heroes equation elements where the equation is advantages(as point value) + points = disadvantages (as point value) every equation element has a thing name and a heroes value
+
+now to add heroes characteristic / chararteristics that are advantages
+
+primary characteristics are characteristics that have a static base
+figured characteristics are characteristics that are derived off of points and primary characteristics
+
+skills are an advantage
+talents are an advantage
+perks are an advantage
+powers are an advantage
+
+modifiers are adjusters to the price of any other equation element - limitations and ?
+
+physical disadvantages
+mental disadvantages
+social disadvantages
+
+everyman skills
+package deals
+power frameworks
+variable power pools
+
+all of these should be able to come together to describe anything.
+
+find an online copy of a heroes or champions RPG character sheet.
+also search for an online copy of the rules book to see the definitions of the different elements in detail

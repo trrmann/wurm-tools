@@ -22,6 +22,20 @@ export const toolMetadata = {
     'Capture a character-centered local map baseline and inspect terrain, altitudes, caves and resources.',
 };
 
+export function playerPositionToTile(player) {
+  const posX = Number(player?.POSX);
+  const posY = Number(player?.POSY);
+  if (!Number.isFinite(posX) || !Number.isFinite(posY)) return null;
+  return { x: Math.floor(posX / 4), y: Math.floor(posY / 4) };
+}
+
+export function zoomByStep(value, direction, min = 0.25, max = 16, step = 0.25) {
+  const current = Number(value);
+  if (!Number.isFinite(current) || !Number.isFinite(direction)) return min;
+  const next = current + Math.sign(direction) * step;
+  return Math.max(min, Math.min(max, Math.round(next / step) * step));
+}
+
 let controller;
 let pollTimer;
 
@@ -71,6 +85,22 @@ function hslToRgb(hue, saturation, lightness) {
   return values.map((value) => Math.round((value + offset) * 255));
 }
 
+export function mixWaterColor(terrainColor, waterDepth) {
+  const depth = Number(waterDepth);
+  if (!Number.isFinite(depth) || depth <= 0) return terrainColor;
+
+  const depthRatio = Math.min(1, Math.log1p(depth) / Math.log1p(255));
+  const shallowBlue = [65, 105, 225];
+  const deepNavy = [4, 16, 52];
+  const waterColor = shallowBlue.map((channel, index) =>
+    Math.round(channel + (deepNavy[index] - channel) * depthRatio)
+  );
+  const alpha = 0.68 + depthRatio * 0.22;
+  return terrainColor.map((channel, index) =>
+    Math.round(channel * (1 - alpha) + waterColor[index] * alpha)
+  );
+}
+
 export function unmount() {
   controller?.abort();
   controller = null;
@@ -90,12 +120,17 @@ export function mount(container) {
   const snapshotSelect = element('#map-snapshot');
   const layerSelect = element('#map-layer');
   const canvas = element('#map-canvas');
+  const viewport = element('#map-viewport');
+  const goToCharacterButton = element('#map-go-to-character');
   const context = canvas.getContext('2d', { alpha: false });
   let bounds = null;
   let activeSnapshotId = null;
+  let activeSnapshot = null;
   let selectedTile = null;
   let raster = null;
   let rasterLayer = null;
+  let waterDepthRaster = null;
+  let playersById = new Map();
   // true when the helper is unreachable: baselines then live only in this browser
   let offline = false;
 
@@ -160,9 +195,12 @@ export function mount(container) {
   async function loadWorld(world) {
     if (!world) return;
     activeSnapshotId = null;
+    activeSnapshot = null;
     bounds = null;
     selectedTile = null;
     raster = null;
+    waterDepthRaster = null;
+    playersById = new Map();
     canvas.width = 0;
     canvas.height = 0;
     layerSelect.disabled = true;
@@ -174,6 +212,7 @@ export function mount(container) {
         (player) => Number.isFinite(Number(player.POSX)) && Number.isFinite(Number(player.POSY))
       )
       .sort((a, b) => String(a.NAME).localeCompare(String(b.NAME)));
+    playersById = new Map(players.map((player) => [String(player.WURMID), player]));
     fillSelect(
       playerSelect,
       players.map((player) => ({
@@ -199,7 +238,11 @@ export function mount(container) {
     const image = context.createImageData(width, height);
     const palette = Array.from({ length: 256 }, (_, type) => colorForType(type, rasterLayer));
     for (let i = 0; i < raster.length; i++) {
-      const [red, green, blue] = palette[raster[i]];
+      const terrainColor = palette[raster[i]];
+      const [red, green, blue] =
+        rasterLayer === 'surface'
+          ? mixWaterColor(terrainColor, waterDepthRaster?.[i] ?? 0)
+          : terrainColor;
       const pixel = i * 4;
       image.data[pixel] = red;
       image.data[pixel + 1] = green;
@@ -230,26 +273,33 @@ export function mount(container) {
     element('#map-zoom-value').value = `${zoom.toFixed(1)}×`;
   }
 
-  async function loadRaster(id, layer) {
-    let bytes;
-    if (offline) {
-      bytes = await rasterLocal(id, layer);
-    } else {
-      const response = await fetch(
-        `${HELPER_URL}/map/snapshots/${encodeURIComponent(id)}/raster?layer=${encodeURIComponent(layer)}`,
-        { headers: authHeaders(), signal }
-      );
-      if (!response.ok) {
-        const body = await response.json();
-        throw new Error(body.error || `Local helper returned ${response.status}`);
-      }
-      bytes = new Uint8Array(await response.arrayBuffer());
+  async function fetchRaster(id, layer) {
+    if (offline) return rasterLocal(id, layer);
+    const response = await fetch(
+      `${HELPER_URL}/map/snapshots/${encodeURIComponent(id)}/raster?layer=${encodeURIComponent(layer)}`,
+      { headers: authHeaders(), signal }
+    );
+    if (!response.ok) {
+      const body = await response.json();
+      throw new Error(body.error || `Local helper returned ${response.status}`);
     }
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  async function loadRaster(id, layer) {
+    const [bytes, waterDepth] =
+      layer === 'surface'
+        ? await Promise.all([fetchRaster(id, layer), fetchRaster(id, 'water')])
+        : [await fetchRaster(id, layer), null];
     if (bytes.length !== bounds.width * bounds.height) {
       throw new Error('Map image does not match the saved baseline dimensions');
     }
+    if (waterDepth && waterDepth.length !== bytes.length) {
+      throw new Error('Water depth image does not match the saved baseline dimensions');
+    }
     raster = bytes;
     rasterLayer = layer;
+    waterDepthRaster = waterDepth;
     drawRaster();
   }
 
@@ -258,6 +308,7 @@ export function mount(container) {
     const snapshot = snapshots.snapshots.find((item) => item.id === id);
     if (!snapshot) throw new Error('Saved map baseline was not found');
     activeSnapshotId = id;
+    activeSnapshot = snapshot;
     bounds = snapshot.bounds;
     selectedTile = { x: snapshot.centerX, y: snapshot.centerY };
     layerSelect.disabled = false;
@@ -322,6 +373,8 @@ export function mount(container) {
       element('#map-coordinates').textContent = `${tile.x}, ${tile.y}`;
       element('#map-surface').textContent =
         `${tile.surface.name || `Type ${tile.surface.type}`} — ${formatAltitude(tile.surface.height)}`;
+      const waterDepth = Math.max(0, -tile.surface.height);
+      element('#map-water-depth').textContent = waterDepth > 0 ? formatAltitude(waterDepth) : 'Dry';
       element('#map-rock').textContent =
         `${tile.rock.name || `Type ${tile.rock.type}`} — ${formatAltitude(tile.rock.height)}`;
       element('#map-cave').textContent =
@@ -379,6 +432,41 @@ export function mount(container) {
     const custom = element('#map-area').value === 'custom';
     element('#map-width').disabled = !custom;
     element('#map-height').disabled = !custom;
+    goToCharacterButton.disabled =
+      !bounds || (!activeSnapshot && !playersById.has(String(playerSelect.value)));
+  }
+
+  async function centerOnCharacter() {
+    if (!bounds) return;
+    const player = playersById.get(String(playerSelect.value));
+    const target = player ? playerPositionToTile(player) : activeSnapshot;
+    if (!target || !Number.isFinite(Number(target.x ?? target.centerX))) {
+      state.textContent = 'Select a positioned character or load a saved character baseline.';
+      return;
+    }
+
+    const x = Number(target.x ?? target.centerX);
+    const y = Number(target.y ?? target.centerY);
+    if (
+      x < bounds.x0 ||
+      y < bounds.y0 ||
+      x >= bounds.x0 + bounds.width ||
+      y >= bounds.y0 + bounds.height
+    ) {
+      state.textContent = `Character location ${x}, ${y} is outside this saved baseline.`;
+      return;
+    }
+
+    const zoomInput = element('#map-zoom');
+    zoomInput.value = String(Math.max(Number(zoomInput.value), 4));
+    updateZoom();
+    await loadTile(x, y);
+    const zoom = Number(zoomInput.value);
+    viewport.scrollTo({
+      left: Math.max(0, (x - bounds.x0 + 0.5) * zoom - viewport.clientWidth / 2),
+      top: Math.max(0, (y - bounds.y0 + 0.5) * zoom - viewport.clientHeight / 2),
+      behavior: 'smooth',
+    });
   }
 
   async function exportSnapshot() {
@@ -514,6 +602,26 @@ export function mount(container) {
     if (file) importSnapshot(file).catch(showError);
   });
   element('#map-zoom').addEventListener('input', updateZoom);
+  element('#map-zoom-in').addEventListener('click', () => {
+    const zoom = element('#map-zoom');
+    zoom.value = String(
+      zoomByStep(zoom.value, 1, Number(zoom.min), Number(zoom.max), Number(zoom.step))
+    );
+    updateZoom();
+  });
+  element('#map-zoom-out').addEventListener('click', () => {
+    const zoom = element('#map-zoom');
+    zoom.value = String(
+      zoomByStep(zoom.value, -1, Number(zoom.min), Number(zoom.max), Number(zoom.step))
+    );
+    updateZoom();
+  });
+  element('#map-zoom-reset').addEventListener('click', () => {
+    element('#map-zoom').value = '1';
+    updateZoom();
+  });
+  goToCharacterButton.addEventListener('click', () => centerOnCharacter().catch(showError));
+  playerSelect.addEventListener('change', updateButtons);
   canvas.addEventListener('click', onCanvasClick);
   canvas.addEventListener('keydown', (event) => {
     if (!selectedTile) return;

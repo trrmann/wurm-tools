@@ -39,7 +39,11 @@ async function createFixture() {
       for (let x = 0; x < 4; x++) {
         const offset = 1024 + (y * 4 + x) * 4;
         if (layer === 'top_layer') {
-          file.set([2, 0, 0, y * 10 + x], offset);
+          file.set([2, 0], offset);
+          file.writeInt16BE(
+            x === 0 && y === 0 ? -10 : x === 1 && y === 0 ? -30 : y * 10 + x,
+            offset + 2
+          );
         } else if (layer === 'rock_layer') {
           file.set([4, 0, 0xff, 0xce], offset);
         } else if (layer === 'map_cave') {
@@ -145,6 +149,9 @@ describe('local map baseline snapshots', () => {
       expect([...(await getMapRaster(started.id, 'rock', fixture.file)).pixels]).toEqual(
         Array(9).fill(4)
       );
+      expect([...(await getMapRaster(started.id, 'water', fixture.file)).pixels]).toEqual([
+        1, 3, 0, 0, 0, 0, 0, 0, 0,
+      ]);
       expect([...(await getMapRaster(started.id, 'cave', fixture.file)).pixels]).toEqual(
         Array(9).fill(1)
       );

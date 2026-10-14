@@ -249,6 +249,14 @@ if (-not (Test-Path "node_modules")) {
     }
 }
 
+# Start the local helper before verification so failed gates do not prevent dev startup.
+Write-Host ">>> [Local Helper] Ensuring Wurm local helper is running..." -ForegroundColor Cyan
+node "$PSScriptRoot\wurm-local.js"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[WARN] Local helper failed to start; continuing without it." -ForegroundColor Yellow
+}
+Write-Host ""
+
 # Clean up legacy .vite cache in node_modules if present to avoid OneDrive lock issues
 if (Test-Path "node_modules\.vite") {
     try {
@@ -494,14 +502,6 @@ if ($chromeFlags.Count -gt 0) {
     }
     $ChromeResult = "PASSED ($($chromeFlags -join ' '))"
 }
-
-# Ensure the local helper is running for every target (idempotent, detaches itself)
-Write-Host ">>> [Local Helper] Ensuring Wurm local helper is running..." -ForegroundColor Cyan
-node "$PSScriptRoot\wurm-local.js"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "[WARN] Local helper failed to start; continuing without it." -ForegroundColor Yellow
-}
-Write-Host ""
 
 # 8. Post-Deployment Summary & Actions
 Write-Host "==========================================================" -ForegroundColor Green

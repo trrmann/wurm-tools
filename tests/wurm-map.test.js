@@ -17,6 +17,7 @@ import {
   caveCeiling,
   readRegionRows,
 } from '../scripts/wurm-map.js';
+import { layerPixels } from '../scripts/wurm-tile-decode.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'map-'));
 
@@ -100,6 +101,16 @@ describe('wurm-map', () => {
 });
 
 describe('tile names and altitudes', () => {
+  it('derives water depths from signed surface heights for map overlays', () => {
+    const surface = new Uint8Array(12);
+    const view = new DataView(surface.buffer);
+    view.setInt16(2, -25);
+    view.setInt16(6, 0);
+    view.setInt16(10, 130);
+
+    expect([...layerPixels(surface, 'water')]).toEqual([3, 0, 0]);
+  });
+
   it('names tile ids', async () => {
     const m = await import('../scripts/wurm-map.js');
     expect(m.tileTypeName(2)).toBe('Grass');

@@ -22,6 +22,9 @@
           Character
           <select id="map-player" class="custom-select" disabled></select>
         </label>
+        <button type="button" id="map-go-to-character" class="btn" disabled>
+          Center on character
+        </button>
         <label>
           Baseline area
           <select id="map-area" class="custom-select">
@@ -47,7 +50,7 @@
         <label>
           Layer
           <select id="map-layer" class="custom-select" disabled>
-            <option value="surface">Surface terrain</option>
+            <option value="surface">Surface terrain + water</option>
             <option value="rock">Rock layer</option>
             <option value="cave">Cave layer</option>
             <option value="resources">Underground resources</option>
@@ -61,11 +64,42 @@
         </label>
         <button type="button" id="map-delete" class="btn" disabled>Delete selected</button>
         <button type="button" id="map-delete-all" class="btn">Delete all</button>
-        <label class="map-zoom-control">
-          Zoom
-          <input id="map-zoom" type="range" min="0.2" max="2" step="0.1" value="0.4" />
-          <output id="map-zoom-value">0.4×</output>
-        </label>
+        <div class="map-zoom-control">
+          <span>Zoom</span>
+          <div class="map-zoom-actions">
+            <button
+              type="button"
+              id="map-zoom-out"
+              class="btn"
+              aria-label="Zoom out"
+              title="Zoom out"
+            >
+              −
+            </button>
+            <input
+              id="map-zoom"
+              type="range"
+              min="0.25"
+              max="16"
+              step="0.25"
+              value="1"
+              aria-label="Map zoom"
+            />
+            <button type="button" id="map-zoom-in" class="btn" aria-label="Zoom in" title="Zoom in">
+              +
+            </button>
+            <button
+              type="button"
+              id="map-zoom-reset"
+              class="btn"
+              aria-label="Reset zoom"
+              title="Reset zoom"
+            >
+              1:1
+            </button>
+            <output id="map-zoom-value">1.0×</output>
+          </div>
+        </div>
       </div>
       <div class="map-progress" id="map-progress-wrap" hidden>
         <progress id="map-progress" max="1" value="0"></progress>
@@ -94,6 +128,10 @@
               <dd id="map-surface"></dd>
             </div>
             <div>
+              <dt>Water depth</dt>
+              <dd id="map-water-depth"></dd>
+            </div>
+            <div>
               <dt>Rock</dt>
               <dd id="map-rock"></dd>
             </div>
@@ -113,8 +151,9 @@
           <h4>Surface and rock corner altitudes</h4>
           <div id="map-corners" class="map-corners">No tile selected.</div>
           <p class="map-legend">
-            Terrain colors identify tile types. Resource and flag layers use distinct colors; exact
-            values appear in tile details.
+            Blue tint marks submerged terrain while preserving its soil or sand color. Deeper water
+            receives a stronger tint. Exact terrain, water depth, and layer values appear in tile
+            details.
           </p>
         </aside>
       </div>

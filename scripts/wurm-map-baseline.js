@@ -358,6 +358,7 @@ export async function getMapSnapshot(id, file = baselineFilePath()) {
 export async function getMapRaster(id, layer, file = baselineFilePath()) {
   const columns = {
     surface: 'surface',
+    water: 'surface',
     rock: 'rock',
     cave: 'cave',
     resources: 'resources',
@@ -401,6 +402,10 @@ export async function getMapRaster(id, layer, file = baselineFilePath()) {
         const caveResource = bytes.readUInt16BE(offset);
         const worldResource = bytes.readUInt16BE(offset + 2);
         pixels[i] = caveResource === 0xffff && worldResource === 0xffff ? 0 : 1;
+      } else if (layer === 'water') {
+        const surfaceHeightDm = bytes.readInt16BE(offset + 2);
+        pixels[i] =
+          surfaceHeightDm < 0 ? Math.min(255, Math.max(1, Math.round(-surfaceHeightDm / 10))) : 0;
       } else if (layer === 'flags') {
         pixels[i] = bytes[offset + 3];
       } else {

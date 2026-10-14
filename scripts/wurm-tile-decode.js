@@ -150,6 +150,10 @@ export function layerPixels(bytes, layer) {
     if (layer === 'resources') {
       pixels[i] =
         view.getUint16(offset) === 0xffff && view.getUint16(offset + 2) === 0xffff ? 0 : 1;
+    } else if (layer === 'water') {
+      const surfaceHeightDm = view.getInt16(offset + 2);
+      pixels[i] =
+        surfaceHeightDm < 0 ? Math.min(255, Math.max(1, Math.round(-surfaceHeightDm / 10))) : 0;
     } else if (layer === 'flags') {
       pixels[i] = bytes[offset + 3];
     } else {
