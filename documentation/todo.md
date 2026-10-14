@@ -49,4 +49,6 @@
   surface/rock/cave layers (type name, tags, height in m, decoded data byte), resources (cave/world, null = empty) and flags (botanizable/foragable/gatherable + raw).
 - Data byte: trees/bushes → foliage age + growth stage; grass → growth, grass type, flower; other tiles → `{raw}` or null.
   Lookup tables are generated from the server jar into `scripts/wurm-tile-data.json`; per-tile tags in `scripts/wurm-tiles.json`.
-- Unverified: cave-layer ceiling height, meaning of non-grass/tree data bytes, protected-tile axis order.
+- Cave ceiling: the `map_cave` data byte is the ceiling height above the floor in dm (`CaveTile.decodeCeilingHeight`); `loadTile` exposes `cave.ceiling` in metres (null when 0). Sample: open cave floors read 2.7-3.3 m.
+- Data byte on other tiles: Clay, Tar and Mycelium use the grass layout (observed 64/128/192 + low bits); all other terrain tiles are 0. Rock-layer "Rock" tiles carry raw 202/222 (meaning unknown, 137 tiles).
+- Protected tiles: `Zones.isTileProtected(x, y)` reads `protectedTiles[x][y]`, so `isProtected(x, y)` is correct as is.

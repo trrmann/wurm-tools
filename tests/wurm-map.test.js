@@ -14,6 +14,7 @@ import {
   decodeFlags,
   decodeTileData,
   loadTile,
+  caveCeiling,
 } from '../scripts/wurm-map.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'map-'));
@@ -87,6 +88,9 @@ describe('tile names and altitudes', () => {
     });
     expect(decodeTileData(2, 0)).toMatchObject({ growth: 'SHORT', grassType: 'GRASS' });
     expect(decodeTileData(1, 0)).toBeNull();
+    expect(caveCeiling(-10, 30)).toBe(-7);
+    expect(caveCeiling(-10, 0)).toBeNull();
+    expect(decodeTileData(24, 192)).toMatchObject({ growth: 'WILD' });
     const dir = tmp();
     for (const n of ['top_layer', 'rock_layer', 'map_cave', 'resources', 'flags']) {
       const b = Buffer.alloc(1024 + 16);

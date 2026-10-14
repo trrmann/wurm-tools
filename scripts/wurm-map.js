@@ -64,7 +64,8 @@ export function tileFromPosition(posX, posY) {
   return { x: Math.floor(posX / 4), y: Math.floor(posY / 4) };
 }
 
-// Returns { size, protectedCount, isProtected(a, b) } with a = outer index, b = inner index.
+// Returns { size, protectedCount, isProtected(x, y) }. Verified against Zones.isTileProtected(x, y),
+// which reads protectedTiles[x][y]: the outer array index is x, the inner is y.
 export function readProtectedTiles(file) {
   const d = fs.readFileSync(file);
   if (d.readUInt32BE(0) !== 0xaced0005) throw new Error('not a Java serialized stream');
@@ -77,7 +78,7 @@ export function readProtectedTiles(file) {
   for (let r = 0; r < size; r++) {
     for (let i = 0; i < size; i++) if (d[rowStart(r) + i]) protectedCount++;
   }
-  return { size, protectedCount, isProtected: (a, b) => d[rowStart(a) + b] !== 0 };
+  return { size, protectedCount, isProtected: (x, y) => d[rowStart(x) + y] !== 0 };
 }
 
 // Altitudes (metres, sea level = 0) for a tile corner across all layers, with names.
@@ -143,7 +144,22 @@ export function decodeTileData(typeId, data) {
       flower: TILE_DATA.flower[d] || null,
     };
   }
+  // Observed on Clay, Tar and Mycelium: same layout as grass (growth in the top bits).
+  if (GRASS_LIKE.has(typeId) && d !== 0) {
+    return {
+      growth: TILE_DATA.grassGrowth[d],
+      grassType: TILE_DATA.grassType[d],
+      flower: TILE_DATA.flower[d] || null,
+    };
+  }
   return d === 0 ? null : { raw: d };
+}
+
+const GRASS_LIKE = new Set([6, 10, 24, 40]);
+
+/** map_cave: the data byte is the ceiling height above the floor in decimetres (0 = none). */
+export function caveCeiling(floorHeight, data) {
+  return data > 0 ? Math.round((floorHeight + data / 10) * 10) / 10 : null;
 }
 
 function readInt(file, x, y) {
@@ -170,6 +186,8 @@ export function loadTile(dir, x, y) {
     rock: layer('rock_layer'),
     cave: layer('map_cave'),
   };
+  const caveData = readTile(`${dir}/map_cave.map`, x, y).data;
+  out.cave.ceiling = caveCeiling(out.cave.height, caveData);
   if (fs.existsSync(`${dir}/resources.map`)) {
     out.resources = decodeResources(readInt(`${dir}/resources.map`, x, y));
   }
