@@ -39,7 +39,6 @@
 - [x] `.map` layers (top/rock/flags/resources/cave) are a 1024-byte header plus 2048x2048 little-endian uint32 tiles; low byte = tile type, bits 16-31 = signed height (/2560 m, verified against item Z). Reader: `scripts/wurm-map.js`. Other layers' bit meanings and `protectedTiles.bmap` are not decoded yet.
 - [x] Joined skill/inventory views added (`/db/<world>/wurmplayers.db/skills/<wurmId>`, `/db/<world>/wurmitems.db/inventory/<inventoryId>`); verified `SKILLS.OWNER = PLAYERS.WURMID` and `ITEMS.PARENTID = PLAYERS.INVENTORYID`. Skill `NUMBER` is returned as an id (names live in the server jar).
 
-- add a local sqllite db on the client laptop to track info for the page in the future.  this will not be allowed to update the actual wurm db, that is to be read only.
-
+- add a local sqllite db on the client laptop to track info for the page in the future. this will not be allowed to update the actual wurm db, that is to be read only.
 
 ::::::do not proceed past this point without approval:::::
