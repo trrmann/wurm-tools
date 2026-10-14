@@ -101,6 +101,34 @@ export function mixWaterColor(terrainColor, waterDepth) {
   );
 }
 
+export function topographyColor(level) {
+  const code = Math.max(0, Math.min(255, Math.round(Number(level) || 0)));
+  if (code < 64) {
+    const depthRatio = (code - 1) / 62;
+    const shallowWater = [65, 105, 225];
+    const deepWater = [4, 16, 52];
+    return shallowWater.map((channel, index) =>
+      Math.round(channel + (deepWater[index] - channel) * depthRatio)
+    );
+  }
+
+  const stops = [
+    [56, 120, 72],
+    [133, 160, 82],
+    [190, 170, 105],
+    [137, 124, 112],
+    [239, 239, 230],
+  ];
+  const ratio = (code - 64) / 191;
+  const position = ratio * (stops.length - 1);
+  const start = Math.floor(position);
+  const end = Math.min(stops.length - 1, start + 1);
+  const blend = position - start;
+  return stops[start].map((channel, index) =>
+    Math.round(channel + (stops[end][index] - channel) * blend)
+  );
+}
+
 export function unmount() {
   controller?.abort();
   controller = null;
@@ -236,7 +264,9 @@ export function mount(container) {
     canvas.width = width;
     canvas.height = height;
     const image = context.createImageData(width, height);
-    const palette = Array.from({ length: 256 }, (_, type) => colorForType(type, rasterLayer));
+    const palette = Array.from({ length: 256 }, (_, type) =>
+      rasterLayer === 'topography' ? topographyColor(type) : colorForType(type, rasterLayer)
+    );
     for (let i = 0; i < raster.length; i++) {
       const terrainColor = palette[raster[i]];
       const [red, green, blue] =
@@ -300,6 +330,22 @@ export function mount(container) {
     raster = bytes;
     rasterLayer = layer;
     waterDepthRaster = waterDepth;
+    const legend = element('#map-legend');
+    if (legend) {
+      const legendByLayer = {
+        surface:
+          'Blue tint marks submerged terrain while preserving its soil or sand color. Deeper water receives a stronger tint. Exact terrain, water depth, and layer values appear in tile details.',
+        topography:
+          'Topography colors show relative surface elevation within this baseline: navy water, green lowlands, earth-tone hills, pale peaks. Click a tile for exact meters.',
+        rock: 'Rock colors show tile types. Select a tile to inspect its rock type and altitude.',
+        cave: 'Cave colors show floor tile types. Select a tile to inspect floor and ceiling altitude.',
+        resources:
+          'Resource colors show decoded IDs. Select a tile to inspect cave and world resource IDs.',
+        flags:
+          'Flag colors show surface flag states. Select a tile to inspect the individual flags.',
+      };
+      legend.textContent = legendByLayer[layer] || '';
+    }
     drawRaster();
   }
 

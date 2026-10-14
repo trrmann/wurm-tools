@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { Collection, CollectionOfStrings } from '../src/js/modules/objects/collection.mjs';
-import { Name, Names, ThingName, ThingNames } from '../src/js/modules/objects/names.mjs';
+import { Name, Names } from '../src/js/modules/objects/names.mjs';
+import {
+  ActionName,
+  ActionNames,
+  CategorizationName,
+  CategorizationNames,
+  ClassificationName,
+  ClassificationNames,
+  DescriptionName,
+  DescriptionNames,
+  EventName,
+  EventNames,
+  SpecificationName,
+  SpecificationNames,
+  ThingName,
+  ThingNames,
+} from '../src/js/modules/objects/things.mjs';
 import {
   CredentialName,
   CredentialNames,
@@ -112,6 +128,25 @@ describe('Name and string collections', () => {
     expect(() => strings.push('valid', null)).toThrow(TypeError);
     expect(() => (strings[0] = 4)).toThrow(TypeError);
     expect(() => strings.splice(0, 0, false)).toThrow(TypeError);
+  });
+
+  it('supports shared ThingName metadata and event, action, and description names', () => {
+    const thing = new ThingName({
+      name: 'Arc reactor',
+      classifications: ['device'],
+      specifications: ['portable'],
+      categorizations: ['equipment'],
+    });
+
+    expect(thing.classificationNames).toBeInstanceOf(ClassificationNames);
+    expect(thing.classificationNames.first).toBeInstanceOf(ClassificationName);
+    expect(thing.specificationNames).toBeInstanceOf(SpecificationNames);
+    expect(thing.specificationNames.first).toBeInstanceOf(SpecificationName);
+    expect(thing.categorizationNames).toBeInstanceOf(CategorizationNames);
+    expect(thing.categorizationNames.first).toBeInstanceOf(CategorizationName);
+    expect(new EventNames(['Origin']).first).toBeInstanceOf(EventName);
+    expect(new ActionNames(['Fly']).first).toBeInstanceOf(ActionName);
+    expect(new DescriptionNames(['Bright blue energy']).first).toBeInstanceOf(DescriptionName);
   });
 
   it('preserves inherited collection features for Names', () => {

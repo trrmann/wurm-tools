@@ -1,5 +1,6 @@
 import { CollectionOfStrings } from './collection.mjs';
 import { Name, Names } from './names.mjs';
+import { ThingName } from './things.mjs';
 
 export class TitleName extends Name {}
 /** @extends {Names<TitleName>} */
@@ -114,14 +115,17 @@ function normalizeCulture(culture) {
   return { ...culture, code, locale: culture.locale ?? code, nameOrder };
 }
 
-export class PersonName extends Name {
+export class PersonName extends ThingName {
   #unstructuredName;
 
   constructor(value = {}) {
     const isUnstructured = CollectionOfStrings.isString(value);
     const components = isUnstructured ? undefined : PersonName.createComponents(value);
     const culture = isUnstructured ? undefined : normalizeCulture(value.culture);
-    super(isUnstructured ? String(value) : PersonName.compose(components, culture));
+    super(
+      isUnstructured ? String(value) : PersonName.compose(components, culture),
+      isUnstructured ? {} : value
+    );
     this.#unstructuredName = isUnstructured ? String(value) : undefined;
     this.culture = culture;
     if (components) Object.assign(this, components);

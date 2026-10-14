@@ -1,5 +1,6 @@
 import { CollectionOfStrings } from './collection.mjs';
 import { Name, Names } from './names.mjs';
+import { ThingName } from './things.mjs';
 
 export class UniverseName extends Name {}
 /** @extends {Names<UniverseName>} */
@@ -364,7 +365,7 @@ function formatCoordinates(coordinates) {
 }
 
 /** General place name, landmark, or coordinate-based location. */
-export class PlaceName extends Name {
+export class PlaceName extends ThingName {
   #label;
 
   constructor(value = '') {
@@ -377,7 +378,7 @@ export class PlaceName extends Name {
     const label = String(options.name ?? options.placeName ?? options.landmarkName ?? '');
     const coordinates = normalizeCoordinates(options);
     const culture = normalizeCulture(options.culture);
-    super(label || formatCoordinates(coordinates));
+    super(label || formatCoordinates(coordinates), options);
     this.#label = label;
     this.coordinates = coordinates;
     this.culture = culture;

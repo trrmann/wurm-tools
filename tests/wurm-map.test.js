@@ -111,6 +111,17 @@ describe('tile names and altitudes', () => {
     expect([...layerPixels(surface, 'water')]).toEqual([3, 0, 0]);
   });
 
+  it('normalizes topographic elevation into water-depth and land-height bands', () => {
+    const surface = new Uint8Array(16);
+    const view = new DataView(surface.buffer);
+    view.setInt16(2, -10);
+    view.setInt16(6, -30);
+    view.setInt16(10, 0);
+    view.setInt16(14, 130);
+
+    expect([...layerPixels(surface, 'topography')]).toEqual([22, 63, 64, 255]);
+  });
+
   it('names tile ids', async () => {
     const m = await import('../scripts/wurm-map.js');
     expect(m.tileTypeName(2)).toBe('Grass');

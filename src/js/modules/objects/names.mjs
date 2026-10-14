@@ -91,11 +91,3 @@ export class Names extends CollectionOfStrings {
     return super.fill(this.constructor.toName(value), start, end);
   }
 }
-
-export class ThingName extends Name {}
-
-/** @extends {Names<ThingName>} */
-export class ThingNames extends Names {
-  /** @type {typeof ThingName} */
-  static NameType = ThingName;
-}

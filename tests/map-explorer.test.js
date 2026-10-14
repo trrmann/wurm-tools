@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   mixWaterColor,
   playerPositionToTile,
+  topographyColor,
   zoomByStep,
 } from '../src/js/tools/map-explorer/index.js';
 
@@ -39,5 +40,22 @@ describe('map water rendering', () => {
     expect(zoomByStep(1, 1)).toBe(1.25);
     expect(zoomByStep(16, 1)).toBe(16);
     expect(zoomByStep(0.25, -1)).toBe(0.25);
+  });
+});
+
+describe('topography rendering', () => {
+  it('maps shallow and deep water to blue and navy', () => {
+    expect(topographyColor(1)).toEqual([65, 105, 225]);
+    expect(topographyColor(63)).toEqual([4, 16, 52]);
+  });
+
+  it('maps lowland green through terrain tones to pale peaks', () => {
+    const lowland = topographyColor(64);
+    const upland = topographyColor(160);
+    const peak = topographyColor(255);
+
+    expect(lowland[1]).toBeGreaterThan(lowland[0]);
+    expect(upland).not.toEqual(lowland);
+    expect(peak.every((channel) => channel > lowland[0])).toBe(true);
   });
 });

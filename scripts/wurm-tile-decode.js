@@ -143,6 +143,40 @@ export function tileFromLayers(layers, bounds, tileX, tileY) {
 
 /** Collapses a 4-byte-per-tile layer into one byte per tile for drawing. */
 export function layerPixels(bytes, layer) {
+  if (layer === 'topography') {
+    const count = bytes.length / 4;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+    const heights = new Float64Array(count);
+    let minimumLand = Infinity;
+    let maximumLand = -Infinity;
+    let maximumDepth = 0;
+
+    for (let i = 0; i < count; i++) {
+      const height = view.getInt16(i * 4 + 2) / 10;
+      heights[i] = height;
+      if (height < 0) maximumDepth = Math.max(maximumDepth, -height);
+      else {
+        minimumLand = Math.min(minimumLand, height);
+        maximumLand = Math.max(maximumLand, height);
+      }
+    }
+
+    if (!Number.isFinite(minimumLand)) minimumLand = 0;
+    if (!Number.isFinite(maximumLand)) maximumLand = minimumLand;
+    const landRange = maximumLand - minimumLand;
+    const pixels = new Uint8Array(count);
+    for (let i = 0; i < count; i++) {
+      const height = heights[i];
+      if (height < 0) {
+        pixels[i] = 1 + Math.round((maximumDepth ? -height / maximumDepth : 0) * 62);
+      } else {
+        const elevation = landRange ? (height - minimumLand) / landRange : 0;
+        pixels[i] = 64 + Math.round(elevation * 191);
+      }
+    }
+    return pixels;
+  }
+
   const pixels = new Uint8Array(bytes.length / 4);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
   for (let i = 0; i < pixels.length; i++) {

@@ -42,6 +42,7 @@
 - [x] Added a separate local SQLite map-baseline database; the game SQLite databases and binary map files are read-only.
 
 - [x] World Map Explorer: select a positioned character, capture all five map layers in a radius of up to 1,000 tiles (clipped at map edges), and switch the display between surface, rock, cave, resources, and flags. Inspect four corner altitudes, cave floor/ceiling, resource IDs and flags. Tile and layer models provide the object-oriented view; the exact five binary map layers are stored compactly per snapshot in the separate local SQLite baseline. Verified a full 2,706,804-tile Adventure snapshot and read its raster and tile data back; a full-size centered baseline stores about 80 MB.
+- [x] Map topography view: show water depth from navy to blue and baseline-relative surface elevation from green lowlands through earth tones to pale peaks; tile details retain exact altitude in metres.
 
 - [x] Map baseline: whole-world or custom width/height capture; export/import/delete of the site's own baseline copy with all five layers (surface, rock, cave, resources, flags). Without a reachable helper, the map page works from a browser-only (IndexedDB) store fed by importing a baseline JSON file. Wurm server files are never modified.
 
@@ -72,7 +73,7 @@
 - [ ] Id-to-name maps from the server jar for skills, item templates, creature templates and deities.
 - [ ] Sensitive tables (accounts, IP history, email history, tickets): schema and counts only unless approved.
 
-need a topographical view of the map as well, to demonstrate altititude.
+- [ ] Determine which ores are available and where; decode this on the Fedora laptop with live data access.
 
 in the object classes, the thing name , needs classification nams, specification names, catogorization names, also these are a good replacement parent object to person and place names.
 
@@ -108,3 +109,7 @@ all of these should be able to come together to describe anything.
 
 find an online copy of a heroes or champions RPG character sheet.
 also search for an online copy of the rules book to see the definitions of the different elements in detail
+
+the equation elements collection is the basis for a heros game object, that can be a character, base, vehicle, equipment, etc. each of the have body shapes and point level classifications. also they have a object model type, that distinguishes from just a physical object, to a non-sentient vrs sentient object, mobile vrs non-mobile, etc. where the sentient mobile base will be a non-player and player character.
+
+the world is create of a collection of these objects. this is nt the wurm world. but i will need an object creation page that can store in the local sqllite database.

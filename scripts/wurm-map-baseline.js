@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import zlib from 'node:zlib';
 import initSqlJs from 'sql.js';
 import { mapSize, readRegionRows, tileFromPosition } from './wurm-map.js';
-import { tileFromRow } from './wurm-tile-decode.js';
+import { layerPixels, tileFromRow } from './wurm-tile-decode.js';
 import { httpError, listPlayers, openDb, safeName } from './wurm-db.js';
 import { MapSnapshot } from './wurm-map-model.js';
 
@@ -359,6 +359,7 @@ export async function getMapRaster(id, layer, file = baselineFilePath()) {
   const columns = {
     surface: 'surface',
     water: 'surface',
+    topography: 'surface',
     rock: 'rock',
     cave: 'cave',
     resources: 'resources',
@@ -395,6 +396,9 @@ export async function getMapRaster(id, layer, file = baselineFilePath()) {
     const bytes = Buffer.from(record);
     const { width, height } = snapshot.bounds;
     if (bytes.length !== width * height * 4) throw new Error('Map baseline data is incomplete');
+    if (layer === 'topography') {
+      return { pixels: Buffer.from(layerPixels(bytes, layer)), snapshot };
+    }
     const pixels = Buffer.alloc(width * height);
     for (let i = 0; i < pixels.length; i++) {
       const offset = i * 4;

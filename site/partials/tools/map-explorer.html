@@ -51,6 +51,7 @@
           Layer
           <select id="map-layer" class="custom-select" disabled>
             <option value="surface">Surface terrain + water</option>
+            <option value="topography">Topography (relative elevation)</option>
             <option value="rock">Rock layer</option>
             <option value="cave">Cave layer</option>
             <option value="resources">Underground resources</option>
@@ -150,7 +151,7 @@
           </dl>
           <h4>Surface and rock corner altitudes</h4>
           <div id="map-corners" class="map-corners">No tile selected.</div>
-          <p class="map-legend">
+          <p id="map-legend" class="map-legend">
             Blue tint marks submerged terrain while preserving its soil or sand color. Deeper water
             receives a stronger tint. Exact terrain, water depth, and layer values appear in tile
             details.

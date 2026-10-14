@@ -50,7 +50,7 @@ export async function getLocal(id) {
 
 export async function rasterLocal(id, layer) {
   const record = await getLocal(id);
-  const sourceLayer = layer === 'water' ? 'surface' : layer;
+  const sourceLayer = layer === 'water' || layer === 'topography' ? 'surface' : layer;
   if (!record.layers[sourceLayer]) throw new Error('Invalid map layer');
   return layerPixels(record.layers[sourceLayer], layer);
 }
