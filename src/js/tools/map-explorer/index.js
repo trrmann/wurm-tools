@@ -2,6 +2,14 @@ import template from '../../../../site/partials/tools/map-explorer.html?raw';
 import tileTypes from '../../../../scripts/wurm-tiles.json';
 import { MapTile } from '../../../../scripts/wurm-map-model.js';
 import { fill, getShell } from '../../modules/template.js';
+import {
+  deleteLocal,
+  exportLocal,
+  importLocal,
+  listLocal,
+  rasterLocal,
+  tileLocal,
+} from './browser-store.js';
 
 export const HELPER_URL = 'http://127.0.0.1:5180';
 const HELPER_TOKEN_KEY = 'wurm-tools-helper-token-v1';
@@ -88,6 +96,8 @@ export function mount(container) {
   let selectedTile = null;
   let raster = null;
   let rasterLayer = null;
+  // true when the helper is unreachable: baselines then live only in this browser
+  let offline = false;
 
   function authHeaders(headers = {}) {
     const token = localStorage.getItem(HELPER_TOKEN_KEY);
@@ -127,8 +137,13 @@ export function mount(container) {
     }
   }
 
+  const listSnapshots = async (world) =>
+    offline
+      ? { snapshots: await listLocal(world) }
+      : request(`/map/${encodeURIComponent(world)}/snapshots`);
+
   async function loadSnapshots(world) {
-    const result = await request(`/map/${encodeURIComponent(world)}/snapshots`);
+    const result = await listSnapshots(world);
     const snapshots = result.snapshots || [];
     fillSelect(
       snapshotSelect,
@@ -151,7 +166,9 @@ export function mount(container) {
     canvas.width = 0;
     canvas.height = 0;
     layerSelect.disabled = true;
-    const result = await request(`/map/${encodeURIComponent(world)}/players`);
+    const result = offline
+      ? { rows: [] }
+      : await request(`/map/${encodeURIComponent(world)}/players`);
     const players = (result.rows || [])
       .filter(
         (player) => Number.isFinite(Number(player.POSX)) && Number.isFinite(Number(player.POSY))
@@ -166,9 +183,11 @@ export function mount(container) {
       players.length ? 'Choose a character' : 'No positioned characters found'
     );
     playerSelect.disabled = players.length === 0;
-    element('#map-create').disabled = false;
+    element('#map-create').disabled = offline;
     await loadSnapshots(world);
-    state.textContent = `${players.length} positioned character(s) found in ${world}.`;
+    state.textContent = offline
+      ? `Local helper not found. Showing baselines stored in this browser for ${world}.`
+      : `${players.length} positioned character(s) found in ${world}.`;
   }
 
   function drawRaster() {
@@ -212,15 +231,20 @@ export function mount(container) {
   }
 
   async function loadRaster(id, layer) {
-    const response = await fetch(
-      `${HELPER_URL}/map/snapshots/${encodeURIComponent(id)}/raster?layer=${encodeURIComponent(layer)}`,
-      { headers: authHeaders(), signal }
-    );
-    if (!response.ok) {
-      const body = await response.json();
-      throw new Error(body.error || `Local helper returned ${response.status}`);
+    let bytes;
+    if (offline) {
+      bytes = await rasterLocal(id, layer);
+    } else {
+      const response = await fetch(
+        `${HELPER_URL}/map/snapshots/${encodeURIComponent(id)}/raster?layer=${encodeURIComponent(layer)}`,
+        { headers: authHeaders(), signal }
+      );
+      if (!response.ok) {
+        const body = await response.json();
+        throw new Error(body.error || `Local helper returned ${response.status}`);
+      }
+      bytes = new Uint8Array(await response.arrayBuffer());
     }
-    const bytes = new Uint8Array(await response.arrayBuffer());
     if (bytes.length !== bounds.width * bounds.height) {
       throw new Error('Map image does not match the saved baseline dimensions');
     }
@@ -230,7 +254,7 @@ export function mount(container) {
   }
 
   async function activateSnapshot(id) {
-    const snapshots = await request(`/map/${encodeURIComponent(worldSelect.value)}/snapshots`);
+    const snapshots = await listSnapshots(worldSelect.value);
     const snapshot = snapshots.snapshots.find((item) => item.id === id);
     if (!snapshot) throw new Error('Saved map baseline was not found');
     activeSnapshotId = id;
@@ -241,7 +265,7 @@ export function mount(container) {
     await loadRaster(id, layerSelect.value);
     state.textContent = `Loaded ${snapshot.playerName}'s ${bounds.width.toLocaleString()} × ${bounds.height.toLocaleString()} tile baseline.`;
     await loadTile(selectedTile.x, selectedTile.y);
-    element('#map-create').disabled = false;
+    element('#map-create').disabled = offline;
     updateButtons();
   }
 
@@ -287,9 +311,11 @@ export function mount(container) {
     selectedTile = { x, y };
     drawRaster();
     try {
-      const result = await request(
-        `/map/snapshots/${encodeURIComponent(activeSnapshotId)}/tile?x=${x}&y=${y}`
-      );
+      const result = offline
+        ? await tileLocal(activeSnapshotId, x, y)
+        : await request(
+            `/map/snapshots/${encodeURIComponent(activeSnapshotId)}/tile?x=${x}&y=${y}`
+          );
       const tile = new MapTile(result.tile);
       element('#map-tile-empty').hidden = true;
       element('#map-tile-data').hidden = false;
@@ -359,14 +385,22 @@ export function mount(container) {
     const id = snapshotSelect.value;
     if (!id) return;
     state.textContent = 'Exporting baseline...';
-    const response = await fetch(`${HELPER_URL}/map/snapshots/${encodeURIComponent(id)}/export`, {
-      headers: authHeaders(),
-      signal,
-    });
-    if (!response.ok) {
-      throw new Error((await response.json()).error || `Local helper returned ${response.status}`);
+    let blob;
+    if (offline) {
+      blob = await exportLocal(id);
+    } else {
+      const response = await fetch(`${HELPER_URL}/map/snapshots/${encodeURIComponent(id)}/export`, {
+        headers: authHeaders(),
+        signal,
+      });
+      if (!response.ok) {
+        throw new Error(
+          (await response.json()).error || `Local helper returned ${response.status}`
+        );
+      }
+      blob = await response.blob();
     }
-    const url = URL.createObjectURL(await response.blob());
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = `wurm-map-baseline-${id.slice(0, 8)}.json`;
@@ -377,11 +411,22 @@ export function mount(container) {
 
   async function importSnapshot(file) {
     state.textContent = `Importing ${file.name}...`;
-    const result = await request('/map/snapshots/import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: file,
-    });
+    const result = offline
+      ? { snapshot: await importLocal(await file.text()) }
+      : await request('/map/snapshots/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: file,
+        });
+    const worlds = new Set([...worldSelect.options].map((option) => option.value).filter(Boolean));
+    if (!worlds.has(result.snapshot.world)) {
+      worlds.add(result.snapshot.world);
+      fillSelect(
+        worldSelect,
+        [...worlds].map((value) => ({ value, label: value })),
+        'Choose a world'
+      );
+    }
     worldSelect.value = result.snapshot.world;
     await loadWorld(result.snapshot.world);
     snapshotSelect.value = result.snapshot.id;
@@ -395,12 +440,20 @@ export function mount(container) {
       ? `Delete ALL saved baselines for ${worldSelect.value}? Wurm server files are not affected.`
       : 'Delete the selected baseline? Wurm server files are not affected.';
     if (!window.confirm(message)) return;
-    await request(
-      all ? `/map/${encodeURIComponent(worldSelect.value)}/snapshots` : `/map/snapshots/${id}`,
-      { method: 'DELETE' }
-    );
+    if (offline) {
+      await deleteLocal(all ? { world: worldSelect.value } : { id });
+    } else {
+      await request(
+        all
+          ? `/map/${encodeURIComponent(worldSelect.value)}/snapshots`
+          : `/map/snapshots/${encodeURIComponent(id)}`,
+        { method: 'DELETE' }
+      );
+    }
     await loadWorld(worldSelect.value);
-    state.textContent = 'Deleted from the local map baseline database.';
+    state.textContent = offline
+      ? 'Deleted from this browser. Wurm server files are not affected.'
+      : 'Deleted from the local map baseline database.';
     updateButtons();
   }
 
@@ -481,16 +534,37 @@ export function mount(container) {
     }
   });
 
+  function startOffline(reason) {
+    offline = true;
+    return listLocal().then((snapshots) => {
+      const worlds = [...new Set(snapshots.map((snapshot) => snapshot.world))];
+      fillSelect(
+        worldSelect,
+        worlds.map((world) => ({ value: world, label: world })),
+        'Choose a world'
+      );
+      element('#map-create').disabled = true;
+      state.textContent = `${reason} You can still import a baseline JSON file; it is kept in this browser only.`;
+      if (worlds.length) {
+        worldSelect.value = worlds[0];
+        return loadWorld(worlds[0]);
+      }
+    });
+  }
+
   request('/db/worlds')
     .then(({ worlds }) => {
+      if (!worlds.length) return startOffline('No local Wurm worlds were found.');
       fillSelect(
         worldSelect,
         worlds.map(({ world }) => ({ value: world, label: world })),
         'Choose a world'
       );
-      if (!worlds.length) throw new Error('No local Wurm worlds were found');
       worldSelect.value = worlds[0].world;
       return loadWorld(worldSelect.value);
     })
+    .catch((error) =>
+      signal.aborted ? null : startOffline(`Local helper unavailable (${error.message}).`)
+    )
     .catch(showError);
 }

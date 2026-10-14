@@ -43,6 +43,8 @@
 
 - [x] World Map Explorer: select a positioned character, capture all five map layers in a radius of up to 1,000 tiles (clipped at map edges), and switch the display between surface, rock, cave, resources, and flags. Inspect four corner altitudes, cave floor/ceiling, resource IDs and flags. Tile and layer models provide the object-oriented view; the exact five binary map layers are stored compactly per snapshot in the separate local SQLite baseline. Verified a full 2,706,804-tile Adventure snapshot and read its raster and tile data back; a full-size centered baseline stores about 80 MB.
 
+- [x] Map baseline: whole-world or custom width/height capture; export/import/delete of the site's own baseline copy with all five layers (surface, rock, cave, resources, flags). Without a reachable helper, the map page works from a browser-only (IndexedDB) store fed by importing a baseline JSON file. Wurm server files are never modified.
+
 - [x] Approved Render-to-local database access through a paired loopback helper. Status, read-only database, and Steam-launch routes require a per-browser token; pairing uses an expiring local CLI code; only exact app origins are allowed. Added opt-in Windows logon-task and Fedora systemd startup. Validated HTTPS Render-origin pairing, authentication, and private-network preflight in a browser; no database contents are uploaded.
 
 ## Map object loading (Fedora)

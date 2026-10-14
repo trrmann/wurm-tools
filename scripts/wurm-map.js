@@ -9,13 +9,19 @@
 // protectedTiles.bmap: Java-serialized boolean[size][size]; outer index is x, inner index is y.
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
+import {
+  caveCeiling,
+  decodeFlags,
+  decodeResources,
+  decodeTileData,
+  tileTags,
+  tileTypeName,
+} from './wurm-tile-decode.js';
+
+export { caveCeiling, decodeFlags, decodeResources, decodeTileData, tileTags, tileTypeName };
 
 // Tile ids -> { name, enum } extracted from the server's com.wurmonline.mesh.Tiles.
 const TILE_TYPES = createRequire(import.meta.url)('./wurm-tiles.json');
-
-export function tileTypeName(id) {
-  return TILE_TYPES[id]?.name ?? null;
-}
 
 export function tileTypeEnum(id) {
   return TILE_TYPES[id]?.enum ?? null;
@@ -141,70 +147,6 @@ export function readAltitudes(dir, x, y) {
     surfaceType: tileTypeName(top.type),
     caveType: tileTypeName(cave.type),
   };
-}
-
-const TILE_DATA = createRequire(import.meta.url)('./wurm-tile-data.json');
-
-export function tileTags(id) {
-  return TILE_TAGS_CACHE[id] ?? [];
-}
-const TILE_TAGS_CACHE = Object.fromEntries(
-  Object.entries(TILE_TYPES).map(([k, v]) => [k, v.tags ?? []])
-);
-
-/** resources.map: high 16 bits = cave (ore) resource, low 16 = world resource; 0xFFFF = none. */
-export function decodeResources(int32) {
-  const cave = (int32 >>> 16) & 0xffff;
-  const world = int32 & 0xffff;
-  return {
-    cave: cave === 0xffff ? null : cave,
-    world: world === 0xffff ? null : world,
-  };
-}
-
-/** flags.map: byte 3 holds the surface client flags (botanizable/foragable/gatherable). */
-export function decodeFlags(int32) {
-  return {
-    raw: int32 >>> 0,
-    botanizable: (int32 & 0x80) !== 0,
-    foragable: (int32 & 0x40) !== 0,
-    gatherable: (int32 & 0x20) !== 0,
-  };
-}
-
-/** Decode the tile data byte according to the tile's tags. */
-export function decodeTileData(typeId, data) {
-  const tags = tileTags(typeId);
-  const d = data & 0xff;
-  if (tags.includes('tree') || tags.includes('bush')) {
-    return {
-      age: TILE_DATA.foliageAge[d],
-      growth: TILE_DATA.treeGrowth[d],
-    };
-  }
-  if (tags.includes('grass')) {
-    return {
-      growth: TILE_DATA.grassGrowth[d],
-      grassType: TILE_DATA.grassType[d],
-      flower: TILE_DATA.flower[d] || null,
-    };
-  }
-  // Observed on Clay, Tar and Mycelium: same layout as grass (growth in the top bits).
-  if (GRASS_LIKE.has(typeId) && d !== 0) {
-    return {
-      growth: TILE_DATA.grassGrowth[d],
-      grassType: TILE_DATA.grassType[d],
-      flower: TILE_DATA.flower[d] || null,
-    };
-  }
-  return d === 0 ? null : { raw: d };
-}
-
-const GRASS_LIKE = new Set([6, 10, 24, 40]);
-
-/** map_cave: the data byte is the ceiling height above the floor in decimetres (0 = none). */
-export function caveCeiling(floorHeight, data) {
-  return data > 0 ? Math.round((floorHeight + data / 10) * 10) / 10 : null;
 }
 
 function readInt(file, x, y) {

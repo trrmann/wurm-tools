@@ -5,19 +5,10 @@ import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import zlib from 'node:zlib';
 import initSqlJs from 'sql.js';
-import {
-  caveCeiling,
-  decodeFlags,
-  decodeResources,
-  decodeTileData,
-  mapSize,
-  readRegionRows,
-  tileFromPosition,
-  tileTags,
-  tileTypeName,
-} from './wurm-map.js';
+import { mapSize, readRegionRows, tileFromPosition } from './wurm-map.js';
+import { tileFromRow } from './wurm-tile-decode.js';
 import { httpError, listPlayers, openDb, safeName } from './wurm-db.js';
-import { MapSnapshot, MapTile } from './wurm-map-model.js';
+import { MapSnapshot } from './wurm-map-model.js';
 
 export const SNAPSHOT_RADIUS = 1000;
 export const EXPORT_FORMAT = 'wurm-tools-map-baseline';
@@ -420,34 +411,6 @@ export async function getMapRaster(id, layer, file = baselineFilePath()) {
   } finally {
     db.close();
   }
-}
-
-function tileFromRow(row) {
-  const layer = (prefix) => {
-    const type = row[`${prefix}_type`];
-    const dataByte = row[`${prefix}_data`];
-    const heightDm = row[`${prefix}_height_dm`];
-    return {
-      type,
-      name: tileTypeName(type),
-      tags: tileTags(type),
-      dataByte,
-      heightDm,
-      data: decodeTileData(type, dataByte),
-      ...(prefix === 'cave'
-        ? { ceilingDm: caveCeiling(heightDm / 10, dataByte) === null ? null : heightDm + dataByte }
-        : {}),
-    };
-  };
-  return new MapTile({
-    x: row.x,
-    y: row.y,
-    surface: layer('surface'),
-    rock: layer('rock'),
-    cave: layer('cave'),
-    resources: decodeResources(row.resources),
-    flags: decodeFlags(row.flags),
-  });
 }
 
 export async function getMapTile(id, x, y, file = baselineFilePath()) {
