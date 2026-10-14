@@ -39,7 +39,8 @@
 - Investigate parsing the server's binary `.map`/`.bmap` layers for terrain, elevation, borders, and resources before implementing map searches.
 - Add joined character skill/inventory views only after verifying the cross-database identifiers and relationships; generic table browsing is available now.
 
-- add a local sqllite db on the client laptop to track info for the page in the future.  this will not be allowed to update the actual wurm db, that is to be read only.
+- add a local sqllite db on the client laptop to track info for the page in the future. this will not be allowed to update the actual wurm db, that is to be read only.
 
+- [ ] APPROVAL REQUIRED: Let the Render-hosted page read each user's local Wurm database through a paired localhost helper. Keep the helper bound to `127.0.0.1` and database access read-only; require per-device authentication for database and Steam-launch routes, allow only approved app origins, and provide opt-in login startup on Windows and Fedora. Validate HTTPS-to-localhost/private-network browser behavior. Do not expose the helper publicly or upload database contents.
 
 ::::::do not proceed past this point without approval:::::

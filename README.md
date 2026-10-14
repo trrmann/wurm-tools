@@ -194,8 +194,16 @@ Both scripts run the exact same verification pipeline and **safely halt immediat
 The **Server** page (`/site/server-status/`) shows whether a local Wurm Unlimited dedicated server and client are installed and running, and can start them. Browsers can't inspect local processes, so it talks to a small localhost-only helper:
 
 ```bash
-npm run helper   # listens on 127.0.0.1:5180
+npm run dev           # starts Vite and automatically starts/reuses the helper
+npm run preview       # starts Vite preview and automatically starts/reuses the helper
+npm run helper        # optional: start/reuse the helper without starting the site
+npm run helper:stop  # removes its semaphore and waits for graceful shutdown
 ```
+
+The background helper is kept alive by `.wurm-helper.semaphore` in the project root. Deleting
+that file (or running `npm run helper:stop`) asks it to stop accepting requests and close active
+connections. Both Windows and Fedora `deploy -dev` / `deploy -preview` flows use these npm
+commands, so no separate helper setup is required.
 
 - `GET /status` and `POST /start/server|client` (JSON). Starting uses Steam (`steam://rungameid/402370` server, `366220` client).
 - Installs are found in Steam libraries, or set `WURM_SERVER_DIR` / `WURM_CLIENT_DIR`.

@@ -65,7 +65,8 @@ export class ServerStatusPage extends BasePage {
       ).toLocaleTimeString()}`;
     } catch {
       cards.innerHTML = '';
-      state.textContent = 'Helper not reachable. Run "npm run helper" on this machine.';
+      state.textContent =
+        'Helper not reachable. Restart the local site or run "npm run helper" to start it.';
     }
   }
 

@@ -6,12 +6,16 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile, spawn } from 'node:child_process';
+import { execFile, fork, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { listWorlds, openDb, listTables, listPlayers, browseTable, httpError } from './wurm-db.js';
 
 export const PORT = Number(process.env.WURM_HELPER_PORT || 5180);
+const SCRIPT_PATH = fileURLToPath(import.meta.url);
+const PROJECT_ROOT = path.resolve(path.dirname(SCRIPT_PATH), '..');
+export const DEFAULT_SEMAPHORE_PATH = path.join(PROJECT_ROOT, '.wurm-helper.semaphore');
 
 export const TARGETS = {
   server: {
@@ -224,9 +228,193 @@ export function createServer() {
   });
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  createServer().listen(PORT, '127.0.0.1', () => {
+function semaphorePath() {
+  return process.env.WURM_HELPER_SEMAPHORE_PATH || DEFAULT_SEMAPHORE_PATH;
+}
+
+function readSemaphore(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function ownsSemaphore(file, token) {
+  return readSemaphore(file)?.token === token;
+}
+
+function updateSemaphore(file, token, pid, port) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r+');
+    if (JSON.parse(fs.readFileSync(fd, 'utf8')).token !== token) return false;
+    fs.ftruncateSync(fd, 0);
+    fs.writeSync(
+      fd,
+      JSON.stringify({ token, pid, ...(port === undefined ? {} : { port }) }),
+      0,
+      'utf8'
+    );
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
+function removeSemaphore(file, token) {
+  if (!ownsSemaphore(file, token)) return;
+  try {
+    fs.unlinkSync(file);
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+}
+
+function processIsAlive(pid) {
+  if (!Number.isInteger(pid) || pid < 1) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM';
+  }
+}
+
+async function waitForProcessExit(pid, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (processIsAlive(pid) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return !processIsAlive(pid);
+}
+
+export async function startDetachedHelper() {
+  const file = semaphorePath();
+  const current = readSemaphore(file);
+  if (current && processIsAlive(current.pid)) {
+    console.info(`Wurm local helper is already running (PID ${current.pid}).`);
+    return;
+  }
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+
+  const token = randomUUID();
+  try {
+    fs.writeFileSync(file, JSON.stringify({ token, pid: process.pid }), { flag: 'wx' });
+  } catch (err) {
+    if (err.code === 'EEXIST') {
+      console.info('Wurm local helper is already starting.');
+      return;
+    }
+    throw err;
+  }
+
+  let child;
+  try {
+    child = fork(SCRIPT_PATH, ['--worker'], {
+      detached: true,
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        WURM_HELPER_SEMAPHORE_PATH: file,
+        WURM_HELPER_TOKEN: token,
+      },
+    });
+    child.disconnect();
+    child.unref();
+    if (!updateSemaphore(file, token, child.pid)) {
+      child.kill();
+      return;
+    }
+    console.info(`Wurm local helper started in the background (PID ${child.pid}).`);
+    console.info(`Listening on http://127.0.0.1:${PORT}`);
+    console.info(`Stop with "npm run helper:stop" or delete ${file}.`);
+  } catch (err) {
+    removeSemaphore(file, token);
+    throw err;
+  }
+}
+
+export async function stopDetachedHelper() {
+  const file = semaphorePath();
+  const current = readSemaphore(file);
+  if (!current) {
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+    console.info('Wurm local helper is not running (semaphore not found).');
+    return;
+  }
+
+  try {
+    fs.unlinkSync(file);
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+  if (await waitForProcessExit(current.pid)) {
+    console.info('Wurm local helper stopped gracefully.');
+  } else {
+    console.info('Helper shutdown requested; it is still closing active connections.');
+  }
+}
+
+function runHelperServer({ foreground = false } = {}) {
+  const file = semaphorePath();
+  const token = process.env.WURM_HELPER_TOKEN;
+  const server = createServer();
+  let shuttingDown = false;
+  let monitor;
+
+  const shutdown = (removeMarker = false) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    if (monitor) clearInterval(monitor);
+    if (removeMarker && token) removeSemaphore(file, token);
+
+    if (!server.listening) {
+      process.exit();
+      return;
+    }
+    const forceClose = setTimeout(() => server.closeAllConnections(), 5000);
+    forceClose.unref();
+    server.close(() => {
+      clearTimeout(forceClose);
+      process.exit();
+    });
+  };
+
+  process.once('SIGINT', () => shutdown(true));
+  process.once('SIGTERM', () => shutdown(true));
+  server.once('error', (err) => {
+    console.error(`Wurm local helper failed: ${err.message}`);
+    process.exitCode = 1;
+    shutdown(true);
+  });
+
+  if (!foreground) {
+    if (!token || !ownsSemaphore(file, token)) return shutdown();
+    monitor = setInterval(() => {
+      if (!ownsSemaphore(file, token)) shutdown();
+    }, 500);
+  }
+
+  server.listen(PORT, '127.0.0.1', () => {
+    if (!foreground && !updateSemaphore(file, token, process.pid, server.address().port)) {
+      return shutdown();
+    }
     console.log(`Wurm local helper listening on http://127.0.0.1:${PORT}`);
     console.log(`Allowed origins: ${allowedOrigins().join(', ')}`);
   });
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === SCRIPT_PATH) {
+  if (process.argv.includes('--stop')) {
+    await stopDetachedHelper();
+  } else if (process.argv.includes('--worker')) {
+    runHelperServer();
+  } else if (process.argv.includes('--foreground')) {
+    runHelperServer({ foreground: true });
+  } else {
+    await startDetachedHelper();
+  }
 }

@@ -14,3 +14,4 @@ dist-ssr
 *.sw?
 
 .setup-complete
+.wurm-helper.semaphore
