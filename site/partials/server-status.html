@@ -9,6 +9,31 @@
     </div>
     <div class="card-body">
       <div id="helper-state" class="server-helper-state" role="status">Checking helper...</div>
+      <div id="helper-pair-panel" hidden>
+        <p>
+          Pair this browser with the local helper. Generate a one-time code in a terminal with
+          <code>npm run helper:pair-code</code>. It expires after 10 minutes. Allow local network
+          access if your browser asks.
+        </p>
+        <form id="helper-pair-form">
+          <label for="helper-pair-code">8-digit pairing code</label>
+          <input
+            id="helper-pair-code"
+            class="custom-input"
+            name="code"
+            type="text"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            pattern="[0-9]{8}"
+            maxlength="8"
+            required
+          />
+          <button type="submit" class="btn btn-primary">Pair browser</button>
+        </form>
+      </div>
+      <button type="button" id="helper-unpair" class="btn btn-secondary" hidden>
+        Forget this browser
+      </button>
       <div id="server-cards" class="server-cards">{{{cards}}}</div>
       <button type="button" id="status-refresh" class="btn btn-secondary">Refresh</button>
     </div>
@@ -53,7 +78,13 @@
       <span class="badge-tag {{badgeClass}}">{{badge}}</span>
     </div>
     <p class="concepts-item-desc">{{detail}}</p>
-    <button type="button" class="btn btn-primary start-btn" data-target="{{key}}" {{disabled}}>
+    <button
+      type="button"
+      class="btn btn-primary start-btn"
+      data-target="{{key}}"
+      {{disabled}}
+      {{hidden}}
+    >
       Start
     </button>
   </div>

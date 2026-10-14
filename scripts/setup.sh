@@ -102,25 +102,9 @@ import('./scripts/wurm-local.js').then(async (m) => {
 ") || info "Could not run install detection (non-fatal)."
 
 if [ "${HELPER_SERVICE}" = true ]; then
-  info "Installing systemd user service 'wurm-helper'..."
-  UNIT_DIR="${HOME}/.config/systemd/user"
-  mkdir -p "${UNIT_DIR}"
-  cat > "${UNIT_DIR}/wurm-helper.service" <<EOF
-[Unit]
-Description=Wurm Tools local helper
-
-[Service]
-WorkingDirectory=${PROJECT_ROOT}
-ExecStart=$(command -v node) ${PROJECT_ROOT}/scripts/wurm-local.js --foreground
-Restart=on-failure
-
-[Install]
-WantedBy=default.target
-EOF
-  systemctl --user daemon-reload
-  systemctl --user enable --now wurm-helper.service \
-    || info "Could not start the service; run 'npm run helper' manually."
-  info "Optional: 'loginctl enable-linger \$USER' keeps it running when logged out."
+  info "Installing opt-in systemd user service 'wurm-helper'..."
+  (cd "${PROJECT_ROOT}" && npm run helper:startup:install) \
+    || info "Could not install the service; run 'npm run helper' manually."
   info "Set WURM_SERVER_DIR / WURM_ALLOWED_ORIGINS via 'systemctl --user edit wurm-helper'."
 fi
 

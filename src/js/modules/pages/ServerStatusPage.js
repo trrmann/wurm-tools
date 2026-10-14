@@ -5,6 +5,7 @@ import { fill, getShell, getTemplate } from '../template.js';
 import { renderShell, setHeader, initSidebar } from '../shell.js';
 
 export const HELPER_URL = 'http://127.0.0.1:5180';
+const HELPER_TOKEN_KEY = 'wurm-tools-helper-token-v1';
 
 // Turns the helper's /status payload into card view-models.
 export function describeTarget(key, info) {
@@ -16,6 +17,7 @@ export function describeTarget(key, info) {
       badgeClass: 'badge-planned',
       badge: 'Not installed',
       detail: 'No install found. Set WURM_SERVER_DIR / WURM_CLIENT_DIR if it lives elsewhere.',
+      hidden: 'hidden',
       disabled: 'disabled',
     };
   }
@@ -26,6 +28,7 @@ export function describeTarget(key, info) {
     badgeClass: info.running ? 'badge-active' : 'badge-planned',
     badge: info.running ? '✓ Running' : 'Stopped',
     detail: info.path,
+    hidden: '',
     disabled: info.running ? 'disabled' : '',
   };
 }
@@ -39,11 +42,13 @@ export class ServerStatusPage extends BasePage {
       description: 'Detect, monitor and start a local Wurm Unlimited server and client',
     });
     this.teardownSidebar = null;
+    this.authToken = null;
   }
 
   render() {
     if (!this.container) return;
     this.viewport = renderShell(this.container);
+    this.authToken = localStorage.getItem(HELPER_TOKEN_KEY);
     setHeader('Local Server Status', 'Is a local Wurm server installed and running?');
     this.viewport.innerHTML = fill(getShell(statusTemplate), { cards: '' });
     this.refresh();
@@ -53,25 +58,109 @@ export class ServerStatusPage extends BasePage {
   async refresh() {
     const state = this.viewport.querySelector('#helper-state');
     const cards = this.viewport.querySelector('#server-cards');
+    const pairPanel = this.viewport.querySelector('#helper-pair-panel');
+    const unpairButton = this.viewport.querySelector('#helper-unpair');
     try {
-      const res = await fetch(`${HELPER_URL}/status`);
+      if (!this.authToken) {
+        const health = await fetch(`${HELPER_URL}/health`);
+        if (!health.ok) throw new Error('Helper health check failed');
+        cards.innerHTML = '';
+        pairPanel.hidden = false;
+        unpairButton.hidden = true;
+        this.setDatabaseControlsEnabled(false);
+        state.textContent = 'Helper ready. Pair this browser to view local status and databases.';
+        return;
+      }
+
+      const res = await this.request('/status');
+      if (res.status === 401) {
+        this.showPairingRequired('This browser is no longer paired. Pair it again to continue.');
+        return;
+      }
+      if (!res.ok) throw new Error(`Helper returned ${res.status}`);
       const status = await res.json();
       const tpl = getTemplate(statusTemplate, 'server-card-template');
       cards.innerHTML = ['server', 'client']
         .map((key) => fill(tpl, describeTarget(key, status[key])))
         .join('');
+      pairPanel.hidden = true;
+      unpairButton.hidden = false;
+      this.setDatabaseControlsEnabled(true);
       state.textContent = `Helper connected (${status.platform}) — checked ${new Date(
         status.checkedAt
       ).toLocaleTimeString()}`;
     } catch {
       cards.innerHTML = '';
+      pairPanel.hidden = true;
+      unpairButton.hidden = true;
+      this.setDatabaseControlsEnabled(false);
       state.textContent =
         'Helper not reachable. Restart the local site or run "npm run helper" to start it.';
     }
   }
 
+  async request(path, options = {}, authenticated = true) {
+    const headers = new Headers(options.headers || {});
+    if (authenticated && this.authToken) headers.set('Authorization', `Bearer ${this.authToken}`);
+    const response = await fetch(`${HELPER_URL}${path}`, { ...options, headers });
+    if (authenticated && response.status === 401) {
+      this.showPairingRequired('This browser is no longer paired. Pair it again to continue.');
+    }
+    return response;
+  }
+
+  forgetToken() {
+    this.authToken = null;
+    localStorage.removeItem(HELPER_TOKEN_KEY);
+  }
+
+  showPairingRequired(message) {
+    this.forgetToken();
+    const cards = this.viewport?.querySelector('#server-cards');
+    if (!cards) return;
+    cards.innerHTML = '';
+    this.viewport.querySelector('#helper-pair-panel').hidden = false;
+    this.viewport.querySelector('#helper-unpair').hidden = true;
+    this.viewport.querySelector('#helper-state').textContent = message;
+    this.viewport.querySelector('#db-state').textContent =
+      'Pair this browser with the helper to browse local databases.';
+    this.setDatabaseControlsEnabled(false);
+  }
+
+  setDatabaseControlsEnabled(enabled) {
+    this.viewport
+      .querySelectorAll('.db-controls button, .db-controls input, .db-controls select')
+      .forEach((control) => {
+        control.disabled = !enabled;
+      });
+  }
+
+  async pairBrowser(code) {
+    const response = await this.request(
+      '/pair',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      },
+      false
+    );
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || `Pairing failed (${response.status})`);
+    this.authToken = body.token;
+    localStorage.setItem(HELPER_TOKEN_KEY, this.authToken);
+    await Promise.all([this.refresh(), this.loadWorlds()]);
+  }
+
+  async unpairBrowser() {
+    const response = await this.request('/unpair', { method: 'POST' });
+    if (!response.ok) throw new Error(`Could not unpair this browser (${response.status})`);
+    this.forgetToken();
+    await Promise.all([this.refresh(), this.loadWorlds()]);
+  }
+
   async db(pathPart) {
-    const res = await fetch(`${HELPER_URL}/db/${pathPart}`);
+    const res = await this.request(`/db/${pathPart}`);
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || String(res.status));
     return body;
@@ -91,6 +180,10 @@ export class ServerStatusPage extends BasePage {
 
   async loadWorlds() {
     const state = this.viewport.querySelector('#db-state');
+    if (!this.authToken) {
+      state.textContent = 'Pair this browser with the helper to browse local databases.';
+      return;
+    }
     try {
       this.worlds = (await this.db('worlds')).worlds;
       if (!this.worlds.length) {
@@ -171,7 +264,7 @@ export class ServerStatusPage extends BasePage {
 
   async start(key) {
     try {
-      const res = await fetch(`${HELPER_URL}/start/${key}`, { method: 'POST' });
+      const res = await this.request(`/start/${key}`, { method: 'POST' });
       if (!res.ok) throw new Error(String(res.status));
       setTimeout(() => this.refresh(), 5000);
     } catch {
@@ -188,6 +281,12 @@ export class ServerStatusPage extends BasePage {
       onSelectTool: () => {},
     });
     this.onClick = (e) => {
+      if (e.target.closest('#helper-unpair')) {
+        this.unpairBrowser().catch((err) => {
+          this.viewport.querySelector('#helper-state').textContent = err.message;
+        });
+        return;
+      }
       if (e.target.closest('#status-refresh')) this.refresh();
       if (e.target.closest('#db-load')) this.runDb('table');
       if (e.target.closest('#db-players')) this.runDb('players');
@@ -198,13 +297,30 @@ export class ServerStatusPage extends BasePage {
       if (e.target.id === 'db-world') this.onWorldChange();
       if (e.target.id === 'db-file') this.onFileChange();
     };
+    this.onSubmit = (e) => {
+      if (e.target.id !== 'helper-pair-form') return;
+      e.preventDefault();
+      const input = this.viewport.querySelector('#helper-pair-code');
+      const button = e.target.querySelector('button[type="submit"]');
+      button.disabled = true;
+      this.pairBrowser(input.value.trim())
+        .then(() => e.target.reset())
+        .catch((err) => {
+          this.viewport.querySelector('#helper-state').textContent = err.message;
+        })
+        .finally(() => {
+          button.disabled = false;
+        });
+    };
     this.viewport.addEventListener('click', this.onClick);
     this.viewport.addEventListener('change', this.onChange);
+    this.viewport.addEventListener('submit', this.onSubmit);
   }
 
   unbindEvents() {
     this.viewport?.removeEventListener('click', this.onClick);
     this.viewport?.removeEventListener('change', this.onChange);
+    this.viewport?.removeEventListener('submit', this.onSubmit);
     this.teardownSidebar?.();
     this.teardownSidebar = null;
   }

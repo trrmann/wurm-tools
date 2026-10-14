@@ -43,7 +43,7 @@
 
 - [x] World Map Explorer: select a positioned character, capture all five map layers in a radius of up to 1,000 tiles (clipped at map edges), and switch the display between surface, rock, cave, resources, and flags. Inspect four corner altitudes, cave floor/ceiling, resource IDs and flags. Tile and layer models provide the object-oriented view; the exact five binary map layers are stored compactly per snapshot in the separate local SQLite baseline. Verified a full 2,706,804-tile Adventure snapshot and read its raster and tile data back; a full-size centered baseline stores about 80 MB.
 
-- [ ] APPROVAL REQUIRED: Let the Render-hosted page read each user's local Wurm database through a paired localhost helper. Keep the helper bound to `127.0.0.1` and database access read-only; require per-device authentication for database and Steam-launch routes, allow only approved app origins, and provide opt-in login startup on Windows and Fedora. Validate HTTPS-to-localhost/private-network browser behavior. Do not expose the helper publicly or upload database contents.
+- [x] Approved Render-to-local database access through a paired loopback helper. Status, read-only database, and Steam-launch routes require a per-browser token; pairing uses an expiring local CLI code; only exact app origins are allowed. Added opt-in Windows logon-task and Fedora systemd startup. Validated HTTPS Render-origin pairing, authentication, and private-network preflight in a browser; no database contents are uploaded.
 
 ::::::do not proceed past this point without approval:::::
 
