@@ -227,3 +227,58 @@ export function listGroundItems(db, query) {
   );
   return { columns, rows: data };
 }
+
+// wurmcreatures.db: SKILLS.OWNER = CREATURES.WURMID; NUMBER is the skill id (names live in the jar).
+export function listCreatureSkills(db, wurmId) {
+  const columns = ['NUMBER', 'VALUE', 'MINVALUE', 'LASTUSED'];
+  if (!hasTable(db, 'SKILLS')) return { columns, rows: [] };
+  const data = rows(
+    db,
+    'SELECT NUMBER, VALUE, MINVALUE, LASTUSED FROM SKILLS WHERE OWNER = ? ORDER BY NUMBER LIMIT ?',
+    [toId(wurmId), MAX_LIMIT]
+  );
+  return { columns, rows: data };
+}
+
+// wurmzones.db: village bounds are tile coordinates. The Twitter key/secret columns are never selected.
+export function listVillages(db) {
+  const columns = [
+    'ID',
+    'NAME',
+    'MAYOR',
+    'KINGDOM',
+    'STARTX',
+    'STARTY',
+    'ENDX',
+    'ENDY',
+    'SURFACED',
+    'PERIMETER',
+    'DISBANDED',
+  ];
+  if (!hasTable(db, 'VILLAGES')) return { columns, rows: [] };
+  const data = rows(db, `SELECT ${columns.join(', ')} FROM VILLAGES LIMIT ?`, [MAX_LIMIT]);
+  return { columns, rows: data };
+}
+
+const STRUCTURE_KINDS = {
+  walls: ['ID', 'STRUCTURE', 'TYPE', 'TILEX', 'TILEY', 'LAYER', 'WALLORIENTATION', 'CURRENTQL'],
+  fences: ['ID', 'TYPE', 'TILEX', 'TILEY', 'LAYER', 'DIR', 'CURRENTQL'],
+  floors: ['ID', 'STRUCTURE', 'TYPE', 'TILEX', 'TILEY', 'LAYER', 'DIR', 'CURRENTQL'],
+  buildtiles: ['ID', 'STRUCTUREID', 'TILEX', 'TILEY', 'LAYER'],
+};
+
+// Structure pieces store TILEX/TILEY directly in tiles; LAYER is the floor level (0 = ground).
+export function listStructurePieces(db, kind, query = {}) {
+  const columns = STRUCTURE_KINDS[kind];
+  if (!columns) throw httpError(404, 'Unknown structure kind');
+  const table = kind.toUpperCase();
+  if (!hasTable(db, table)) return { columns, rows: [] };
+  const r = tileRegion(query);
+  const t = (v) => v / TILE_METRES;
+  const data = rows(
+    db,
+    `SELECT ${columns.join(', ')} FROM ${table} WHERE TILEX >= ? AND TILEX < ? AND TILEY >= ? AND TILEY < ? LIMIT ?`,
+    [t(r.x0), t(r.x1), t(r.y0), t(r.y1), MAX_LIMIT]
+  );
+  return { columns, rows: data };
+}

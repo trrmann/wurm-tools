@@ -13,6 +13,9 @@ import {
   listSkills,
   listInventory,
   listCreatures,
+  listCreatureSkills,
+  listVillages,
+  listStructurePieces,
   listGroundItems,
   browseTable,
   clampLimit,
@@ -111,6 +114,31 @@ describe('wurm-db', () => {
       'axe',
     ]);
     expect(() => listCreatures(db, { x: -1 })).toThrow();
+    db.close();
+  });
+
+  it('lists creature skills, villages and structure pieces', async () => {
+    const SQL = await initSqlJs();
+    const m = new SQL.Database();
+    m.run('CREATE TABLE SKILLS (OWNER INT, NUMBER INT, VALUE REAL, MINVALUE REAL, LASTUSED INT)');
+    m.run('INSERT INTO SKILLS VALUES (1,2,5,1,0),(2,1,9,1,0)');
+    m.run(
+      'CREATE TABLE VILLAGES (ID INT, NAME TEXT, MAYOR TEXT, KINGDOM INT, STARTX INT, STARTY INT, ENDX INT, ENDY INT, SURFACED INT, PERIMETER INT, DISBANDED INT, TWITKEY TEXT)'
+    );
+    m.run("INSERT INTO VILLAGES VALUES (1,'V','m',1,5,5,9,9,1,5,0,'secret')");
+    m.run(
+      'CREATE TABLE WALLS (ID INT, STRUCTURE INT, TYPE INT, TILEX INT, TILEY INT, LAYER INT, WALLORIENTATION INT, CURRENTQL REAL)'
+    );
+    m.run('INSERT INTO WALLS VALUES (1,1,1,10,10,0,0,50),(2,1,1,500,500,1,0,50)');
+    fs.writeFileSync(path.join(dir, 'Creative', 'sqlite', 'zones.db'), Buffer.from(m.export()));
+    const db = await openDb(dir, 'Creative', 'zones.db');
+    expect(listCreatureSkills(db, 1).rows).toHaveLength(1);
+    const v = listVillages(db);
+    expect(v.rows[0].NAME).toBe('V');
+    expect(v.columns).not.toContain('TWITKEY');
+    expect(listStructurePieces(db, 'walls', { x: 0, y: 0, w: 100, h: 100 }).rows).toHaveLength(1);
+    expect(listStructurePieces(db, 'walls').rows).toHaveLength(2);
+    expect(() => listStructurePieces(db, 'bogus')).toThrow();
     db.close();
   });
 
