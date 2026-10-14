@@ -10,6 +10,8 @@ import {
   openDb,
   listTables,
   listPlayers,
+  listSkills,
+  listInventory,
   browseTable,
   clampLimit,
   safeName,
@@ -46,6 +48,41 @@ describe('wurm-db', () => {
     expect(hit.total).toBe(1);
     expect(hit.rows[0].NAME).toBe('Bob');
     expect(() => browseTable(db, 'X"; DROP TABLE PLAYERS;--')).toThrow(/Unknown table/);
+    db.close();
+  });
+
+  it('joins live positions from a POSITION table when PLAYERS lacks them', async () => {
+    const SQL = await initSqlJs();
+    const mem = new SQL.Database();
+    mem.run('CREATE TABLE PLAYERS (WURMID INTEGER, NAME TEXT)');
+    mem.run('CREATE TABLE POSITION (WURMID INTEGER, POSX REAL, POSY REAL, POSZ REAL, LAYER INT)');
+    mem.run("INSERT INTO PLAYERS VALUES (1,'Alice'),(2,'Bob')");
+    mem.run('INSERT INTO POSITION VALUES (1, 3.5, 4.5, 1.25, 0)');
+    const file = path.join(dir, 'Creative', 'sqlite', 'positions.db');
+    fs.writeFileSync(file, Buffer.from(mem.export()));
+    const db = await openDb(dir, 'Creative', 'positions.db');
+    const result = listPlayers(db);
+    expect(result.columns).toEqual(['WURMID', 'NAME', 'POSX', 'POSY', 'POSZ', 'LAYER']);
+    expect(result.rows[0]).toMatchObject({ NAME: 'Alice', POSX: 3.5, LAYER: 0 });
+    expect(result.rows[1].POSX).toBeNull();
+    db.close();
+  });
+
+  it('joins skills and inventory by verified identifiers', async () => {
+    const SQL = await initSqlJs();
+    const m = new SQL.Database();
+    m.run('CREATE TABLE SKILLS (OWNER INT, NUMBER INT, VALUE REAL, MINVALUE REAL, LASTUSED INT)');
+    m.run('INSERT INTO SKILLS VALUES (1,2,30.5,1,0),(1,1,10,1,0),(2,1,99,1,0)');
+    m.run(
+      'CREATE TABLE ITEMS (WURMID INT, TEMPLATEID INT, NAME TEXT, QUALITYLEVEL REAL, PLACE INT, PARENTID INT)'
+    );
+    m.run("INSERT INTO ITEMS VALUES (5,1,'axe',50,0,77),(6,1,'pick',40,0,78)");
+    const file = path.join(dir, 'Creative', 'sqlite', 'joined.db');
+    fs.writeFileSync(file, Buffer.from(m.export()));
+    const db = await openDb(dir, 'Creative', 'joined.db');
+    expect(listSkills(db, '1').rows.map((r) => r.NUMBER)).toEqual([1, 2]);
+    expect(listInventory(db, 77).rows).toHaveLength(1);
+    expect(() => listSkills(db, 'x')).toThrow();
     db.close();
   });
 

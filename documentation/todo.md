@@ -35,12 +35,22 @@
 
 ## Planned Items & Backlog
 
-- Determine where live character positions are persisted; the inspected `PLAYERS` schema has no position columns.
-- Investigate parsing the server's binary `.map`/`.bmap` layers for terrain, elevation, borders, and resources before implementing map searches.
-- Add joined character skill/inventory views only after verifying the cross-database identifiers and relationships; generic table browsing is available now.
+- [x] Live character positions are in the `POSITION` table of `wurmplayers.db` (keyed by `WURMID`, with `POSX/POSY/POSZ/LAYER/ZONEID`); `listPlayers` joins it.
+- [x] `.map` layers decoded in `scripts/wurm-map.js`: 1024-byte header plus 2048x2048 4-byte records `[type, data, heightHi, heightLo]`; height is a big-endian int16 in decimetres (verified against item Z, median error 0.05 m). `flags.map` keeps its flag bits in the last byte; `resources.map` is `0xFFFFFFFF` when empty (other records not decoded). `protectedTiles.bmap` is a Java-serialized `boolean[2048][2048]` (empty in the sample world; axis order is `[x][y]`, verified from the server jar). Tile type ids are named from the server jar (`scripts/wurm-tiles.json`, e.g. 2 = Grass), and `readAltitudes` returns surface, rock, cave floor, soil depth and water depth in metres (sea level 0; sample world spans -60.9 m to 370.7 m).
+- [x] Joined skill/inventory views added (`/db/<world>/wurmplayers.db/skills/<wurmId>`, `/db/<world>/wurmitems.db/inventory/<inventoryId>`); verified `SKILLS.OWNER = PLAYERS.WURMID` and `ITEMS.PARENTID = PLAYERS.INVENTORYID`. Skill `NUMBER` is returned as an id (names live in the server jar).
 
 - add a local sqllite db on the client laptop to track info for the page in the future. this will not be allowed to update the actual wurm db, that is to be read only.
 
 - [ ] APPROVAL REQUIRED: Let the Render-hosted page read each user's local Wurm database through a paired localhost helper. Keep the helper bound to `127.0.0.1` and database access read-only; require per-device authentication for database and Steam-launch routes, allow only approved app origins, and provide opt-in login startup on Windows and Fedora. Validate HTTPS-to-localhost/private-network browser behavior. Do not expose the helper publicly or upload database contents.
 
 ::::::do not proceed past this point without approval:::::
+
+## Map object loading (Fedora)
+
+- `scripts/wurm-map.js` now exposes `loadTile(dir, x, y)` / `loadRegion(dir, x0, y0, w, h)` returning plain objects:
+  surface/rock/cave layers (type name, tags, height in m, decoded data byte), resources (cave/world, null = empty) and flags (botanizable/foragable/gatherable + raw).
+- Data byte: trees/bushes → foliage age + growth stage; grass → growth, grass type, flower; other tiles → `{raw}` or null.
+  Lookup tables are generated from the server jar into `scripts/wurm-tile-data.json`; per-tile tags in `scripts/wurm-tiles.json`.
+- Cave ceiling: the `map_cave` data byte is the ceiling height above the floor in dm (`CaveTile.decodeCeilingHeight`); `loadTile` exposes `cave.ceiling` in metres (null when 0). Sample: open cave floors read 2.7-3.3 m.
+- Data byte on other tiles: Clay, Tar and Mycelium use the grass layout (observed 64/128/192 + low bits); all other terrain tiles are 0. Rock-layer "Rock" tiles carry raw 202/222 (meaning unknown, 137 tiles).
+- Protected tiles: `Zones.isTileProtected(x, y)` reads `protectedTiles[x][y]`, so `isProtected(x, y)` is correct as is.

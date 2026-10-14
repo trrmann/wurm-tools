@@ -10,7 +10,16 @@ import { execFile, fork, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-import { listWorlds, openDb, listTables, listPlayers, browseTable, httpError } from './wurm-db.js';
+import {
+  listWorlds,
+  openDb,
+  listTables,
+  listPlayers,
+  listSkills,
+  listInventory,
+  browseTable,
+  httpError,
+} from './wurm-db.js';
 
 export const PORT = Number(process.env.WURM_HELPER_PORT || 5180);
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
@@ -163,6 +172,8 @@ export function startTarget(key) {
 //   /db/worlds
 //   /db/<world>/<db>/tables
 //   /db/<world>/<db>/players
+//   /db/<world>/wurmplayers.db/skills/<wurmId>
+//   /db/<world>/wurmitems.db/inventory/<inventoryId>
 //   /db/<world>/<db>/table/<name>?limit=&offset=&search=
 export async function handleDb(url) {
   const dir = findInstall(TARGETS.server);
@@ -175,6 +186,8 @@ export async function handleDb(url) {
   try {
     if (kind === 'tables') return { tables: listTables(db) };
     if (kind === 'players') return listPlayers(db);
+    if (kind === 'skills' && name) return listSkills(db, name);
+    if (kind === 'inventory' && name) return listInventory(db, name);
     if (kind === 'table' && name) {
       return browseTable(db, name, {
         limit: url.searchParams.get('limit'),
