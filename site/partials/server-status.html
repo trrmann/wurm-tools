@@ -11,6 +11,15 @@
       <div id="helper-state" class="server-helper-state" role="status">Checking helper...</div>
       <div id="helper-install-panel" hidden>
         <p>
+          <button type="button" id="helper-launch" class="btn btn-primary">Start helper</button>
+          Works after the one-time setup below registers the <code>wurm-helper://</code> launcher
+          (Windows and Fedora).
+        </p>
+        <p>
+          <strong>One-time setup, both Windows and Fedora:</strong>
+          <code>npm run helper:protocol:install</code>
+        </p>
+        <p>
           The browser cannot start programs itself, so the helper must run on your computer. Run
           these in a terminal inside the wurm-tools folder, then this page will connect
           automatically.

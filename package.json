@@ -13,6 +13,8 @@
     "helper:stop": "node scripts/wurm-local.js --stop",
     "helper:unpair": "node scripts/wurm-local.js --unpair-all",
     "helper:startup:install": "node scripts/helper-startup.js install",
+    "helper:protocol:install": "node scripts/helper-startup.js protocol-install",
+    "helper:protocol:remove": "node scripts/helper-startup.js protocol-remove",
     "helper:startup:remove": "node scripts/helper-startup.js remove",
     "build": "vite build",
     "preview": "vite preview",

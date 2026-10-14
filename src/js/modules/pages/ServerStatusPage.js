@@ -5,6 +5,7 @@ import { fill, getShell, getTemplate } from '../template.js';
 import { renderShell, setHeader, initSidebar } from '../shell.js';
 
 export const HELPER_URL = 'http://127.0.0.1:5180';
+export const HELPER_PROTOCOL_URL = 'wurm-helper://start';
 const HELPER_TOKEN_KEY = 'wurm-tools-helper-token-v1';
 
 // Turns the helper's /status payload into card view-models.
@@ -289,6 +290,14 @@ export class ServerStatusPage extends BasePage {
         this.unpairBrowser().catch((err) => {
           this.viewport.querySelector('#helper-state').textContent = err.message;
         });
+        return;
+      }
+      if (e.target.closest('#helper-launch')) {
+        window.location.href = HELPER_PROTOCOL_URL;
+        this.viewport.querySelector('#helper-state').textContent =
+          'Asking your system to start the helper... allow the browser prompt if shown.';
+        clearTimeout(this.retryTimer);
+        this.retryTimer = setTimeout(() => this.refresh(), 2500);
         return;
       }
       if (e.target.closest('#status-refresh')) this.refresh();
