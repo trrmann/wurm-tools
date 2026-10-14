@@ -49,6 +49,24 @@ describe('wurm-db', () => {
     db.close();
   });
 
+  it('writes a local SQLite file and reads the data back after reopening it', async () => {
+    const file = path.join(dir, 'Creative', 'sqlite', 'roundtrip.db');
+    const SQL = await initSqlJs();
+    const created = new SQL.Database();
+    created.run('CREATE TABLE roundtrip (id INTEGER PRIMARY KEY, value TEXT NOT NULL)');
+    created.run('INSERT INTO roundtrip (value) VALUES (?)', ['fedora-sqlite-ok']);
+    fs.writeFileSync(file, Buffer.from(created.export()));
+    created.close();
+
+    const reopened = await openDb(dir, 'Creative', 'roundtrip.db');
+    try {
+      const result = browseTable(reopened, 'roundtrip');
+      expect(result.rows).toEqual([{ id: 1, value: 'fedora-sqlite-ok' }]);
+    } finally {
+      reopened.close();
+    }
+  });
+
   it('rejects unsafe names and clamps limits', async () => {
     expect(safeName('../x')).toBe(false);
     await expect(openDb(dir, '..', 'a.db')).rejects.toThrow(/Invalid/);

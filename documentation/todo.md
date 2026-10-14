@@ -29,11 +29,14 @@
 - [x] ensure no extranious backwards compatibility files exist, this should be the definitive single point to call the files and this is still base version, so there is no reversion at this point.
 
 - [x] Navigation partial (`site/partials/nav.html`, `src/js/modules/partials/nav.js`) loaded like the header/footer/sidebar; mounts in the header's `#nav-slot` (hidden by default until the site uses it)
+- [x] Fedora local Wurm helper and status page detect the installed server/client, report process state, and launch either through Steam; validated on the Fedora laptop.
+- [x] Read-only explorer discovers Adventure/Creative SQLite worlds and browses their tables. Local schemas expose player identity/power/kingdom/inventory references, separate skill records, and item coordinates; player coordinates are not in `PLAYERS`.
+- [x] Verified local SQLite persistence with a repeatable test that creates a database file, writes a row, reopens it, and reads the row back without modifying game databases.
 
 ## Planned Items & Backlog
 
-- create a local wurm server status page - determine if there is a local server installed, if so, is it currently running. if possible create hooks to issue start commands to start it, and start the client to connect to it as a separate option.
-
-- if there is a local server installed, determine what we can see in the local stored database data. i would like to see if we can see characters and thier locations and character status(gm status, skill list, inventory), and pull map data such as at a given location coordinate the corner elevations and tile contents (object and terrian) and border contents. potentially even mine info at a given location. potentially even search for ore tiles, or specific terrain tiles nearby. also poentialy search for other objects including mobs.
+- Determine where live character positions are persisted; the inspected `PLAYERS` schema has no position columns.
+- Investigate parsing the server's binary `.map`/`.bmap` layers for terrain, elevation, borders, and resources before implementing map searches.
+- Add joined character skill/inventory views only after verifying the cross-database identifiers and relationships; generic table browsing is available now.
 
 ::::::do not proceed past this point without approval:::::
