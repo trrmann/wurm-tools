@@ -161,3 +161,124 @@ export function listInventory(db, inventoryId) {
   );
   return { columns, rows: data };
 }
+
+// World coordinates (POSX/POSY) are in metres; one tile is 4 m, so tile = floor(pos / 4).
+export const TILE_METRES = 4;
+
+function tileRegion(q = {}) {
+  const num = (v, d) => (v === undefined || v === null || v === '' ? d : Number(v));
+  const x = num(q.x, 0);
+  const y = num(q.y, 0);
+  const w = num(q.w, 2048);
+  const h = num(q.h, 2048);
+  for (const n of [x, y, w, h])
+    if (!Number.isSafeInteger(n) || n < 0) throw httpError(400, 'Invalid region');
+  return {
+    x0: x * TILE_METRES,
+    y0: y * TILE_METRES,
+    x1: (x + w) * TILE_METRES,
+    y1: (y + h) * TILE_METRES,
+  };
+}
+
+const hasTable = (db, name) =>
+  rows(db, "SELECT name FROM sqlite_master WHERE type='table'").some((t) => t.name === name);
+
+// wurmcreatures.db: CREATURES.WURMID = POSITION.WURMID. LAYER 0 is the surface, -1 the caves.
+export function listCreatures(db, query) {
+  const columns = [
+    'WURMID',
+    'NAME',
+    'TEMPLATENAME',
+    'TEMPLATEID',
+    'SEX',
+    'KINGDOM',
+    'DEAD',
+    'LAYER',
+    'TILEX',
+    'TILEY',
+    'POSZ',
+  ];
+  if (!hasTable(db, 'CREATURES') || !hasTable(db, 'POSITION')) return { columns, rows: [] };
+  const r = tileRegion(query);
+  const data = rows(
+    db,
+    `SELECT c.WURMID, c.NAME, c.TEMPLATENAME, c.TEMPLATEID, c.SEX, c.KINGDOM, c.DEAD, p.LAYER,
+            CAST(p.POSX / ${TILE_METRES} AS INTEGER) AS TILEX, CAST(p.POSY / ${TILE_METRES} AS INTEGER) AS TILEY, p.POSZ
+     FROM CREATURES c JOIN POSITION p ON p.WURMID = c.WURMID
+     WHERE p.POSX >= ? AND p.POSX < ? AND p.POSY >= ? AND p.POSY < ? LIMIT ?`,
+    [r.x0, r.x1, r.y0, r.y1, MAX_LIMIT]
+  );
+  return { columns, rows: data };
+}
+
+// wurmitems.db: items lying on the ground have PARENTID = -10 and their own POSX/POSY/POSZ.
+// ITEMS has no layer column, so POSZ and ZONEID are returned for callers to interpret.
+export function listGroundItems(db, query) {
+  const columns = ['WURMID', 'TEMPLATEID', 'NAME', 'QUALITYLEVEL', 'TILEX', 'TILEY', 'POSZ'];
+  if (!hasTable(db, 'ITEMS')) return { columns, rows: [] };
+  const r = tileRegion(query);
+  const data = rows(
+    db,
+    `SELECT WURMID, TEMPLATEID, NAME, QUALITYLEVEL,
+            CAST(POSX / ${TILE_METRES} AS INTEGER) AS TILEX, CAST(POSY / ${TILE_METRES} AS INTEGER) AS TILEY, POSZ
+     FROM ITEMS WHERE PARENTID = -10 AND POSX >= ? AND POSX < ? AND POSY >= ? AND POSY < ? LIMIT ?`,
+    [r.x0, r.x1, r.y0, r.y1, MAX_LIMIT]
+  );
+  return { columns, rows: data };
+}
+
+// wurmcreatures.db: SKILLS.OWNER = CREATURES.WURMID; NUMBER is the skill id (names live in the jar).
+export function listCreatureSkills(db, wurmId) {
+  const columns = ['NUMBER', 'VALUE', 'MINVALUE', 'LASTUSED'];
+  if (!hasTable(db, 'SKILLS')) return { columns, rows: [] };
+  const data = rows(
+    db,
+    'SELECT NUMBER, VALUE, MINVALUE, LASTUSED FROM SKILLS WHERE OWNER = ? ORDER BY NUMBER LIMIT ?',
+    [toId(wurmId), MAX_LIMIT]
+  );
+  return { columns, rows: data };
+}
+
+// wurmzones.db: village bounds are tile coordinates. The Twitter key/secret columns are never selected.
+export function listVillages(db) {
+  const columns = [
+    'ID',
+    'NAME',
+    'MAYOR',
+    'KINGDOM',
+    'STARTX',
+    'STARTY',
+    'ENDX',
+    'ENDY',
+    'SURFACED',
+    'PERIMETER',
+    'DISBANDED',
+  ];
+  if (!hasTable(db, 'VILLAGES')) return { columns, rows: [] };
+  const data = rows(db, `SELECT ${columns.join(', ')} FROM VILLAGES LIMIT ?`, [MAX_LIMIT]);
+  return { columns, rows: data };
+}
+
+const STRUCTURE_KINDS = {
+  walls: ['ID', 'STRUCTURE', 'TYPE', 'TILEX', 'TILEY', 'LAYER', 'WALLORIENTATION', 'CURRENTQL'],
+  fences: ['ID', 'TYPE', 'TILEX', 'TILEY', 'LAYER', 'DIR', 'CURRENTQL'],
+  floors: ['ID', 'STRUCTURE', 'TYPE', 'TILEX', 'TILEY', 'LAYER', 'DIR', 'CURRENTQL'],
+  buildtiles: ['ID', 'STRUCTUREID', 'TILEX', 'TILEY', 'LAYER'],
+};
+
+// Structure pieces store TILEX/TILEY directly in tiles; LAYER is the floor level (0 = ground).
+export function listStructurePieces(db, kind, query = {}) {
+  const columns = STRUCTURE_KINDS[kind];
+  if (!columns) throw httpError(404, 'Unknown structure kind');
+  const table = kind.toUpperCase();
+  if (!hasTable(db, table)) return { columns, rows: [] };
+  const r = tileRegion(query);
+  const t = (v) => v / TILE_METRES;
+  const data = rows(
+    db,
+    `SELECT ${columns.join(', ')} FROM ${table} WHERE TILEX >= ? AND TILEX < ? AND TILEY >= ? AND TILEY < ? LIMIT ?`,
+    [t(r.x0), t(r.x1), t(r.y0), t(r.y1), MAX_LIMIT]
+  );
+  return { columns, rows: data };
+}

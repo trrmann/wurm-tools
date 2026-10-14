@@ -54,3 +54,18 @@
 - Cave ceiling: the `map_cave` data byte is the ceiling height above the floor in dm (`CaveTile.decodeCeilingHeight`); `loadTile` exposes `cave.ceiling` in metres (null when 0). Sample: open cave floors read 2.7-3.3 m.
 - Data byte on other tiles: Clay, Tar and Mycelium use the grass layout (observed 64/128/192 + low bits); all other terrain tiles are 0. Rock-layer "Rock" tiles carry raw 202/222 (meaning unknown, 137 tiles).
 - Protected tiles: `Zones.isTileProtected(x, y)` reads `protectedTiles[x][y]`, so `isProtected(x, y)` is correct as is.
+
+## Undiscovered data (Fedora)
+
+- [ ] Map: meaning of rock-layer "Rock" data bytes 202/222 (137 tiles); `resources.map` quantity vs type; field/crop tiles (type, age) and real protected tiles are untested because the sample world has none.
+- [x] Creatures: `/db/<world>/wurmcreatures.db/creatures?x=&y=&w=&h=` joins `CREATURES` and `POSITION` by tile region (tile = floor(pos / 4 m); `LAYER` 0 surface, -1 cave); names come from `TEMPLATENAME` (`TEMPLATEID` is -1 in the sample). Skills at `/db/<world>/wurmcreatures.db/skills/<wurmId>` (`SKILLS.OWNER` = creature `WURMID`; many creatures have none).
+- [x] Ground items (`PARENTID = -10`) by tile region at `/db/<world>/wurmitems.db/ground`, named by `ITEMS.NAME`; `ITEMS` has no layer column, so cave vs surface is still to be resolved.
+- [ ] Items: remaining `ITEMS` detail, `ITEMDATA`, `SPELLEFFECTS`, `LOCKS`, `ITEMKEYS`, `COINS`; template id to name from the jar.
+- [x] Structures: `/db/<world>/wurmzones.db/walls|fences|floors|buildtiles?x=&y=&w=&h=` use tile coordinates directly (no /4) and `LAYER` as floor level; verified 316 walls on layer 0.
+- [ ] Structures (remaining): `WALLS`, `FENCES`, `FLOORS`, `BUILDTILES`, `DOORS`, `GATES`, `STRUCTURES`; verify floor-level/layer conventions against the map.
+- [x] `/db/<world>/wurmzones.db/villages` returns bounds in tiles (Twitter credential columns are never selected).
+- [ ] Villages and kingdoms (remaining): `VILLAGES` link to structures, `CITIZENS`, `GUARDS`, `KINGDOMS`, `HOTA_ITEMS`, `MINING`, `FOCUSZONES`.
+- [ ] Deities, entities and economy: `DEITIES`, `ENTITIES`, `CONTROLLERS`, `LOCALSUPPLYDEMAND`, `TRADER`.
+- [ ] Player extras: `ACHIEVEMENTS`, `TITLES`, `AFFINITIES`, `SKILLCHANCES`, `CALENDAR`, `SERVERPROPERTIES`.
+- [ ] Id-to-name maps from the server jar for skills, item templates, creature templates and deities.
+- [ ] Sensitive tables (accounts, IP history, email history, tickets): schema and counts only unless approved.

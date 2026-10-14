@@ -17,6 +17,11 @@ import {
   listPlayers,
   listSkills,
   listInventory,
+  listCreatures,
+  listCreatureSkills,
+  listVillages,
+  listStructurePieces,
+  listGroundItems,
   browseTable,
   httpError,
 } from './wurm-db.js';
@@ -174,6 +179,11 @@ export function startTarget(key) {
 //   /db/<world>/<db>/players
 //   /db/<world>/wurmplayers.db/skills/<wurmId>
 //   /db/<world>/wurmitems.db/inventory/<inventoryId>
+//   /db/<world>/wurmcreatures.db/creatures?x=&y=&w=&h=   (tile region)
+//   /db/<world>/wurmcreatures.db/skills/<wurmId>
+//   /db/<world>/wurmzones.db/villages
+//   /db/<world>/wurmzones.db/walls|fences|floors|buildtiles?x=&y=&w=&h=
+//   /db/<world>/wurmitems.db/ground?x=&y=&w=&h=   (items on the ground)
 //   /db/<world>/<db>/table/<name>?limit=&offset=&search=
 export async function handleDb(url) {
   const dir = findInstall(TARGETS.server);
@@ -186,8 +196,16 @@ export async function handleDb(url) {
   try {
     if (kind === 'tables') return { tables: listTables(db) };
     if (kind === 'players') return listPlayers(db);
-    if (kind === 'skills' && name) return listSkills(db, name);
+    if (kind === 'skills' && name) {
+      return dbFile === 'wurmcreatures.db' ? listCreatureSkills(db, name) : listSkills(db, name);
+    }
+    if (kind === 'villages') return listVillages(db);
+    if (kind in { walls: 1, fences: 1, floors: 1, buildtiles: 1 }) {
+      return listStructurePieces(db, kind, Object.fromEntries(url.searchParams));
+    }
     if (kind === 'inventory' && name) return listInventory(db, name);
+    if (kind === 'creatures') return listCreatures(db, Object.fromEntries(url.searchParams));
+    if (kind === 'ground') return listGroundItems(db, Object.fromEntries(url.searchParams));
     if (kind === 'table' && name) {
       return browseTable(db, name, {
         limit: url.searchParams.get('limit'),
