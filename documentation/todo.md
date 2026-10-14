@@ -119,3 +119,8 @@ also search for an online copy of the rules book to see the definitions of the d
 the equation elements collection is the basis for a heros game object, that can be a character, base, vehicle, equipment, etc. each of the have body shapes and point level classifications. also they have a object model type, that distinguishes from just a physical object, to a non-sentient vrs sentient object, mobile vrs non-mobile, etc. where the sentient mobile base will be a non-player and player character.
 
 the world is create of a collection of these objects. this is nt the wurm world. but i will need an object creation page that can store in the local sqllite database.
+
+- [x] Map edit interface and work report (helper mode); browser-only edits still open
+
+- Confirm real pile sizes per material (clay differs from dirt) and set them as defaults in `scripts/wurm-piles.js`.
+- Browser-only (IndexedDB) edit support.

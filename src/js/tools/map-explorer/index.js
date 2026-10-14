@@ -1,5 +1,12 @@
 import template from '../../../../site/partials/tools/map-explorer.html?raw';
 import tileTypes from '../../../../scripts/wurm-tiles.json';
+import {
+  DEFAULT_PILE_DM,
+  dmToPiles,
+  materialFor,
+  normalizeRates,
+  pilesToDm,
+} from '../../../../scripts/wurm-piles.js';
 import { MapTile } from '../../../../scripts/wurm-map-model.js';
 import { fill, getShell } from '../../modules/template.js';
 import {
@@ -172,10 +179,14 @@ export function mount(container) {
   let activeSnapshotId = null;
   let activeSnapshot = null;
   let selectedTile = null;
+  let selectedTileData = null;
   let raster = null;
   let rasterLayer = null;
   let waterDepthRaster = null;
   let playersById = new Map();
+  const editBox = element('#map-edit');
+  const showEdited = element('#map-show-edited');
+  const editLayer = element('#map-edit-layer');
   // true when the helper is unreachable: baselines then live only in this browser
   let offline = false;
 
@@ -323,8 +334,9 @@ export function mount(container) {
   async function fetchRaster(id, requestedLayer) {
     const layer = requestedLayer === 'resources' ? 'ores' : requestedLayer;
     if (offline) return rasterLocal(id, layer);
+    const edited = showEdited.checked ? '&edited=1' : '';
     const response = await fetch(
-      `${HELPER_URL}/map/snapshots/${encodeURIComponent(id)}/raster?layer=${encodeURIComponent(layer)}`,
+      `${HELPER_URL}/map/snapshots/${encodeURIComponent(id)}/raster?layer=${encodeURIComponent(layer)}${edited}`,
       { headers: authHeaders(), signal }
     );
     if (!response.ok) {
@@ -428,36 +440,115 @@ export function mount(container) {
     return value === null || value === undefined ? '—' : `${Number(value).toFixed(1)} m`;
   }
 
-  function showCorners(corners) {
+  const RATES_KEY = 'wurm-tools-pile-rates-v1';
+  const TILE_LENGTH_M = 4;
+  const CORNER_NAMES = ['northWest', 'northEast', 'southWest', 'southEast'];
+  let pileRates = normalizeRates(JSON.parse(localStorage.getItem(RATES_KEY) || '{}'));
+
+  const materialOf = (layer, tile) => materialFor(layer, tile?.[layer]?.name);
+
+  function renderRates() {
+    const box = element('#map-rates');
+    box.replaceChildren();
+    for (const material of Object.keys(DEFAULT_PILE_DM)) {
+      const label = document.createElement('label');
+      label.append(`${material}: dm per pile `);
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0.01';
+      input.step = 'any';
+      input.value = pileRates[material];
+      input.addEventListener('change', () => {
+        pileRates = normalizeRates({ ...pileRates, [material]: input.value });
+        input.value = pileRates[material];
+        localStorage.setItem(RATES_KEY, JSON.stringify(pileRates));
+        updateEditFields();
+        if (selectedTile) void loadTile(selectedTile.x, selectedTile.y);
+      });
+      label.append(input);
+      box.append(label);
+    }
+  }
+
+  const toDm = (meters) =>
+    meters === null || meters === undefined ? null : Math.round(meters * 10);
+
+  function slopeText(from, to) {
+    if (from === null || to === null) return '—';
+    const diff = to - from;
+    const percent = (diff / 10 / TILE_LENGTH_M) * 100;
+    const degrees = (Math.atan(diff / 10 / TILE_LENGTH_M) * 180) / Math.PI;
+    return `${diff > 0 ? '+' : ''}${diff} dm (${percent.toFixed(0)}%, ${degrees.toFixed(1)}°)`;
+  }
+
+  const LAYER_TITLES = { surface: 'Surface', rock: 'Rock', cave: 'Cave floor' };
+
+  function showCorners(corners, tile) {
     const target = element('#map-corners');
     target.replaceChildren();
+    const add = (tag, text, parent) => {
+      const node = document.createElement(tag);
+      node.textContent = text;
+      parent.append(node);
+      return node;
+    };
     for (const [layer, values] of Object.entries(corners)) {
-      const heading = document.createElement('h5');
-      heading.textContent = layer === 'surface' ? 'Surface' : 'Rock';
+      add('h5', LAYER_TITLES[layer] ?? layer, target);
+      const material = materialOf(layer, tile);
+      const dm = Object.fromEntries(CORNER_NAMES.map((name) => [name, toDm(values[name])]));
+      const base = layer === 'surface' ? corners.rock : layer === 'cave' ? corners.rock : null;
+      const depthLabel =
+        layer === 'surface'
+          ? `Piles of ${material} above rock`
+          : layer === 'cave'
+            ? 'Piles of rock shards up to rock layer'
+            : 'Height in piles of rock shards';
       const table = document.createElement('table');
-      const head = document.createElement('thead');
-      const header = document.createElement('tr');
-      for (const text of ['', 'West', 'East']) {
-        const cell = document.createElement('th');
-        cell.textContent = text;
-        header.append(cell);
+      const head = document.createElement('tr');
+      for (const text of ['Corner', 'Elevation', 'Height (dm)', depthLabel]) add('th', text, head);
+      table.append(head);
+      for (const name of CORNER_NAMES) {
+        const row = document.createElement('tr');
+        add('td', name.replace(/([A-Z])/g, ' $1').toLowerCase(), row);
+        add('td', formatAltitude(values[name]), row);
+        add('td', dm[name] === null ? '—' : String(dm[name]), row);
+        const rockDm = base ? toDm(base[name]) : null;
+        const amount = base
+          ? dm[name] === null || rockDm === null
+            ? null
+            : layer === 'surface'
+              ? dm[name] - rockDm
+              : rockDm - dm[name]
+          : dm[name];
+        add(
+          'td',
+          amount === null
+            ? '—'
+            : dmToPiles(amount, layer === 'surface' ? material : 'rock shards', pileRates)
+                .toFixed(2)
+                .replace(/\.?0+$/, ''),
+          row
+        );
+        table.append(row);
       }
-      head.append(header);
-      const body = document.createElement('tbody');
-      for (const [rowName, north, south] of [
-        ['North', values.northWest, values.northEast],
-        ['South', values.southWest, values.southEast],
+      target.append(table);
+      const slopes = document.createElement('table');
+      const slopeHead = document.createElement('tr');
+      add('th', 'Edge', slopeHead);
+      add('th', 'Slope (A → B)', slopeHead);
+      slopes.append(slopeHead);
+      for (const [label, from, to] of [
+        ['North (NW → NE)', 'northWest', 'northEast'],
+        ['East (NE → SE)', 'northEast', 'southEast'],
+        ['South (SW → SE)', 'southWest', 'southEast'],
+        ['West (NW → SW)', 'northWest', 'southWest'],
       ]) {
         const row = document.createElement('tr');
-        for (const text of [rowName, formatAltitude(north), formatAltitude(south)]) {
-          const cell = document.createElement('td');
-          cell.textContent = text;
-          row.append(cell);
-        }
-        body.append(row);
+        add('td', label, row);
+        add('td', slopeText(dm[from], dm[to]), row);
+        slopes.append(row);
       }
-      table.append(head, body);
-      target.append(heading, table);
+      target.append(slopes);
     }
   }
 
@@ -469,9 +560,11 @@ export function mount(container) {
       const result = offline
         ? await tileLocal(activeSnapshotId, x, y)
         : await request(
-            `/map/snapshots/${encodeURIComponent(activeSnapshotId)}/tile?x=${x}&y=${y}`
+            `/map/snapshots/${encodeURIComponent(activeSnapshotId)}/tile?x=${x}&y=${y}${showEdited.checked ? '&edited=1' : ''}`
           );
       const tile = new MapTile(result.tile);
+      selectedTileData = tile;
+      updateEditFields();
       element('#map-tile-empty').hidden = true;
       element('#map-tile-data').hidden = false;
       element('#map-coordinates').textContent = `${tile.x}, ${tile.y}`;
@@ -496,7 +589,7 @@ export function mount(container) {
           .filter(([key, value]) => key !== 'raw' && value)
           .map(([key]) => key)
           .join(', ') || 'none';
-      showCorners(result.cornerAltitudes);
+      showCorners(result.cornerAltitudes, tile);
     } catch (error) {
       showError(error);
     }
@@ -542,6 +635,7 @@ export function mount(container) {
     const custom = element('#map-area').value === 'custom';
     element('#map-width').disabled = !custom;
     element('#map-height').disabled = !custom;
+    editBox.disabled = offline || !activeSnapshotId;
     goToCharacterButton.disabled =
       !bounds || (!activeSnapshot && !playersById.has(String(playerSelect.value)));
   }
@@ -675,6 +769,150 @@ export function mount(container) {
       button.disabled = false;
     }
   }
+
+  const editPath = (suffix = '') =>
+    `/map/snapshots/${encodeURIComponent(activeSnapshotId)}/${suffix || 'edits'}`;
+
+  function updateEditFields() {
+    element('#map-edit-piles-note').textContent =
+      `Material: ${materialOf(editLayer.value, selectedTileData)}; 1 pile = ${
+        pileRates[materialOf(editLayer.value, selectedTileData)]
+      } dm`;
+    const terrain = ['surface', 'rock', 'cave'].includes(editLayer.value);
+    element('#map-edit-terrain').hidden = !terrain;
+    element('#map-edit-raw').hidden = terrain;
+  }
+
+  async function refreshAfterEdit() {
+    await loadRaster(activeSnapshotId, layerSelect.value);
+    if (selectedTile) await loadTile(selectedTile.x, selectedTile.y);
+    if (element('#map-report-view').textContent) await showReport();
+  }
+
+  async function applyEdit() {
+    if (!activeSnapshotId || !selectedTile) throw new Error('Select a tile first');
+    const set = {};
+    const read = (selector) => element(selector).value.trim();
+    if (['surface', 'rock', 'cave'].includes(editLayer.value)) {
+      if (read('#map-edit-type') !== '') set.type = Number(read('#map-edit-type'));
+      if (read('#map-edit-data') !== '') set.data = Number(read('#map-edit-data'));
+      if (read('#map-edit-height') !== '') set.heightDm = Number(read('#map-edit-height'));
+      if (read('#map-edit-piles') !== '') {
+        set.deltaDm = pilesToDm(
+          Number(read('#map-edit-piles')),
+          materialOf(editLayer.value, selectedTileData),
+          pileRates
+        );
+      }
+    } else if (read('#map-edit-value') !== '') {
+      set.value = Number(read('#map-edit-value'));
+    }
+    if (!Object.keys(set).length) throw new Error('Enter at least one value to change');
+    const radius = Number(element('#map-edit-brush').value);
+    const result = await request(editPath(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        layer: editLayer.value,
+        x0: selectedTile.x - radius,
+        y0: selectedTile.y - radius,
+        x1: selectedTile.x + radius,
+        y1: selectedTile.y + radius,
+        set,
+      }),
+    });
+    state.textContent = `Edit applied: ${result.changed} changed, ${result.reverted} back to baseline.`;
+    await refreshAfterEdit();
+  }
+
+  async function resetEdits(layer) {
+    const query = layer ? `?layer=${encodeURIComponent(layer)}` : '';
+    const label = layer ? `${layer} layer edits` : 'all edits';
+    if (!window.confirm(`Discard ${label} for this baseline? The baseline itself is unchanged.`)) {
+      return;
+    }
+    const result = await request(`${editPath()}${query}`, { method: 'DELETE' });
+    state.textContent = `Discarded ${result.removed} edited tile records.`;
+    await refreshAfterEdit();
+  }
+
+  const ratesQuery = () => encodeURIComponent(JSON.stringify(pileRates));
+
+  async function showReport() {
+    const report = await request(`${editPath()}?limit=200&rates=${ratesQuery()}`);
+    const view = element('#map-report-view');
+    view.replaceChildren();
+    const heading = document.createElement('h4');
+    heading.textContent = `Work to be done: ${report.totalChanges.toLocaleString()} tile changes`;
+    view.append(heading);
+    if (!report.totalChanges) {
+      view.append('No edits compared with the baseline.');
+      return;
+    }
+    const list = document.createElement('ul');
+    for (const [layer, info] of Object.entries(report.byLayer)) {
+      const item = document.createElement('li');
+      item.textContent = `${layer}: ${info.tiles.toLocaleString()} tiles within (${info.minX}, ${info.minY}) – (${info.maxX}, ${info.maxY})`;
+      list.append(item);
+    }
+    for (const m of report.materials) {
+      const item = document.createElement('li');
+      item.textContent = `${m.material}: dig ${+m.dugPiles.toFixed(2)} piles, add ${+m.raisedPiles.toFixed(2)} piles (net ${+m.netPiles.toFixed(2)}) over ${m.points.toLocaleString()} corner points`;
+      list.append(item);
+    }
+    for (const change of report.typeChanges) {
+      const item = document.createElement('li');
+      item.textContent = `${change.layer}: ${change.from} → ${change.to} × ${change.tiles.toLocaleString()}`;
+      list.append(item);
+    }
+    view.append(list);
+    if (report.truncated) {
+      view.append(
+        `Showing the first ${report.changes.length} summaries; download the full report.`
+      );
+    }
+  }
+
+  async function downloadReport(kind) {
+    let blob;
+    let name;
+    if (kind === 'csv') {
+      const { csv } = await request(`${editPath('report-csv')}?rates=${ratesQuery()}`);
+      blob = new Blob([csv], { type: 'text/csv' });
+      name = 'csv';
+    } else {
+      const report = await request(`${editPath()}?limit=1000000000&rates=${ratesQuery()}`);
+      blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+      name = 'json';
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `wurm-map-work-report-${activeSnapshotId.slice(0, 8)}.${name}`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+
+  const typeSelect = element('#map-edit-type');
+  for (const [id, info] of Object.entries(tileTypes)) {
+    typeSelect.append(new Option(`${info.name} (${id})`, id));
+  }
+  renderRates();
+  updateEditFields();
+  editLayer.addEventListener('change', updateEditFields);
+  showEdited.addEventListener('change', () => refreshAfterEdit().catch(showError));
+  element('#map-edit-apply').addEventListener('click', () => applyEdit().catch(showError));
+  element('#map-edit-reset').addEventListener('click', () =>
+    resetEdits(editLayer.value).catch(showError)
+  );
+  element('#map-edit-reset-all').addEventListener('click', () => resetEdits().catch(showError));
+  element('#map-report').addEventListener('click', () => showReport().catch(showError));
+  element('#map-report-csv').addEventListener('click', () =>
+    downloadReport('csv').catch(showError)
+  );
+  element('#map-report-json').addEventListener('click', () =>
+    downloadReport('json').catch(showError)
+  );
 
   function onCanvasClick(event) {
     if (!bounds || !canvas.width) return;

@@ -14,7 +14,7 @@ import { oreKind, oreTiles, summarizeOres, tileOre } from './wurm-ore.js';
 export const SNAPSHOT_RADIUS = 1000;
 export const EXPORT_FORMAT = 'wurm-tools-map-baseline';
 export const EXPORT_VERSION = 1;
-const LAYER_NAMES = ['surface', 'rock', 'cave', 'resources', 'flags'];
+export const LAYER_NAMES = ['surface', 'rock', 'cave', 'resources', 'flags'];
 const deflate = promisify(zlib.deflate);
 const inflate = promisify(zlib.inflate);
 const BATCH_YIELD_ROWS = 8;
@@ -64,7 +64,7 @@ const ORES_TABLE = `
     );
 `;
 
-async function openBaseline(file) {
+export async function openBaseline(file) {
   const SQL = await getSql();
   const db = fs.existsSync(file) ? new SQL.Database(fs.readFileSync(file)) : new SQL.Database();
   db.run(`
@@ -95,6 +95,16 @@ async function openBaseline(file) {
     );
   `);
   db.run(ORES_TABLE);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS map_edits (
+      snapshot_id TEXT NOT NULL,
+      layer TEXT NOT NULL,
+      x INTEGER NOT NULL,
+      y INTEGER NOT NULL,
+      word BLOB NOT NULL,
+      PRIMARY KEY (snapshot_id, layer, x, y)
+    );
+  `);
   if (!readRows(db, 'PRAGMA table_info(map_snapshots)').some((c) => c.name === 'world_size')) {
     db.run('ALTER TABLE map_snapshots ADD COLUMN world_size INTEGER');
   }
@@ -105,7 +115,7 @@ async function openBaseline(file) {
   return db;
 }
 
-function persistBaseline(db, file) {
+export function persistBaseline(db, file) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temp = `${file}.${process.pid}.tmp`;
   try {
@@ -423,7 +433,7 @@ function jobStatus(job) {
   };
 }
 
-function readRows(db, query, params = []) {
+export function readRows(db, query, params = []) {
   const statement = db.prepare(query);
   try {
     statement.bind(params);
@@ -486,7 +496,7 @@ export async function getMapSnapshot(id, file = baselineFilePath()) {
   }
 }
 
-export async function getMapRaster(id, layer, file = baselineFilePath()) {
+export async function getMapRaster(id, layer, file = baselineFilePath(), { edited = false } = {}) {
   const columns = {
     surface: 'surface',
     water: 'surface',
@@ -528,6 +538,19 @@ export async function getMapRaster(id, layer, file = baselineFilePath()) {
     const bytes = Buffer.from(record);
     const { width, height } = snapshot.bounds;
     if (bytes.length !== width * height * 4) throw new Error('Map baseline data is incomplete');
+    if (edited) {
+      const layerName = layer === 'ores' ? 'cave' : column;
+      for (const edit of readRows(
+        db,
+        'SELECT x, y, word FROM map_edits WHERE snapshot_id = ? AND layer = ?',
+        [id, layerName]
+      )) {
+        Buffer.from(edit.word).copy(
+          bytes,
+          ((edit.y - snapshot.bounds.y0) * width + (edit.x - snapshot.bounds.x0)) * 4
+        );
+      }
+    }
     if (layer === 'topography') {
       return { pixels: Buffer.from(layerPixels(bytes, layer)), snapshot };
     }
@@ -556,7 +579,7 @@ export async function getMapRaster(id, layer, file = baselineFilePath()) {
   }
 }
 
-export async function getMapTile(id, x, y, file = baselineFilePath()) {
+export async function getMapTile(id, x, y, file = baselineFilePath(), { edited = false } = {}) {
   const tileX = integer(x, 'tile x');
   const tileY = integer(y, 'tile y');
   const db = await openBaseline(file);
@@ -594,6 +617,15 @@ export async function getMapTile(id, x, y, file = baselineFilePath()) {
         [byteOffset, byteOffset, byteOffset, byteOffset, byteOffset, id]
       )[0];
       if (!records) throw new Error('Map baseline data is missing');
+      if (edited) {
+        for (const edit of readRows(
+          db,
+          'SELECT layer, word FROM map_edits WHERE snapshot_id = ? AND x = ? AND y = ?',
+          [id, pointX, pointY]
+        )) {
+          records[edit.layer] = edit.word;
+        }
+      }
       const toRecord = (buffer) => {
         const bytes = Buffer.from(buffer);
         return {
@@ -734,6 +766,10 @@ export async function deleteMapSnapshots({ id, world } = {}, file = baselineFile
     if (id && !deleted) throw httpError(404, 'Map baseline not found');
     db.run(
       `DELETE FROM map_snapshot_layers WHERE snapshot_id IN (SELECT id FROM map_snapshots ${where})`,
+      params
+    );
+    db.run(
+      `DELETE FROM map_edits WHERE snapshot_id IN (SELECT id FROM map_snapshots ${where})`,
       params
     );
     db.run(

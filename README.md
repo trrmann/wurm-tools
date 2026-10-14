@@ -313,3 +313,11 @@ MIT License. Designed with passion for the Wurm Online and Wurm Unlimited commun
 ## Favicon location
 
 The favicon lives at `public/images/favicon.svg` (served at `/images/favicon.svg`) and every page references it with `<link rel="icon" href="/images/favicon.svg">`. It does not need to be in the site root: Google's guidelines state the `href` can be any relative or absolute URL (https://developers.google.com/search/docs/appearance/favicon-in-search), and the HTML Standard defines `rel=icon` as an explicit link (https://html.spec.whatwg.org/#rel-icon). The root `/favicon.ico` fallback only applies to pages without a link tag.
+
+## Map edit working copy and work report
+
+The map explorer's **Edit working copy** panel (needs the local helper) edits any of the five layers per tile or with a brush up to 19×19. Edits are stored separately in the local baseline DB (`map_edits`); the baseline is never changed. **Work report** diffs the edits against the baseline (counts by layer and tile-type change) and can be downloaded as JSON or CSV. Discard edits per layer or entirely. Edits in browser-only mode (no helper) are not supported yet.
+
+### Pile-based terraforming
+
+The edit panel shows each tile's corner elevations and edge slopes. Edit heights in piles (raise +, dig −). The work report totals piles per material (dirt, sand, clay, peat, tar, rock shards). Pile sizes are editable under "Pile sizes" and saved in the browser; every material defaults to 1 dm per pile, which is an assumption, so set the real values (clay differs from dirt). The material comes from the tile's top surface type only, so mixed layers such as clay under dirt are not split. Cave piles are approximate. Edits need the helper; browser-only edits are not supported yet.

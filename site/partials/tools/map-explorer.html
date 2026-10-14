@@ -161,6 +161,81 @@
             details.
           </p>
           <div id="map-ores" class="map-ores"></div>
+          <fieldset id="map-edit" class="map-edit" disabled>
+            <legend>Edit working copy</legend>
+            <p>
+              Edits never change the baseline. They are tracked against it and feed the work report.
+            </p>
+            <label class="map-edit-toggle">
+              <input type="checkbox" id="map-show-edited" checked /> Show edits on the map
+            </label>
+            <label>
+              Edit layer
+              <select id="map-edit-layer">
+                <option value="surface">Surface</option>
+                <option value="rock">Rock</option>
+                <option value="cave">Cave</option>
+                <option value="resources">Resources</option>
+                <option value="flags">Flags</option>
+              </select>
+            </label>
+            <label>
+              Brush
+              <select id="map-edit-brush">
+                <option value="0">Selected tile (1×1)</option>
+                <option value="1">3×3</option>
+                <option value="2">5×5</option>
+                <option value="4">9×9</option>
+                <option value="9">19×19</option>
+              </select>
+            </label>
+            <div id="map-edit-terrain">
+              <label>
+                Tile type
+                <select id="map-edit-type">
+                  <option value="">Unchanged</option>
+                </select>
+              </label>
+              <label>
+                Data
+                <input id="map-edit-data" type="number" min="0" max="255" placeholder="unchanged" />
+              </label>
+              <label>
+                Raise (+) / dig (−) by piles
+                <input id="map-edit-piles" type="number" step="1" placeholder="none" />
+                <small id="map-edit-piles-note"></small>
+              </label>
+              <label>
+                Set height (dm)
+                <input
+                  id="map-edit-height"
+                  type="number"
+                  min="-32768"
+                  max="32767"
+                  placeholder="unchanged"
+                />
+              </label>
+            </div>
+            <details>
+              <summary>Pile sizes (dm of height per pile)</summary>
+              <div id="map-rates"></div>
+            </details>
+            <div id="map-edit-raw" hidden>
+              <label>
+                Value (32-bit)
+                <input id="map-edit-value" type="number" placeholder="unchanged" />
+              </label>
+            </div>
+            <div class="map-edit-actions">
+              <button type="button" id="map-edit-apply" class="btn">Apply edit</button>
+              <button type="button" id="map-edit-reset" class="btn">Discard layer edits</button>
+              <button type="button" id="map-edit-reset-all" class="btn">Discard all edits</button>
+              <button type="button" id="map-report" class="btn">Work report</button>
+              <button type="button" id="map-report-csv" class="btn">Report CSV</button>
+              <button type="button" id="map-report-json" class="btn">Report JSON</button>
+            </div>
+            <div id="map-report-view" class="map-report" aria-live="polite"></div>
+          </fieldset>
         </aside>
       </div>
     </div>

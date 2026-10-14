@@ -137,7 +137,7 @@ describe('local map baseline snapshots', () => {
         resources: { cave: 4451, world: 0 },
         flags: { botanizable: true },
       });
-      expect(tileResult.cornerAltitudes).toEqual({
+      expect(tileResult.cornerAltitudes).toMatchObject({
         surface: { northWest: 1.1, northEast: 1.2, southWest: 2.1, southEast: 2.2 },
         rock: { northWest: -5, northEast: -5, southWest: -5, southEast: -5 },
       });

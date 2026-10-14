@@ -46,6 +46,12 @@ import {
   startMapSnapshot,
   worldMapInfo,
 } from './wurm-map-baseline.js';
+import {
+  applyMapEdits,
+  getMapEditReport,
+  getMapEditReportCsv,
+  resetMapEdits,
+} from './wurm-map-edits.js';
 
 export const PORT = Number(process.env.WURM_HELPER_PORT || 5180);
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
@@ -219,6 +225,8 @@ export function startTarget(key) {
 //   /map/<world>/players
 //   /map/<world>/snapshots (POST { playerId }, or GET to list)
 //   /map/snapshots/<id>/status|raster?layer=surface|rock|resources|ores|tile?x=&y=
+//   (raster and tile accept edited=1)
+//   /map/snapshots/<id>/edits (GET report, POST edit, DELETE reset) and report-csv
 export async function handleDb(url) {
   const dir = findInstall(TARGETS.server);
   if (!dir) throw httpError(404, 'Wurm server is not installed on this machine');
@@ -270,6 +278,15 @@ async function readJsonBody(req, maxBytes = 4096) {
   }
 }
 
+function parseRates(text) {
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw httpError(400, 'Invalid pile rates');
+  }
+}
+
 export async function handleMap(req, url, serverDir = findInstall(TARGETS.server)) {
   const parts = url.pathname.split('/').filter(Boolean).slice(1).map(decodeURIComponent);
   // These routes only touch the site's own baseline database, not the Wurm server files.
@@ -288,6 +305,29 @@ export async function handleMap(req, url, serverDir = findInstall(TARGETS.server
     }
     if (parts.length === 3 && parts[2] === 'export' && req.method === 'GET') {
       return exportMapSnapshot(parts[1]);
+    }
+    if (parts.length === 3 && parts[2] === 'edits') {
+      if (req.method === 'GET') {
+        return getMapEditReport(parts[1], {
+          limit: url.searchParams.get('limit') ?? undefined,
+          rates: parseRates(url.searchParams.get('rates')),
+        });
+      }
+      if (req.method === 'POST') {
+        return applyMapEdits(parts[1], await readJsonBody(req, 16_384));
+      }
+      if (req.method === 'DELETE') {
+        return resetMapEdits(parts[1], { layer: url.searchParams.get('layer') ?? undefined });
+      }
+    }
+    if (parts.length === 3 && parts[2] === 'report-csv' && req.method === 'GET') {
+      return {
+        csv: await getMapEditReportCsv(
+          parts[1],
+          undefined,
+          parseRates(url.searchParams.get('rates'))
+        ),
+      };
     }
     if (parts.length === 2 && req.method === 'DELETE') {
       return deleteMapSnapshots({ id: parts[1] });
@@ -326,10 +366,14 @@ export async function handleMap(req, url, serverDir = findInstall(TARGETS.server
   if (parts[0] === 'snapshots' && parts.length === 3) {
     if (parts[2] === 'status' && req.method === 'GET') return getMapJob(parts[1]);
     if (parts[2] === 'raster' && req.method === 'GET') {
-      return getMapRaster(parts[1], url.searchParams.get('layer'));
+      return getMapRaster(parts[1], url.searchParams.get('layer'), undefined, {
+        edited: url.searchParams.get('edited') === '1',
+      });
     }
     if (parts[2] === 'tile' && req.method === 'GET') {
-      return getMapTile(parts[1], url.searchParams.get('x'), url.searchParams.get('y'));
+      return getMapTile(parts[1], url.searchParams.get('x'), url.searchParams.get('y'), undefined, {
+        edited: url.searchParams.get('edited') === '1',
+      });
     }
   }
   throw httpError(404, 'Not found');

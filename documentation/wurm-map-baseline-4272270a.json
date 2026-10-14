@@ -1,9 +1,9 @@
 {
   "format": "wurm-tools-map-baseline",
   "version": 1,
-  "exportedAt": "2026-10-14T22:15:45.438Z",
+  "exportedAt": "2026-10-14T22:52:52.219Z",
   "snapshot": {
-    "id": "9a170c29-d6d2-40f9-9a33-bc416bf17fb9",
+    "id": "a0eff660-caed-4fdc-a216-491ddb8c88d5",
     "world": "Creative",
     "playerId": 151035086848,
     "playerName": "Maughn",
@@ -11,7 +11,7 @@
     "centerY": 1440,
     "radius": 1024,
     "bounds": { "x0": 0, "y0": 0, "width": 2048, "height": 2048 },
-    "createdAt": "2026-10-14T22:14:42.616Z",
+    "createdAt": "2026-10-14T22:51:45.968Z",
     "worldSize": 2048
   },
   "layers": {

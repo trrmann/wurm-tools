@@ -43,7 +43,7 @@ export class MapTile {
         southEast: height(neighbors.southEast),
       };
     };
-    return { surface: corners('surface'), rock: corners('rock') };
+    return { surface: corners('surface'), rock: corners('rock'), cave: corners('cave') };
   }
 }
 
