@@ -25,6 +25,13 @@ import {
   browseTable,
   httpError,
 } from './wurm-db.js';
+import {
+  getMapJob,
+  getMapRaster,
+  getMapTile,
+  listMapSnapshots,
+  startMapSnapshot,
+} from './wurm-map-baseline.js';
 
 export const PORT = Number(process.env.WURM_HELPER_PORT || 5180);
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
@@ -185,6 +192,10 @@ export function startTarget(key) {
 //   /db/<world>/wurmzones.db/walls|fences|floors|buildtiles?x=&y=&w=&h=
 //   /db/<world>/wurmitems.db/ground?x=&y=&w=&h=   (items on the ground)
 //   /db/<world>/<db>/table/<name>?limit=&offset=&search=
+// Map baseline routes write only to the separate local map-baseline.db:
+//   /map/<world>/players
+//   /map/<world>/snapshots (POST { playerId }, or GET to list)
+//   /map/snapshots/<id>/status|raster?layer=surface|rock|resources|tile?x=&y=
 export async function handleDb(url) {
   const dir = findInstall(TARGETS.server);
   if (!dir) throw httpError(404, 'Wurm server is not installed on this machine');
@@ -219,24 +230,72 @@ export async function handleDb(url) {
   }
 }
 
+async function readRequestJson(req) {
+  const chunks = [];
+  let length = 0;
+  for await (const chunk of req) {
+    length += chunk.length;
+    if (length > 16_384) throw httpError(413, 'Request body too large');
+    chunks.push(chunk);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw httpError(400, 'Invalid JSON request body');
+  }
+}
+
+export async function handleMap(req, url, serverDir = findInstall(TARGETS.server)) {
+  if (!serverDir) throw httpError(404, 'Wurm server is not installed on this machine');
+  const parts = url.pathname.split('/').filter(Boolean).slice(1).map(decodeURIComponent);
+  if (parts.length === 2 && parts[1] === 'players' && req.method === 'GET') {
+    const db = await openDb(serverDir, parts[0], 'wurmplayers.db');
+    try {
+      return listPlayers(db, 10_000);
+    } finally {
+      db.close();
+    }
+  }
+  if (parts.length === 2 && parts[1] === 'snapshots') {
+    if (req.method === 'GET') return { snapshots: await listMapSnapshots(parts[0]) };
+    if (req.method === 'POST') {
+      const body = await readRequestJson(req);
+      return { statusCode: 202, body: await startMapSnapshot(serverDir, parts[0], body.playerId) };
+    }
+  }
+  if (parts[0] === 'snapshots' && parts.length === 3) {
+    if (parts[2] === 'status' && req.method === 'GET') return getMapJob(parts[1]);
+    if (parts[2] === 'raster' && req.method === 'GET') {
+      return getMapRaster(parts[1], url.searchParams.get('layer'));
+    }
+    if (parts[2] === 'tile' && req.method === 'GET') {
+      return getMapTile(parts[1], url.searchParams.get('x'), url.searchParams.get('y'));
+    }
+  }
+  throw httpError(404, 'Not found');
+}
+
 export function createServer() {
   const origins = allowedOrigins();
   return http.createServer(async (req, res) => {
     const origin = req.headers.origin;
     const originOk = !origin || origins.includes(origin);
     const send = (code, body) => {
+      const binary = body instanceof Uint8Array;
       res.writeHead(code, {
-        'Content-Type': 'application/json',
+        'Content-Type': binary ? 'application/octet-stream' : 'application/json',
         ...(origin && originOk
           ? {
               'Access-Control-Allow-Origin': origin,
               'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type',
               'Access-Control-Allow-Private-Network': 'true',
               Vary: 'Origin',
             }
           : {}),
       });
-      res.end(JSON.stringify(body));
+      if (binary) res.end(body);
+      else res.end(JSON.stringify(body));
     };
 
     if (!originOk) return send(403, { error: 'Origin not allowed' });
@@ -249,6 +308,11 @@ export function createServer() {
       }
       if (req.method === 'GET' && url.pathname.startsWith('/db/')) {
         return send(200, await handleDb(url));
+      }
+      if (url.pathname.startsWith('/map/')) {
+        const result = await handleMap(req, url);
+        if (result?.statusCode) return send(result.statusCode, result.body);
+        return send(200, result?.pixels || result);
       }
       const start = url.pathname.match(/^\/start\/(server|client)$/);
       if (req.method === 'POST' && start) return send(200, startTarget(start[1]));

@@ -7,6 +7,7 @@ import { loadFooterHtml } from './partials/footer.js';
 import { loadNavHtml } from './partials/nav.js';
 import { fill } from './template.js';
 import { renderSidebarNavigation } from './navigation.js';
+import { PRIMARY_NAVIGATION } from '../tools/registry.js';
 import { Modal } from './modal.js';
 
 export const ACTIVE_TOOL_KEY = 'wurm_active_tool';
@@ -23,6 +24,15 @@ export function renderShell(container) {
     slot.innerHTML = loadNavHtml();
     const toggle = slot.querySelector('#nav-toggle');
     const menu = slot.querySelector('#nav-menu');
+    for (const item of PRIMARY_NAVIGATION) {
+      const listItem = document.createElement('li');
+      const link = document.createElement('a');
+      link.className = 'nav-link';
+      link.href = item.href;
+      link.textContent = item.name;
+      listItem.append(link);
+      menu?.append(listItem);
+    }
     toggle?.addEventListener('click', () => {
       const open = menu.classList.toggle('open');
       toggle.setAttribute('aria-expanded', String(open));

@@ -4,10 +4,9 @@
 // (index = y * size + x). Record bytes:
 //   top_layer / rock_layer / map_cave: [type, data, heightHi, heightLo]
 //     height = big-endian int16 in decimetres (/10 = metres); matches item Z (median error 0.05 m).
-//   flags: last byte holds the flag bits (observed values 0/64/128/192).
-//   resources: 0xFFFFFFFF = empty; other values are resource records (not decoded).
-// protectedTiles.bmap: Java-serialized boolean[size][size]; every row holds `size` bytes.
-// Which axis the outer array indexes has not been verified (the sample world has no protected tiles).
+//   flags: byte 3 holds the surface flags (botanizable/foragable/gatherable).
+//   resources: high 16 bits = cave resource, low 16 = world resource; 0xFFFF means none.
+// protectedTiles.bmap: Java-serialized boolean[size][size]; outer index is x, inner index is y.
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 
@@ -56,6 +55,52 @@ export function readTile(file, x, y) {
   return { ...t, height: t.height / 10 };
 }
 
+export function* readRegionRows(dir, x0, y0, width, height) {
+  const names = ['top_layer', 'rock_layer', 'map_cave', 'resources', 'flags'];
+  const files = {};
+  try {
+    for (const name of names) {
+      const file = `${dir}/${name}.map`;
+      if (!fs.existsSync(file)) {
+        throw new Error(`Missing map layer: ${name}`);
+      }
+      const fd = fs.openSync(file, 'r');
+      const size = mapSize(fs.fstatSync(fd).size);
+      if (!size) {
+        fs.closeSync(fd);
+        throw new Error(`Unrecognised map size: ${name}`);
+      }
+      files[name] = { fd, size };
+    }
+    const size = files.top_layer.size;
+    if (
+      Object.values(files).some((file) => file.size !== size) ||
+      ![x0, y0, width, height].every(Number.isSafeInteger) ||
+      x0 < 0 ||
+      y0 < 0 ||
+      width < 1 ||
+      height < 1 ||
+      x0 + width > size ||
+      y0 + height > size
+    ) {
+      throw new RangeError('Map region is outside the map bounds');
+    }
+
+    for (let y = y0; y < y0 + height; y++) {
+      const row = { y };
+      for (const [name, { fd }] of Object.entries(files)) {
+        const data = Buffer.alloc(width * 4);
+        const bytesRead = fs.readSync(fd, data, 0, data.length, HEADER_BYTES + (y * size + x0) * 4);
+        if (bytesRead !== data.length) throw new Error(`Incomplete map row: ${name}`);
+        row[name] = data;
+      }
+      yield row;
+    }
+  } finally {
+    for (const { fd } of Object.values(files)) fs.closeSync(fd);
+  }
+}
+
 export function readFlags(file, x, y) {
   return readRecord(file, x, y)[3];
 }
@@ -64,8 +109,8 @@ export function tileFromPosition(posX, posY) {
   return { x: Math.floor(posX / 4), y: Math.floor(posY / 4) };
 }
 
-// Returns { size, protectedCount, isProtected(x, y) }. Verified against Zones.isTileProtected(x, y),
-// which reads protectedTiles[x][y]: the outer array index is x, the inner is y.
+// Returns { size, protectedCount, isProtected(x, y) }. Zones.isTileProtected(x, y)
+// reads protectedTiles[x][y]: the outer array index is x, the inner is y.
 export function readProtectedTiles(file) {
   const d = fs.readFileSync(file);
   if (d.readUInt32BE(0) !== 0xaced0005) throw new Error('not a Java serialized stream');

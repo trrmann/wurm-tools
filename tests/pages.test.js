@@ -1,16 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import { BasePage } from '../src/js/modules/pages/BasePage.js';
 import { ConceptsPage, ROADMAP_CATEGORIES } from '../src/js/modules/pages/ConceptsPage.js';
-import { TOOLS_LIST, getToolById } from '../src/js/tools/registry.js';
+import { PRIMARY_NAVIGATION, TOOLS_LIST, getToolById } from '../src/js/tools/registry.js';
 
 describe('Tool Registry Migration', () => {
-  it('loads all 4 starter tools from src/js/tools/registry.js', () => {
+  it('loads all registered tools from src/js/tools/registry.js', () => {
     expect(TOOLS_LIST).toHaveLength(4);
     const ids = TOOLS_LIST.map((t) => t.toolMetadata.id);
     expect(ids).toContain('deed-calculator');
     expect(ids).toContain('action-timers');
     expect(ids).toContain('distance-calc');
     expect(ids).toContain('player-notes');
+    expect(ids).not.toContain('map-explorer');
+    expect(PRIMARY_NAVIGATION).toContainEqual({
+      id: 'map-explorer',
+      name: 'World Map',
+      href: '/site/map-explorer/',
+    });
   });
 
   it('retrieves tool metadata by id', () => {

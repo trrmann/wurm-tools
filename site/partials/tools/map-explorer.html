@@ -1,0 +1,100 @@
+<section class="map-explorer">
+  <div class="card">
+    <div class="card-header">
+      <h2 class="concepts-category-title">World Map Baseline</h2>
+      <p class="concepts-category-desc">
+        Select a character to capture all five map layers in the surrounding 2,001 × 2,001 tiles.
+        The snapshot is written to a separate SQLite file on this device (about 80 MB per full-size
+        baseline); Wurm server files are read-only. The map clips to world edges.
+      </p>
+    </div>
+    <div class="card-body">
+      <div id="map-state" class="server-helper-state" role="status" aria-live="polite">
+        Connecting to the local Wurm helper...
+      </div>
+      <div class="map-controls">
+        <label>
+          World
+          <select id="map-world" class="custom-select"></select>
+        </label>
+        <label>
+          Character
+          <select id="map-player" class="custom-select" disabled></select>
+        </label>
+        <button type="button" id="map-create" class="btn btn-primary" disabled>
+          Create baseline
+        </button>
+        <label>
+          Saved baseline
+          <select id="map-snapshot" class="custom-select" disabled></select>
+        </label>
+        <label>
+          Layer
+          <select id="map-layer" class="custom-select" disabled>
+            <option value="surface">Surface terrain</option>
+            <option value="rock">Rock layer</option>
+            <option value="cave">Cave layer</option>
+            <option value="resources">Underground resources</option>
+            <option value="flags">Surface flags</option>
+          </select>
+        </label>
+        <label class="map-zoom-control">
+          Zoom
+          <input id="map-zoom" type="range" min="0.2" max="2" step="0.1" value="0.4" />
+          <output id="map-zoom-value">0.4×</output>
+        </label>
+      </div>
+      <div class="map-progress" id="map-progress-wrap" hidden>
+        <progress id="map-progress" max="1" value="0"></progress>
+        <span id="map-progress-label">Preparing snapshot...</span>
+      </div>
+      <div class="map-layout">
+        <div id="map-viewport" class="map-viewport">
+          <canvas
+            id="map-canvas"
+            class="map-canvas"
+            role="img"
+            aria-label="Wurm world map. Select a tile to inspect its terrain and altitude."
+            tabindex="0"
+          ></canvas>
+        </div>
+        <aside class="map-tile-details" aria-labelledby="map-tile-title">
+          <h3 id="map-tile-title">Tile details</h3>
+          <p id="map-tile-empty">Create or select a baseline, then select a tile.</p>
+          <dl id="map-tile-data" hidden>
+            <div>
+              <dt>Coordinates</dt>
+              <dd id="map-coordinates"></dd>
+            </div>
+            <div>
+              <dt>Surface</dt>
+              <dd id="map-surface"></dd>
+            </div>
+            <div>
+              <dt>Rock</dt>
+              <dd id="map-rock"></dd>
+            </div>
+            <div>
+              <dt>Mine floor / ceiling</dt>
+              <dd id="map-cave"></dd>
+            </div>
+            <div>
+              <dt>Cave / world resource IDs</dt>
+              <dd id="map-resources"></dd>
+            </div>
+            <div>
+              <dt>Surface flags</dt>
+              <dd id="map-flags"></dd>
+            </div>
+          </dl>
+          <h4>Surface and rock corner altitudes</h4>
+          <div id="map-corners" class="map-corners">No tile selected.</div>
+          <p class="map-legend">
+            Terrain colors identify tile types. Resource and flag layers use distinct colors; exact
+            values appear in tile details.
+          </p>
+        </aside>
+      </div>
+    </div>
+  </div>
+</section>

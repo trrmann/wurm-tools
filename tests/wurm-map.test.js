@@ -15,6 +15,7 @@ import {
   decodeTileData,
   loadTile,
   caveCeiling,
+  readRegionRows,
 } from '../scripts/wurm-map.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'map-'));
@@ -35,6 +36,34 @@ describe('wurm-map', () => {
     expect(readTile(f, 1, 1)).toEqual({ type: 2, data: 9, height: 2 });
     expect(readFlags(f, 1, 1)).toBe(0x14);
     expect(() => readTile(f, 2, 0)).toThrow(RangeError);
+  });
+
+  it('reads complete map regions one row at a time', () => {
+    const dir = tmp();
+    for (const name of ['top_layer', 'rock_layer', 'map_cave', 'resources', 'flags']) {
+      const file = path.join(dir, `${name}.map`);
+      const bytes = Buffer.alloc(1024 + 4 * 4);
+      for (let y = 0; y < 2; y++) {
+        for (let x = 0; x < 2; x++) {
+          const offset = 1024 + (y * 2 + x) * 4;
+          bytes.set([name === 'top_layer' ? 2 : 4, 0, 0, x + y], offset);
+        }
+      }
+      fs.writeFileSync(file, bytes);
+    }
+    const rows = [...readRegionRows(dir, 1, 0, 1, 2)];
+    expect(rows).toHaveLength(2);
+    expect(rows[0].top_layer).toEqual(Buffer.from([2, 0, 0, 1]));
+    expect(rows[1].rock_layer).toEqual(Buffer.from([4, 0, 0, 2]));
+    expect(() => [...readRegionRows(dir, 1, 1, 2, 1)]).toThrow(RangeError);
+  });
+
+  it('rejects a region when any map layer is missing', () => {
+    const dir = tmp();
+    for (const name of ['top_layer', 'rock_layer', 'map_cave', 'resources']) {
+      fs.writeFileSync(path.join(dir, `${name}.map`), Buffer.alloc(1024 + 16));
+    }
+    expect(() => [...readRegionRows(dir, 0, 0, 1, 1)]).toThrow('Missing map layer: flags');
   });
 
   it('parses a Java serialized boolean[][] protected tile file', () => {

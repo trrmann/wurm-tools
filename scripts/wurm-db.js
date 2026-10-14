@@ -97,7 +97,8 @@ export function browseTable(db, tableName, { limit, offset, search } = {}) {
 
 // Best-effort player list: picks the first table that looks like a players table and returns
 // whichever of the well-known columns exist. Schema is discovered, not assumed.
-export function listPlayers(db) {
+export function listPlayers(db, limit = MAX_LIMIT) {
+  const rowLimit = Math.min(Math.max(Number.isSafeInteger(limit) ? limit : MAX_LIMIT, 1), 10_000);
   const tables = rows(db, "SELECT name FROM sqlite_master WHERE type='table'").map((t) => t.name);
   const find = (re) => tables.find((t) => re.test(t));
   const table = find(/^players$/i);
@@ -126,7 +127,7 @@ export function listPlayers(db) {
       own.push(...extra);
     }
   }
-  const data = rows(db, `SELECT ${select.join(', ')} FROM "${table}" p${join} LIMIT ${MAX_LIMIT}`);
+  const data = rows(db, `SELECT ${select.join(', ')} FROM "${table}" p${join} LIMIT ${rowLimit}`);
   return { table, columns: own, rows: data };
 }
 

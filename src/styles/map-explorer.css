@@ -1,0 +1,140 @@
+.map-explorer .card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.map-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  align-items: end;
+  gap: 0.85rem;
+}
+
+.map-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.map-controls .custom-select {
+  width: 100%;
+}
+
+.map-zoom-control output {
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+
+.map-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.map-progress progress {
+  width: min(360px, 55%);
+}
+
+.map-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.map-viewport {
+  height: min(68vh, 760px);
+  min-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: #111925;
+}
+
+.map-canvas {
+  display: block;
+  image-rendering: pixelated;
+  cursor: crosshair;
+}
+
+.map-tile-details {
+  align-self: start;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+.map-tile-details h3,
+.map-tile-details h4,
+.map-tile-details h5 {
+  color: var(--text-main);
+  margin-bottom: 0.6rem;
+}
+
+.map-tile-details h4 {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
+.map-tile-details h5 {
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.map-tile-details > p {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.map-tile-details dl {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.map-tile-details dl > div {
+  display: grid;
+  grid-template-columns: minmax(125px, 0.8fr) minmax(0, 1.2fr);
+  gap: 0.5rem;
+}
+
+.map-tile-details dt {
+  color: var(--text-muted);
+}
+
+.map-tile-details dd {
+  overflow-wrap: anywhere;
+}
+
+.map-corners table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.map-corners td {
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--border-color);
+  text-align: right;
+}
+
+.map-corners td:first-child {
+  text-align: left;
+}
+
+.map-tile-details .map-legend {
+  margin-top: 1rem;
+  font-size: 0.78rem;
+}
+
+@media (min-width: 1100px) {
+  .map-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  }
+}

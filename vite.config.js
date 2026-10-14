@@ -17,6 +17,7 @@ export default defineConfig({
         dashboard: resolve(rootDir, 'index.html'),
         concepts: resolve(rootDir, 'site/concepts/index.html'),
         serverStatus: resolve(rootDir, 'site/server-status/index.html'),
+        mapExplorer: resolve(rootDir, 'site/map-explorer/index.html'),
       },
     },
   },
