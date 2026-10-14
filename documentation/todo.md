@@ -39,4 +39,7 @@
 - Investigate parsing the server's binary `.map`/`.bmap` layers for terrain, elevation, borders, and resources before implementing map searches.
 - Add joined character skill/inventory views only after verifying the cross-database identifiers and relationships; generic table browsing is available now.
 
+- add a local sqllite db on the client laptop to track info for the page in the future.  this will not be allowed to update the actual wurm db, that is to be read only.
+
+
 ::::::do not proceed past this point without approval:::::
