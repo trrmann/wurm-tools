@@ -18,6 +18,7 @@ export default defineConfig({
         concepts: resolve(rootDir, 'site/concepts/index.html'),
         serverStatus: resolve(rootDir, 'site/server-status/index.html'),
         mapExplorer: resolve(rootDir, 'site/map-explorer/index.html'),
+        heroes: resolve(rootDir, 'site/heroes/index.html'),
       },
     },
   },

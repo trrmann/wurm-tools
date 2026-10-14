@@ -81,44 +81,9 @@
   - Quality is a derived per-tile ceiling (see README); stored per ore (min/avg/max) and per tile, and shown on the Underground resources layer with the unrolled state. The x/y seed order is not independently verified.
   - Not done: a UI panel for ores, and ore queries in browser-only mode.
 
-in the object classes, the thing name , needs classification nams, specification names, catogorization names, also these are a good replacement parent object to person and place names.
+## Other Roadmaps
 
-also how about event and action names
-description names as well
-
-heroes special effect needs to be defined as a description for now
-
-heroes equation elements where the equation is advantages(as point value) + points = disadvantages (as point value) every equation element has a thing name and a heroes value
-
-now to add heroes characteristic / chararteristics that are advantages
-
-primary characteristics are characteristics that have a static base
-figured characteristics are characteristics that are derived off of points and primary characteristics
-
-skills are an advantage
-talents are an advantage
-perks are an advantage
-powers are an advantage
-
-modifiers are adjusters to the price of any other equation element - limitations and ?
-
-physical disadvantages
-mental disadvantages
-social disadvantages
-
-everyman skills
-package deals
-power frameworks
-variable power pools
-
-all of these should be able to come together to describe anything.
-
-find an online copy of a heroes or champions RPG character sheet.
-also search for an online copy of the rules book to see the definitions of the different elements in detail
-
-the equation elements collection is the basis for a heros game object, that can be a character, base, vehicle, equipment, etc. each of the have body shapes and point level classifications. also they have a object model type, that distinguishes from just a physical object, to a non-sentient vrs sentient object, mobile vrs non-mobile, etc. where the sentient mobile base will be a non-player and player character.
-
-the world is create of a collection of these objects. this is nt the wurm world. but i will need an object creation page that can store in the local sqllite database.
+- HERO System development tasks: [heroes-todo.md](heroes-todo.md)
 
 - [x] Map edit interface and work report (helper mode); browser-only edits still open
 

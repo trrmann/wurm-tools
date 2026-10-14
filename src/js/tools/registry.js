@@ -11,6 +11,7 @@ export const PRIMARY_NAVIGATION = [
   { id: 'concepts', name: 'Concepts', href: '/site/concepts/' },
   { id: 'server-status', name: 'Server', href: '/site/server-status/' },
   { id: 'map-explorer', name: 'World Map', href: '/site/map-explorer/' },
+  { id: 'heroes', name: 'HERO Worlds', href: '/site/heroes/' },
 ];
 
 export const CATEGORIES = [

@@ -11,6 +11,15 @@ import {
   HerosCharacter,
   HerosEquation,
   HerosEverymanSkills,
+  HerosGameObject,
+  HerosGameObjects,
+  HerosWorld,
+  HerosWorlds,
+  HerosVehicle,
+  HerosEquipment,
+  HerosPlayerCharacter,
+  HerosNonPlayerCharacter,
+  HerosPointLevelClassification,
   HerosFiguredCharacteristic,
   HerosLimitation,
   HerosMentalDisadvantage,
@@ -24,6 +33,8 @@ import {
   HerosSocialDisadvantage,
   HerosSpecialEffect,
   HerosVariablePowerPools,
+  HEROS_OBJECT_MODEL_TYPES,
+  HEROS_TYPED_ELEMENT_GROUPS,
   HerosAdvantageModifier,
   HerosAdvantageModifiers,
   normalizeHerosEdition,
@@ -46,6 +57,8 @@ describe('Heroes domain model', () => {
   });
 
   it('normalizes 4th, 5th, and 6th edition identifiers and terminology', () => {
+    expect(normalizeHerosEdition()).toBe(HEROS_EDITIONS['5e']);
+    expect(new HerosCharacter('Default edition').edition).toBe(HEROS_EDITIONS['5e']);
     expect(normalizeHerosEdition(4)).toBe(HEROS_EDITIONS['4e']);
     expect(normalizeHerosEdition('5th Edition')).toBe(HEROS_EDITIONS['5e']);
     expect(normalizeHerosEdition('6e').disadvantageLabel).toBe('Complications');
@@ -98,6 +111,20 @@ describe('Heroes domain model', () => {
     expect(equation.rightSideValue.toString()).toBe('10');
     expect(equation.difference.toString()).toBe('0');
     expect(equation.isBalanced).toBe(true);
+  });
+
+  it('keeps rational equation values exact and updates balance when points change', () => {
+    const equation = new HerosEquation({
+      advantages: [{ name: 'Fractional advantage', value: '1/3' }],
+      points: ['1/6'],
+      disadvantages: [{ name: 'Complication', value: '1/2' }],
+    });
+
+    expect(equation.isBalanced).toBe(true);
+    equation.points.add(new Point('1/3'));
+    expect(equation.leftSideValue.toString()).toBe('5/6');
+    expect(equation.difference.toString()).toBe('1/3');
+    expect(equation.isBalanced).toBe(false);
   });
 
   it('applies modifiers to equation-element price and keeps limitations distinct', () => {
@@ -160,5 +187,92 @@ describe('Heroes domain model', () => {
     expect(character.equation.pointsValue.toString()).toBe('0');
     expect(character.equation.disadvantagesValue.toString()).toBe('30');
     expect(character.equation.difference.toString()).toBe('15');
+  });
+
+  it('models non-character objects, object traits, point levels, and worlds', () => {
+    const vehicle = new HerosVehicle({
+      name: 'Skimmer',
+      bodyShapes: ['hovercraft'],
+      pointLevelClassifications: [{ name: 'Standard', points: 150, edition: '6e' }],
+      advantages: [{ name: 'Flight', value: 20 }],
+    });
+    const equipment = new HerosEquipment('Field kit');
+    const world = new HerosWorld({ name: 'Asterion', objects: [vehicle] });
+
+    expect(vehicle).toBeInstanceOf(HerosGameObject);
+    expect(vehicle.bodyShapes.first.toString()).toBe('hovercraft');
+    expect(vehicle.pointLevelClassifications.first).toBeInstanceOf(HerosPointLevelClassification);
+    expect(vehicle.pointLevelClassifications.first.points.toString()).toBe('150');
+    expect(vehicle.objectModelTypes.map(String)).toContain(HEROS_OBJECT_MODEL_TYPES.mobile);
+    expect(vehicle.objectModelTypes.map(String)).toContain(HEROS_OBJECT_MODEL_TYPES.physical);
+    expect(vehicle.equation.advantagesValue.toString()).toBe('20');
+    expect(vehicle.equationElements.size).toBe(1);
+    expect(world.objects).toBeInstanceOf(HerosGameObjects);
+    expect(world.addObject(equipment)).toBe(world);
+    expect(world.objects.last).toBe(equipment);
+    expect(new HerosWorlds([world]).first).toBe(world);
+  });
+
+  it('groups base characteristics, advantages, and disadvantages by model trait', () => {
+    const object = new HerosGameObject({
+      name: 'Sentinel',
+      objectModelTypes: ['physical', 'sentient', 'mobile'],
+      typedElements: [
+        {
+          type: 'primaryCharacteristic',
+          name: 'BODY',
+          value: 10,
+          isBase: true,
+          modelTypes: ['physical'],
+        },
+        {
+          type: 'skill',
+          name: 'Systems Operation',
+          value: 3,
+          isBase: true,
+          modelTypes: ['sentient'],
+        },
+        { type: 'power', name: 'Flight', value: 20, isBase: false, modelTypes: ['mobile'] },
+        {
+          type: 'mentalDisadvantage',
+          name: 'Protective directive',
+          value: 10,
+          isBase: true,
+          modelTypes: ['sentient'],
+        },
+      ],
+    });
+
+    expect(HEROS_TYPED_ELEMENT_GROUPS.primaryCharacteristic).toBe('characteristics');
+    expect(object.modelTraitElements.physical.characteristics.map((item) => item.name)).toEqual([
+      'BODY',
+    ]);
+    expect(object.modelTraitElements.sentient.advantages.map((item) => item.name)).toEqual([
+      'Systems Operation',
+    ]);
+    expect(object.modelTraitElements.sentient.disadvantages.map((item) => item.name)).toEqual([
+      'Protective directive',
+    ]);
+    expect(object.baseTraitSpecification.mobile.advantages).toEqual([]);
+    expect(object.removeNonBaseElements().map((item) => item.name)).toEqual(['Flight']);
+    expect(object.typedElements.map((item) => item.name)).toEqual([
+      'BODY',
+      'Systems Operation',
+      'Protective directive',
+    ]);
+  });
+
+  it('distinguishes player and non-player sentient mobile characters', () => {
+    const player = new HerosPlayerCharacter('Player');
+    const nonPlayer = new HerosNonPlayerCharacter('Non-player');
+
+    expect(player.objectModelTypes.map(String)).toContain(HEROS_OBJECT_MODEL_TYPES.playerCharacter);
+    expect(nonPlayer.objectModelTypes.map(String)).toContain(
+      HEROS_OBJECT_MODEL_TYPES.nonPlayerCharacter
+    );
+    for (const character of [player, nonPlayer]) {
+      expect(character.objectModelTypes.map(String)).toContain(HEROS_OBJECT_MODEL_TYPES.sentient);
+      expect(character.objectModelTypes.map(String)).toContain(HEROS_OBJECT_MODEL_TYPES.mobile);
+    }
   });
 });

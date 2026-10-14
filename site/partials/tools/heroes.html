@@ -1,0 +1,259 @@
+<section class="heroes-workspace" aria-labelledby="heroes-page-title">
+  <header class="heroes-page-heading">
+    <div>
+      <p class="heroes-kicker">HERO System workspace</p>
+      <h2 id="heroes-page-title">Worlds &amp; objects</h2>
+      <p>Build a world from characters, bases, vehicles, equipment, and other objects.</p>
+    </div>
+    <p id="heroes-state" class="heroes-state" role="status" aria-live="polite">
+      Connecting to the local database...
+    </p>
+  </header>
+
+  <section
+    id="heroes-pair-panel"
+    class="heroes-pair-panel"
+    aria-labelledby="heroes-pair-title"
+    hidden
+  >
+    <h3 id="heroes-pair-title">Connect local database</h3>
+    <p>Enter the pairing code shown by the local helper.</p>
+    <form id="heroes-pair-form">
+      <label for="heroes-pair-code">Pairing code</label>
+      <input id="heroes-pair-code" name="code" autocomplete="one-time-code" required />
+      <button class="btn btn-primary" type="submit">Connect</button>
+    </form>
+  </section>
+
+  <div class="heroes-workspace-grid">
+    <section class="heroes-world-panel" aria-labelledby="heroes-world-title">
+      <div class="heroes-section-heading">
+        <div>
+          <p class="heroes-kicker">Local collection</p>
+          <h3 id="heroes-world-title">Worlds</h3>
+        </div>
+      </div>
+      <form id="heroes-world-form" class="heroes-world-form">
+        <label for="heroes-world-name">New world</label>
+        <div class="heroes-inline-form">
+          <input id="heroes-world-name" name="name" maxlength="120" required />
+          <button
+            class="btn btn-primary"
+            type="submit"
+            aria-label="Create world"
+            title="Create world"
+          >
+            Add
+          </button>
+        </div>
+      </form>
+      <label class="heroes-field" for="heroes-world-select">
+        Selected world
+        <select id="heroes-world-select" class="custom-select" disabled>
+          <option value="">No world selected</option>
+        </select>
+      </label>
+      <div class="heroes-object-list-heading">
+        <h4>Objects</h4>
+        <output id="heroes-object-count">0</output>
+      </div>
+      <ul id="heroes-object-list" class="heroes-object-list" aria-live="polite"></ul>
+    </section>
+
+    <section class="heroes-editor-panel" aria-labelledby="heroes-editor-title">
+      <div class="heroes-section-heading">
+        <div>
+          <p class="heroes-kicker">Point-built definition</p>
+          <h3 id="heroes-editor-title">Create object</h3>
+        </div>
+      </div>
+      <form id="heroes-object-form">
+        <div class="heroes-form-grid">
+          <label class="heroes-field" for="heroes-object-name">
+            Name
+            <input id="heroes-object-name" name="name" maxlength="120" required />
+          </label>
+          <label class="heroes-field" for="heroes-object-kind">
+            Object kind
+            <select id="heroes-object-kind" name="kind" class="custom-select">
+              <option value="character">Character</option>
+              <option value="base">Base</option>
+              <option value="vehicle">Vehicle</option>
+              <option value="equipment">Equipment</option>
+              <option value="object">Other object</option>
+            </select>
+          </label>
+          <label class="heroes-field" for="heroes-object-shape">
+            Body shape
+            <input id="heroes-object-shape" name="bodyShape" placeholder="Humanoid, vehicle, ..." />
+          </label>
+          <label class="heroes-field" for="heroes-point-level">
+            Point-level classification
+            <input id="heroes-point-level" name="pointLevel" placeholder="Standard" />
+          </label>
+          <label class="heroes-field" for="heroes-point-level-value">
+            Point-level value
+            <input
+              id="heroes-point-level-value"
+              name="pointLevelValue"
+              inputmode="decimal"
+              placeholder="150"
+            />
+          </label>
+          <label class="heroes-field" for="heroes-edition">
+            Rules edition
+            <select id="heroes-edition" name="edition" class="custom-select">
+              <option value="4e">4th Edition</option>
+              <option value="5e" selected>5th Edition</option>
+              <option value="6e">6th Edition</option>
+            </select>
+          </label>
+        </div>
+
+        <fieldset id="heroes-model-traits" class="heroes-traits">
+          <legend>Object model traits</legend>
+          <label><input type="checkbox" name="trait" value="physical" checked /> Physical</label>
+          <label><input type="checkbox" name="trait" value="non-physical" /> Non-physical</label>
+          <label><input type="checkbox" name="trait" value="sentient" /> Sentient</label>
+          <label><input type="checkbox" name="trait" value="non-sentient" /> Non-sentient</label>
+          <label><input type="checkbox" name="trait" value="mobile" /> Mobile</label>
+          <label><input type="checkbox" name="trait" value="non-mobile" /> Non-mobile</label>
+          <label
+            ><input type="checkbox" name="trait" value="player-character" /> Player character</label
+          >
+          <label
+            ><input type="checkbox" name="trait" value="non-player-character" /> Non-player
+            character</label
+          >
+        </fieldset>
+
+        <fieldset class="heroes-equation-builder">
+          <legend>Point equation</legend>
+          <p class="heroes-equation-readout" id="heroes-equation-readout" aria-live="polite">
+            Advantages 0 + points 0 = disadvantages 0
+          </p>
+          <div class="heroes-form-grid heroes-equation-controls">
+            <label class="heroes-field" for="heroes-element-side">
+              Equation side
+              <select id="heroes-element-side" class="custom-select">
+                <option value="advantages">Advantages</option>
+                <option value="disadvantages">Disadvantages</option>
+              </select>
+            </label>
+            <label class="heroes-field" for="heroes-element-name">
+              Element name
+              <input id="heroes-element-name" maxlength="120" />
+            </label>
+            <label class="heroes-field" for="heroes-element-value">
+              Point value
+              <input id="heroes-element-value" inputmode="decimal" placeholder="e.g. 3/2" />
+            </label>
+            <button
+              id="heroes-add-element"
+              class="btn"
+              type="button"
+              aria-label="Add equation element"
+              title="Add equation element"
+            >
+              Add element
+            </button>
+            <button id="heroes-cancel-equation-edit" class="btn" type="button" hidden>
+              Cancel edit
+            </button>
+            <label class="heroes-field" for="heroes-points-value">
+              Points
+              <input id="heroes-points-value" inputmode="decimal" value="0" />
+            </label>
+          </div>
+          <ul id="heroes-equation-elements" class="heroes-equation-elements"></ul>
+        </fieldset>
+
+        <fieldset class="heroes-typed-builder">
+          <legend>Typed HERO elements</legend>
+          <p class="heroes-field-hint">
+            Add typed HERO elements and assign the model traits they belong to. Mark base-spec
+            entries; cleanup removes only unmarked extras.
+          </p>
+          <div class="heroes-form-grid heroes-typed-controls">
+            <label class="heroes-field" for="heroes-typed-kind">
+              Element type
+              <select id="heroes-typed-kind" class="custom-select">
+                <option value="characteristic">Characteristic</option>
+                <option value="primaryCharacteristic">Primary characteristic</option>
+                <option value="figuredCharacteristic">Figured characteristic</option>
+                <option value="skill">Skill</option>
+                <option value="everymanSkill">Everyman skill</option>
+                <option value="talent">Talent</option>
+                <option value="perk">Perk</option>
+                <option value="power">Power</option>
+                <option value="powerFramework">Power framework</option>
+                <option value="multipower">Multipower</option>
+                <option value="elementalControl">Elemental control</option>
+                <option value="variablePowerPool">Variable power pool</option>
+                <option value="packageDeal">Package deal</option>
+                <option value="physicalDisadvantage">Physical disadvantage</option>
+                <option value="mentalDisadvantage">Mental disadvantage</option>
+                <option value="socialDisadvantage">Social disadvantage</option>
+                <option value="modifier">Modifier</option>
+                <option value="limitation">Limitation</option>
+                <option value="specialEffect">Special effect</option>
+                <option value="event">Event</option>
+                <option value="action">Action</option>
+                <option value="description">Description</option>
+              </select>
+            </label>
+            <label class="heroes-field" for="heroes-typed-name">
+              Name
+              <input id="heroes-typed-name" maxlength="120" />
+            </label>
+            <label class="heroes-field" for="heroes-typed-value">
+              Point value
+              <input id="heroes-typed-value" inputmode="decimal" placeholder="e.g. 3/2" />
+            </label>
+            <label class="heroes-field" for="heroes-typed-detail">
+              <span id="heroes-typed-detail-label">Description or detail</span>
+              <input id="heroes-typed-detail" maxlength="500" />
+            </label>
+            <label class="heroes-field" for="heroes-typed-target">
+              Modifier target
+              <input id="heroes-typed-target" maxlength="120" placeholder="Equation element name" />
+            </label>
+            <label class="heroes-trait-base-toggle">
+              <input id="heroes-typed-base" type="checkbox" />
+              Part of base trait specification
+            </label>
+            <button
+              id="heroes-add-typed"
+              class="btn"
+              type="button"
+              aria-label="Add typed HERO element"
+              title="Add typed HERO element"
+            >
+              Add typed element
+            </button>
+            <button id="heroes-cancel-typed-edit" class="btn" type="button" hidden>
+              Cancel typed edit
+            </button>
+          </div>
+          <fieldset id="heroes-typed-trait-fieldset" class="heroes-typed-trait-fieldset">
+            <legend>Applies to model traits</legend>
+            <div id="heroes-typed-trait-options" class="heroes-trait-options"></div>
+          </fieldset>
+          <ul id="heroes-typed-elements" class="heroes-equation-elements"></ul>
+          <button id="heroes-remove-extras" class="btn" type="button">
+            Remove non-base elements
+          </button>
+        </fieldset>
+
+        <label class="heroes-field" for="heroes-object-description">
+          Description
+          <textarea id="heroes-object-description" name="description" rows="3"></textarea>
+        </label>
+        <div class="heroes-editor-actions">
+          <button class="btn btn-primary heroes-save-object" type="submit">Save object</button>
+          <button id="heroes-cancel-edit" class="btn" type="button" hidden>Cancel edit</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</section>

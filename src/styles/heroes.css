@@ -1,0 +1,322 @@
+.heroes-workspace {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.heroes-page-heading,
+.heroes-section-heading,
+.heroes-object-list-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.heroes-page-heading {
+  margin-bottom: 1.5rem;
+}
+
+.heroes-page-heading h2,
+.heroes-section-heading h3 {
+  color: var(--text-main);
+  font-size: 1.45rem;
+}
+
+.heroes-page-heading > div > p:last-child,
+.heroes-pair-panel > p {
+  color: var(--text-muted);
+  margin-top: 0.3rem;
+}
+
+.heroes-kicker {
+  color: var(--accent-gold);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.heroes-state {
+  max-width: 32rem;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.heroes-state.is-error {
+  color: var(--accent-red);
+}
+
+.heroes-pair-panel,
+.heroes-world-panel,
+.heroes-editor-panel {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  padding: 1.1rem;
+}
+
+.heroes-pair-panel {
+  margin-bottom: 1.25rem;
+}
+
+.heroes-pair-panel h3,
+.heroes-section-heading {
+  margin-bottom: 0.85rem;
+}
+
+#heroes-pair-form,
+.heroes-inline-form {
+  display: flex;
+  align-items: end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+#heroes-pair-form label,
+.heroes-world-form label,
+.heroes-field {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+#heroes-pair-form input,
+.heroes-field input,
+.heroes-field select,
+.heroes-field textarea,
+.heroes-inline-form input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-main);
+  padding: 0.58rem 0.65rem;
+  font: inherit;
+}
+
+.heroes-inline-form input {
+  flex: 1 1 12rem;
+}
+
+#heroes-pair-form input {
+  width: min(100%, 14rem);
+}
+
+.heroes-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.72fr) minmax(0, 1.7fr);
+  align-items: start;
+  gap: 1rem;
+}
+
+.heroes-world-form,
+.heroes-field {
+  margin-bottom: 1rem;
+}
+
+.heroes-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.heroes-traits,
+.heroes-equation-builder,
+.heroes-typed-builder {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem 1rem;
+  margin: 0 0 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.heroes-traits legend,
+.heroes-equation-builder legend,
+.heroes-typed-builder legend {
+  padding: 0 0.35rem;
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+.heroes-traits label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.heroes-equation-builder {
+  display: block;
+}
+
+.heroes-typed-builder {
+  display: block;
+}
+
+.heroes-field-hint {
+  margin-bottom: 0.8rem;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.heroes-typed-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+}
+
+.heroes-typed-controls .heroes-field {
+  margin: 0;
+}
+
+.heroes-trait-base-toggle,
+.heroes-trait-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.heroes-typed-trait-fieldset {
+  margin: 0.9rem 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.heroes-typed-trait-fieldset legend {
+  padding: 0 0.35rem;
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+.heroes-trait-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+}
+
+#heroes-remove-extras {
+  margin-top: 0.75rem;
+}
+
+.heroes-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+}
+
+.heroes-equation-readout {
+  margin-bottom: 0.8rem;
+  color: var(--accent-gold-hover);
+  font-variant-numeric: tabular-nums;
+}
+
+.heroes-equation-controls {
+  grid-template-columns: minmax(8rem, 0.8fr) minmax(9rem, 1.5fr) minmax(6rem, 0.7fr) auto minmax(
+      6rem,
+      0.7fr
+    );
+  align-items: end;
+}
+
+.heroes-equation-controls .heroes-field {
+  margin: 0;
+}
+
+.heroes-equation-elements,
+.heroes-object-list {
+  display: grid;
+  gap: 0.45rem;
+  list-style: none;
+}
+
+.heroes-equation-elements {
+  margin-top: 0.8rem;
+}
+
+.heroes-equation-elements li,
+.heroes-object-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  border-top: 1px solid var(--border-color);
+  padding: 0.6rem 0;
+}
+
+.heroes-object-list li {
+  align-items: flex-start;
+}
+
+.heroes-object-list strong,
+.heroes-object-list small {
+  display: block;
+}
+
+.heroes-object-list small {
+  margin-top: 0.15rem;
+  color: var(--text-muted);
+}
+
+.heroes-object-list-heading {
+  align-items: center;
+  margin: 1.35rem 0 0.4rem;
+  color: var(--text-main);
+}
+
+.heroes-object-list-heading output {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.heroes-save-object {
+  margin-top: 0.25rem;
+}
+
+.heroes-empty-list {
+  color: var(--text-dim);
+  font-size: 0.88rem;
+}
+
+@media (max-width: 900px) {
+  .heroes-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .heroes-equation-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .heroes-typed-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 540px) {
+  .heroes-workspace {
+    padding: 1rem;
+  }
+
+  .heroes-page-heading {
+    display: block;
+  }
+
+  .heroes-state {
+    margin-top: 0.8rem;
+    text-align: left;
+  }
+
+  .heroes-form-grid,
+  .heroes-equation-controls,
+  .heroes-typed-controls {
+    grid-template-columns: 1fr;
+  }
+}

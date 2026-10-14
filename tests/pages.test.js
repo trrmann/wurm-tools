@@ -17,6 +17,11 @@ describe('Tool Registry Migration', () => {
       name: 'World Map',
       href: '/site/map-explorer/',
     });
+    expect(PRIMARY_NAVIGATION).toContainEqual({
+      id: 'heroes',
+      name: 'HERO Worlds',
+      href: '/site/heroes/',
+    });
   });
 
   it('retrieves tool metadata by id', () => {

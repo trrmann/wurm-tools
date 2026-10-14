@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Local helper for the Server Status page: detects a Wurm Unlimited dedicated server / client
 // installed through Steam, reports whether each is running, and can launch them.
 // Binds to 127.0.0.1 only and accepts requests only from allowed origins.
@@ -52,6 +51,15 @@ import {
   getMapEditReportCsv,
   resetMapEdits,
 } from './wurm-map-edits.js';
+import {
+  createHeroesObject,
+  createHeroesWorld,
+  deleteHeroesObject,
+  heroesDatabasePath,
+  listHeroesObjects,
+  listHeroesWorlds,
+  updateHeroesObject,
+} from './heroes-store.js';
 
 export const PORT = Number(process.env.WURM_HELPER_PORT || 5180);
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
@@ -379,6 +387,39 @@ export async function handleMap(req, url, serverDir = findInstall(TARGETS.server
   throw httpError(404, 'Not found');
 }
 
+export async function handleHeroes(req, url, filePath = heroesDatabasePath()) {
+  const parts = url.pathname.split('/').filter(Boolean).slice(1).map(decodeURIComponent);
+  if (parts.length === 1 && parts[0] === 'worlds' && req.method === 'GET') {
+    return { worlds: await listHeroesWorlds(filePath) };
+  }
+  if (parts.length === 1 && parts[0] === 'worlds' && req.method === 'POST') {
+    const world = await createHeroesWorld((await readJsonBody(req, 4096)).name, filePath);
+    return { statusCode: 201, body: { world } };
+  }
+  if (parts.length === 3 && parts[0] === 'worlds' && parts[2] === 'objects') {
+    if (req.method === 'GET') {
+      return { objects: await listHeroesObjects(parts[1], filePath) };
+    }
+    if (req.method === 'POST') {
+      const object = await createHeroesObject(
+        parts[1],
+        await readJsonBody(req, 256 * 1024),
+        filePath
+      );
+      return { statusCode: 201, body: { object } };
+    }
+  }
+  if (parts.length === 2 && parts[0] === 'objects' && req.method === 'DELETE') {
+    return deleteHeroesObject(parts[1], filePath);
+  }
+  if (parts.length === 2 && parts[0] === 'objects' && req.method === 'PUT') {
+    return {
+      object: await updateHeroesObject(parts[1], await readJsonBody(req, 256 * 1024), filePath),
+    };
+  }
+  throw httpError(404, 'Not found');
+}
+
 export function createServer({ env = process.env } = {}) {
   const origins = allowedOrigins(env);
   const authFile = authFilePath(env);
@@ -460,6 +501,12 @@ export function createServer({ env = process.env } = {}) {
         const result = await handleMap(req, url);
         if (result?.statusCode) return send(result.statusCode, result.body);
         return send(200, result?.pixels || result);
+      }
+      if (url.pathname.startsWith('/heroes/')) {
+        if (!requireAuth()) return;
+        const result = await handleHeroes(req, url, heroesDatabasePath(env));
+        if (result?.statusCode) return send(result.statusCode, result.body);
+        return send(200, result);
       }
       const start = url.pathname.match(/^\/start\/(server|client)$/);
       if (req.method === 'POST' && start) {

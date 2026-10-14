@@ -18,3 +18,9 @@ This project models character data, not the rules text. Point-cost calculations 
 - [HERO System Sidekick PDF](https://www.herogames.com/store/product/472-hero-system-sidekick-pdf/) — official streamlined rules reference.
 
 The publisher search index describes character creation as covering Characteristics, Skills, Perks, Talents, Powers, Advantages, Limitations, and Disadvantages/Complications. This model keeps those as separate typed objects and avoids assuming one point-cost formula applies to every edition. The current search did not surface an authorized downloadable 4th-edition core rulebook; the 4th-edition sheet link above is a publisher-hosted forum reference rather than a rulebook copy.
+
+## Local Object Workspace
+
+The `/site/heroes/` page creates HERO worlds and objects without connecting to a Wurm world. It sends world and object definitions to the paired loopback helper, which stores them in a separate `heroes.db` file under the user's application-data directory (`WURM_HEROES_DB_PATH` can override the location). Object definitions are stored as JSON in SQLite so edition-specific and future typed fields can be retained without modifying Wurm databases. The editor supports object kind, body shape, point-level classification, model traits, descriptions, typed characteristics/advantages/disadvantages, and an advantages + points = disadvantages equation. Typed elements can be edited after insertion, associated with one or more model traits, and marked as part of the base trait specification; the cleanup action removes only elements not marked as base. Point costs and trait mappings remain user-defined rather than inferred from edition-specific rules.
+
+Nested package/framework editing and explicit figured-characteristic formulas with edition-aware calculation callbacks remain follow-up work.
