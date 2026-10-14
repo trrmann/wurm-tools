@@ -234,37 +234,12 @@ invoke_step() {
   echo -e "${GREEN}[PASS] ${step_name} completed successfully.${NC}\n"
 }
 
-open_render_in_chrome() {
-  local url="${1:-https://wurm-tools.onrender.com}"
-  echo -e "${CYAN}>>> Opening Render site in Google Chrome...${NC}"
-
-  if command -v google-chrome >/dev/null 2>&1; then
-    google-chrome "${url}" >/dev/null 2>&1 &
-    echo -e "${GREEN}[PASS] Opened ${url} in Google Chrome.${NC}\n"
-  elif command -v google-chrome-stable >/dev/null 2>&1; then
-    google-chrome-stable "${url}" >/dev/null 2>&1 &
-    echo -e "${GREEN}[PASS] Opened ${url} in Google Chrome.${NC}\n"
-  elif command -v chromium >/dev/null 2>&1; then
-    chromium "${url}" >/dev/null 2>&1 &
-    echo -e "${GREEN}[PASS] Opened ${url} in Chromium.${NC}\n"
-  elif command -v chromium-browser >/dev/null 2>&1; then
-    chromium-browser "${url}" >/dev/null 2>&1 &
-    echo -e "${GREEN}[PASS] Opened ${url} in Chromium.${NC}\n"
-  elif command -v xdg-open >/dev/null 2>&1; then
-    xdg-open "${url}" >/dev/null 2>&1 &
-    echo -e "${GREEN}[PASS] Opened ${url} in default browser.${NC}\n"
-  else
-    echo -e "${YELLOW}[WARN] Could not detect a browser command (google-chrome/xdg-open).${NC}"
-    echo -e "Please visit: ${url}\n"
-  fi
-}
-
 launch_when_ready() {
   local url="${1:-http://localhost:3000}"
   local timeout="${2:-30}"
   local timeout_ms=$((timeout * 1000))
   echo -e "${CYAN}>>> Forking background monitor (polling ${url} for HTTP 200 within ${timeout}s)...${NC}"
-  node "${SCRIPT_DIR}/launch-when-ready.js" "${url}" "${timeout_ms}" >/dev/null 2>&1 &
+  node "${SCRIPT_DIR}/launch-when-ready.js" "${url}" "${timeout_ms}" &
 }
 
 # 0. Check dependencies
@@ -490,9 +465,9 @@ if [ "${TARGET_ENV}" = "prod" ]; then
     gh run list --repo trrmann/wurm-tools --limit 2 || true
   fi
 
-  # Open Render live site in Chrome (default unless --no-launch / --no-open is passed)
+  # Poll Render in a detached monitor and launch Chrome only after it responds.
   if [ "${NO_LAUNCH}" = false ]; then
-    open_render_in_chrome "https://wurm-tools.onrender.com"
+    launch_when_ready "https://wurm-tools.onrender.com" 300
   else
     echo -e "${GRAY}[INFO] Chrome launch skipped (--no-launch flag set).${NC}\n"
   fi
@@ -525,5 +500,4 @@ else
   echo -e "\n${CYAN}>>> Starting Vite development server (running in foreground; press Ctrl+C to stop)...${NC}\n"
   npm run dev
 fi
-
 

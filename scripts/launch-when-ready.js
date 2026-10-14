@@ -53,6 +53,12 @@ async function checkUrl(urlStr) {
   return false;
 }
 
+function spawnDetached(cmd, cmdArgs, onError) {
+  const child = spawn(cmd, cmdArgs, { detached: true, stdio: 'ignore' });
+  child.on('error', onError);
+  child.unref();
+}
+
 export function launchBrowser(url) {
   let chromePath = null;
   try {
@@ -61,32 +67,30 @@ export function launchBrowser(url) {
     // Fall back to system default
   }
 
-  if (chromePath) {
-    const child = spawn(chromePath, [url], {
-      detached: true,
-      stdio: 'ignore',
-    });
-    child.unref();
+  let opener = null;
+  if (process.platform === 'win32') {
+    opener = ['cmd.exe', ['/c', 'start', '', url]];
+  } else if (process.platform === 'darwin') {
+    opener = ['open', [url]];
   } else {
-    if (process.platform === 'win32') {
-      const child = spawn('cmd.exe', ['/c', 'start', '', url], {
-        detached: true,
-        stdio: 'ignore',
-      });
-      child.unref();
-    } else if (process.platform === 'linux') {
-      const child = spawn('xdg-open', [url], {
-        detached: true,
-        stdio: 'ignore',
-      });
-      child.unref();
-    } else if (process.platform === 'darwin') {
-      const child = spawn('open', [url], {
-        detached: true,
-        stdio: 'ignore',
-      });
-      child.unref();
-    }
+    opener = ['xdg-open', [url]];
+  }
+
+  const useDefault = () => {
+    console.log(`[launch-when-ready] Opening ${url} with default browser (${opener[0]})`);
+    spawnDetached(opener[0], opener[1], (err) =>
+      console.error(`[launch-when-ready] Failed to open browser: ${err.message}`)
+    );
+  };
+
+  if (chromePath) {
+    console.log(`[launch-when-ready] Opening ${url} with ${chromePath}`);
+    spawnDetached(chromePath, ['--new-window', url], (err) => {
+      console.error(`[launch-when-ready] Chrome failed (${err.message}); using default browser`);
+      useDefault();
+    });
+  } else {
+    useDefault();
   }
 }
 
@@ -109,6 +113,9 @@ export async function monitor(url = targetUrl, timeout = timeoutMs, dryRun = isD
 const isDirectCli = process.argv[1] && process.argv[1].endsWith('launch-when-ready.js');
 if (isDirectCli) {
   monitor().then((success) => {
+    if (!success) {
+      console.error(`[launch-when-ready] ${targetUrl} did not respond within ${timeoutMs}ms`);
+    }
     process.exit(success ? 0 : 1);
   });
 }
