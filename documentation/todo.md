@@ -41,7 +41,7 @@
 
 - add a local sqllite db on the client laptop to track info for the page in the future. this will not be allowed to update the actual wurm db, that is to be read only.
 
-- [ ] APPROVAL REQUIRED: Let the Render-hosted page read each user's local Wurm database through a paired localhost helper. Keep the helper bound to `127.0.0.1` and database access read-only; require per-device authentication for database and Steam-launch routes, allow only approved app origins, and provide opt-in login startup on Windows and Fedora. Validate HTTPS-to-localhost/private-network browser behavior. Do not expose the helper publicly or upload database contents.
+- [x] Approved Render-to-local database access through a paired loopback helper. Status, read-only database, and Steam-launch routes require a per-browser token; pairing uses an expiring local CLI code; only exact app origins are allowed. Added opt-in Windows logon-task and Fedora systemd startup. Validated HTTPS Render-origin pairing, authentication, and private-network preflight in a browser; no database contents are uploaded.
 
 ::::::do not proceed past this point without approval:::::
 

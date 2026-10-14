@@ -53,6 +53,28 @@
   display: none;
 }
 
+#helper-pair-panel > p {
+  margin-bottom: 0.75rem;
+  color: var(--text-muted);
+}
+
+#helper-pair-form {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+#helper-pair-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text-muted);
+}
+
+#helper-pair-code {
+  width: min(100%, 14rem);
+}
+
 body {
   font-family: var(--font-family);
   background-color: var(--bg-primary);

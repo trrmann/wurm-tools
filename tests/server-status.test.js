@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { parseLibraryPaths, matchProcess, TARGETS, allowedOrigins } from '../scripts/wurm-local.js';
+import { systemdUnitContent, windowsTaskCreateArgs } from '../scripts/helper-startup.js';
 import { describeTarget } from '../src/js/modules/pages/ServerStatusPage.js';
 
 describe('wurm-local helper', () => {
@@ -21,6 +22,11 @@ describe('wurm-local helper', () => {
 
   it('allows the dev and preview origins', () => {
     expect(allowedOrigins({})).toContain('http://localhost:3000');
+    expect(allowedOrigins({})).toContain('https://wurm-tools.onrender.com');
+    expect(allowedOrigins({ WURM_ALLOWED_ORIGINS: '*,https://extra.example' })).not.toContain('*');
+    expect(allowedOrigins({ WURM_ALLOWED_ORIGINS: '*,https://extra.example' })).toContain(
+      'https://extra.example'
+    );
   });
 
   it('starts detached and shuts down when its semaphore is removed', async () => {
@@ -31,6 +37,8 @@ describe('wurm-local helper', () => {
       ...process.env,
       WURM_HELPER_PORT: '0',
       WURM_HELPER_SEMAPHORE_PATH: semaphore,
+      WURM_HELPER_AUTH_FILE: path.join(temp, 'helper-auth.json'),
+      WURM_SERVER_DIR: path.join(temp, 'missing-server'),
     };
     const run = (args = []) =>
       spawnSync(process.execPath, [script, ...args], { env, encoding: 'utf8', timeout: 10000 });
@@ -51,7 +59,7 @@ describe('wurm-local helper', () => {
           const state = JSON.parse(fs.readFileSync(semaphore, 'utf8'));
           port = state.port;
           if (!port) return false;
-          const response = await fetch(`http://127.0.0.1:${port}/status`);
+          const response = await fetch(`http://127.0.0.1:${port}/health`);
           return response.ok && response.headers.get('content-type')?.includes('application/json');
         } catch {
           return false;
@@ -61,6 +69,68 @@ describe('wurm-local helper', () => {
       const firstPid = JSON.parse(fs.readFileSync(semaphore, 'utf8')).pid;
       expect(run().status).toBe(0);
       expect(JSON.parse(fs.readFileSync(semaphore, 'utf8')).pid).toBe(firstPid);
+
+      const origin = 'https://wurm-tools.onrender.com';
+      const helperUrl = `http://127.0.0.1:${port}`;
+      const unauthenticated = await fetch(`${helperUrl}/status`, { headers: { Origin: origin } });
+      expect(unauthenticated.status).toBe(401);
+
+      const pairingResult = run(['--pairing-code']);
+      expect(pairingResult.status).toBe(0);
+      const code = pairingResult.stdout.match(/(\d{8})\s*$/)?.[1];
+      expect(code).toBeDefined();
+      const paired = await fetch(`${helperUrl}/pair`, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      expect(paired.status).toBe(200);
+      const { token } = await paired.json();
+      expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      const authHeaders = { Origin: origin, Authorization: `Bearer ${token}` };
+
+      const status = await fetch(`${helperUrl}/status`, { headers: authHeaders });
+      expect(status.status).toBe(200);
+      const dbResponse = await fetch(`${helperUrl}/db/worlds`, { headers: authHeaders });
+      expect(dbResponse.status).toBe(404);
+      const startWithoutAuth = await fetch(`${helperUrl}/start/server`, {
+        method: 'POST',
+        headers: { Origin: origin },
+      });
+      expect(startWithoutAuth.status).toBe(401);
+      const startWithoutInstall = await fetch(`${helperUrl}/start/server`, {
+        method: 'POST',
+        headers: authHeaders,
+      });
+      expect(startWithoutInstall.status).toBe(404);
+
+      const rejectedOrigin = await fetch(`${helperUrl}/status`, {
+        headers: { ...authHeaders, Origin: 'https://attacker.example' },
+      });
+      expect(rejectedOrigin.status).toBe(403);
+      const preflight = await fetch(`${helperUrl}/db/worlds`, {
+        method: 'OPTIONS',
+        headers: {
+          Origin: origin,
+          'Access-Control-Request-Method': 'GET',
+          'Access-Control-Request-Headers': 'authorization',
+          'Access-Control-Request-Private-Network': 'true',
+        },
+      });
+      expect(preflight.status).toBe(204);
+      expect(preflight.headers.get('access-control-allow-private-network')).toBe('true');
+      expect(preflight.headers.get('access-control-allow-headers')).toContain('Authorization');
+
+      const replayedCode = await fetch(`${helperUrl}/pair`, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      expect(replayedCode.status).toBe(401);
+
+      expect(run(['--unpair-all']).status).toBe(0);
+      const revoked = await fetch(`${helperUrl}/status`, { headers: authHeaders });
+      expect(revoked.status).toBe(401);
 
       expect(run(['--stop']).status).toBe(0);
       expect(fs.existsSync(semaphore)).toBe(false);
@@ -86,5 +156,31 @@ describe('ServerStatusPage.describeTarget', () => {
     expect(
       describeTarget('client', { label: 'C', installed: true, running: false, path: 'p' }).disabled
     ).toBe('');
+  });
+});
+
+describe('helper login startup definitions', () => {
+  it('creates an opt-in Windows logon task', () => {
+    const args = windowsTaskCreateArgs(
+      'C:\\Program Files\\nodejs\\node.exe',
+      'C:\\Wurm Tools\\scripts\\wurm-local.js'
+    );
+    expect(args).toContain('ONLOGON');
+    expect(args[args.indexOf('/TR') + 1]).toBe(
+      '"C:\\Program Files\\nodejs\\node.exe" "C:\\Wurm Tools\\scripts\\wurm-local.js"'
+    );
+  });
+
+  it('creates a restartable Fedora systemd user unit', () => {
+    const unit = systemdUnitContent(
+      '/home/player/Wurm Tools',
+      '/usr/bin/node',
+      '/home/player/Wurm Tools/scripts/wurm-local.js'
+    );
+    expect(unit).toContain('WorkingDirectory="/home/player/Wurm Tools"');
+    expect(unit).toContain(
+      'ExecStart="/usr/bin/node" "/home/player/Wurm Tools/scripts/wurm-local.js" --foreground'
+    );
+    expect(unit).toContain('Restart=on-failure');
   });
 });

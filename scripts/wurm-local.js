@@ -9,6 +9,15 @@ import path from 'node:path';
 import { execFile, fork, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import {
+  authFilePath,
+  ensurePairingCode,
+  isPairedToken,
+  pairBrowser,
+  revokeAllPairedTokens,
+  revokePairedToken,
+  rotatePairingCode,
+} from './wurm-helper-auth.js';
 
 import {
   listWorlds,
@@ -49,6 +58,7 @@ export const TARGETS = {
 };
 
 const DEFAULT_ORIGINS = [
+  'https://wurm-tools.onrender.com',
   'http://localhost:3000',
   'http://localhost:4173',
   'http://127.0.0.1:3000',
@@ -59,8 +69,16 @@ export function allowedOrigins(env = process.env) {
   const extra = (env.WURM_ALLOWED_ORIGINS || '')
     .split(',')
     .map((s) => s.trim())
-    .filter(Boolean);
-  return [...DEFAULT_ORIGINS, ...extra];
+    .filter((origin) => {
+      if (!origin || origin === '*') return false;
+      try {
+        const parsed = new URL(origin);
+        return parsed.origin === origin && ['http:', 'https:'].includes(parsed.protocol);
+      } catch {
+        return false;
+      }
+    });
+  return [...new Set([...DEFAULT_ORIGINS, ...extra])];
 }
 
 // Extracts every "path" value from a Steam libraryfolders.vdf document.
@@ -219,8 +237,25 @@ export async function handleDb(url) {
   }
 }
 
-export function createServer() {
-  const origins = allowedOrigins();
+async function readJsonBody(req, maxBytes = 4096) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxBytes) throw httpError(413, 'Request body too large');
+    chunks.push(chunk);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw httpError(400, 'Invalid JSON body');
+  }
+}
+
+export function createServer({ env = process.env } = {}) {
+  const origins = allowedOrigins(env);
+  const authFile = authFilePath(env);
+  const pairingAttempts = new Map();
   return http.createServer(async (req, res) => {
     const origin = req.headers.origin;
     const originOk = !origin || origins.includes(origin);
@@ -231,27 +266,79 @@ export function createServer() {
           ? {
               'Access-Control-Allow-Origin': origin,
               'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+              'Access-Control-Allow-Headers': 'Authorization, Content-Type',
               'Access-Control-Allow-Private-Network': 'true',
+              'Access-Control-Max-Age': '600',
               Vary: 'Origin',
             }
           : {}),
+        'Cache-Control': 'no-store',
       });
-      res.end(JSON.stringify(body));
+      res.end(code === 204 ? undefined : JSON.stringify(body));
     };
 
     if (!originOk) return send(403, { error: 'Origin not allowed' });
-    if (req.method === 'OPTIONS') return send(204, {});
+    if (req.method === 'OPTIONS') {
+      if (!origin) return send(403, { error: 'Origin required' });
+      return send(204, {});
+    }
+
+    const requireAuth = () => {
+      const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization || '');
+      if (match && isPairedToken(match[1], authFile)) return match[1];
+      send(401, { error: 'Pair this browser with the local helper first' });
+      return null;
+    };
 
     const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
     try {
+      if (req.method === 'GET' && url.pathname === '/health') {
+        return send(200, { ok: true });
+      }
+      if (req.method === 'POST' && url.pathname === '/pair') {
+        if (!origin || !originOk) return send(403, { error: 'An approved app origin is required' });
+        const attemptKey = req.socket.remoteAddress || 'local';
+        const attempt = pairingAttempts.get(attemptKey);
+        if (attempt?.lockedUntil > Date.now()) {
+          return send(429, { error: 'Too many pairing attempts. Try again in 15 minutes.' });
+        }
+        const body = await readJsonBody(req);
+        const token = pairBrowser(body.code, authFile);
+        if (!token) {
+          const withinWindow = attempt?.windowStarted > Date.now() - 15 * 60 * 1000;
+          const failures = withinWindow ? attempt.failures : 0;
+          pairingAttempts.set(attemptKey, {
+            failures: failures + 1,
+            windowStarted: withinWindow ? attempt.windowStarted : Date.now(),
+            lockedUntil: failures + 1 >= 5 ? Date.now() + 15 * 60 * 1000 : 0,
+          });
+          return send(401, { error: 'Pairing code is invalid or expired' });
+        }
+        pairingAttempts.delete(attemptKey);
+        return send(200, { token });
+      }
       if (req.method === 'GET' && url.pathname === '/status') {
+        if (!requireAuth()) return;
         return send(200, await getStatus());
       }
       if (req.method === 'GET' && url.pathname.startsWith('/db/')) {
+        if (!requireAuth()) return;
         return send(200, await handleDb(url));
       }
       const start = url.pathname.match(/^\/start\/(server|client)$/);
-      if (req.method === 'POST' && start) return send(200, startTarget(start[1]));
+      if (req.method === 'POST' && start) {
+        if (!requireAuth()) return;
+        const status = await getStatus();
+        if (!status[start[1]].installed) throw httpError(404, 'Target is not installed');
+        if (status[start[1]].running) throw httpError(409, 'Target is already running');
+        return send(200, startTarget(start[1]));
+      }
+      if (req.method === 'POST' && url.pathname === '/unpair') {
+        const token = requireAuth();
+        if (!token) return;
+        revokePairedToken(token, authFile);
+        return send(200, { unpaired: true });
+      }
       return send(404, { error: 'Not found' });
     } catch (err) {
       return send(err.status || 500, { error: err.message });
@@ -322,11 +409,29 @@ async function waitForProcessExit(pid, timeoutMs = 5000) {
   return !processIsAlive(pid);
 }
 
+async function helperAlreadyServing() {
+  if (PORT === 0) return false;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 500);
+  try {
+    const response = await fetch(`http://127.0.0.1:${PORT}/health`, { signal: controller.signal });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function startDetachedHelper() {
   const file = semaphorePath();
   const current = readSemaphore(file);
   if (current && processIsAlive(current.pid)) {
     console.info(`Wurm local helper is already running (PID ${current.pid}).`);
+    return;
+  }
+  if (await helperAlreadyServing()) {
+    console.info('Wurm local helper is already running (managed by login startup).');
     return;
   }
   if (fs.existsSync(file)) fs.unlinkSync(file);
@@ -391,6 +496,7 @@ export async function stopDetachedHelper() {
 
 function runHelperServer({ foreground = false } = {}) {
   const file = semaphorePath();
+  ensurePairingCode();
   const token = process.env.WURM_HELPER_TOKEN;
   const server = createServer();
   let shuttingDown = false;
@@ -441,6 +547,11 @@ function runHelperServer({ foreground = false } = {}) {
 if (process.argv[1] && path.resolve(process.argv[1]) === SCRIPT_PATH) {
   if (process.argv.includes('--stop')) {
     await stopDetachedHelper();
+  } else if (process.argv.includes('--pairing-code')) {
+    console.log(`Pairing code (expires in 10 minutes): ${rotatePairingCode()}`);
+  } else if (process.argv.includes('--unpair-all')) {
+    revokeAllPairedTokens();
+    console.log('All paired browsers have been revoked.');
   } else if (process.argv.includes('--worker')) {
     runHelperServer();
   } else if (process.argv.includes('--foreground')) {

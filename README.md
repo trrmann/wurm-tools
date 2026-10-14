@@ -197,19 +197,25 @@ The **Server** page (`/site/server-status/`) shows whether a local Wurm Unlimite
 npm run dev           # starts Vite and automatically starts/reuses the helper
 npm run preview       # starts Vite preview and automatically starts/reuses the helper
 npm run helper        # optional: start/reuse the helper without starting the site
+npm run helper:pair-code # print a one-time code to pair a browser
+npm run helper:unpair  # revoke all paired browsers
 npm run helper:stop  # removes its semaphore and waits for graceful shutdown
+npm run helper:startup:install # opt into starting the helper at Windows/Fedora logon
+npm run helper:startup:remove  # remove the logon startup task/service
 ```
 
 The background helper is kept alive by `.wurm-helper.semaphore` in the project root. Deleting
 that file (or running `npm run helper:stop`) asks it to stop accepting requests and close active
 connections. Both Windows and Fedora `deploy -dev` / `deploy -preview` flows use these npm
-commands, so no separate helper setup is required.
+commands, so no separate helper setup is required. If a browser asks for local network access,
+allow it for the Render site.
 
 - `GET /status` and `POST /start/server|client` (JSON). Starting uses Steam (`steam://rungameid/402370` server, `366220` client).
 - Installs are found in Steam libraries, or set `WURM_SERVER_DIR` / `WURM_CLIENT_DIR`.
-- `WURM_HELPER_PORT` changes the port; CORS allows `localhost:3000`/`4173` plus `WURM_ALLOWED_ORIGINS` (comma-separated).
-- Local-use only: the deployed Render site generally cannot reach your localhost helper.
-- On Fedora, `scripts/setup.sh` reports whether a Wurm install is detected; add `--helper-service` to install and start a systemd user service (`wurm-helper`) for the helper.
+- On first use from Render, run `npm run helper:pair-code` locally and enter the 8-digit, 10-minute code in the Server page. Each browser gets its own bearer token; `/status`, `/db/...`, and `/start/...` require pairing. `npm run helper:unpair` revokes all browser tokens. Use `npm run helper:startup:remove` to stop a login-managed helper.
+- Database routes remain read-only, and database contents are never uploaded. The helper binds only to `127.0.0.1`; auth hashes are stored under the current user's config directory, while browser tokens stay in that browser's local storage.
+- CORS allows the exact Render origin and local `localhost`/`127.0.0.1` dev/preview origins. `WURM_ALLOWED_ORIGINS` adds exact origins only; wildcard origins are ignored. `WURM_HELPER_PORT` changes the port.
+- Login startup is opt-in: `npm run helper:startup:install` registers a Windows logon task or Fedora/Linux systemd user service; `npm run helper:startup:remove` removes it. Fedora setup also accepts `scripts/setup.sh --helper-service`.
 - The Database Explorer reads the server's SQLite databases read-only (via `sql.js`) through `/db/...` endpoints. On the Fedora laptop, both Adventure and Creative worlds are detected. Player identity/power/kingdom, skill records, and item coordinates are available in separate tables, with live positions in the `POSITION` table (joined into the players view). Skill and inventory views join by `OWNER`/`PARENTID`. Terrain type/height, flags, and protected tiles can be read with `scripts/wurm-map.js`; tile type names and altitudes (surface, rock, cave floor) are included; resource records are not decoded yet.
 - `npm test -- tests/wurm-db.test.js` includes a local SQLite write/export/reopen/read-back test; it uses a temporary fixture and never writes to the game's databases.
 
