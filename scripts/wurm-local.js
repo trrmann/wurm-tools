@@ -17,6 +17,8 @@ import {
   listPlayers,
   listSkills,
   listInventory,
+  listCreatures,
+  listGroundItems,
   browseTable,
   httpError,
 } from './wurm-db.js';
@@ -174,6 +176,8 @@ export function startTarget(key) {
 //   /db/<world>/<db>/players
 //   /db/<world>/wurmplayers.db/skills/<wurmId>
 //   /db/<world>/wurmitems.db/inventory/<inventoryId>
+//   /db/<world>/wurmcreatures.db/creatures?x=&y=&w=&h=   (tile region)
+//   /db/<world>/wurmitems.db/ground?x=&y=&w=&h=   (items on the ground)
 //   /db/<world>/<db>/table/<name>?limit=&offset=&search=
 export async function handleDb(url) {
   const dir = findInstall(TARGETS.server);
@@ -188,6 +192,8 @@ export async function handleDb(url) {
     if (kind === 'players') return listPlayers(db);
     if (kind === 'skills' && name) return listSkills(db, name);
     if (kind === 'inventory' && name) return listInventory(db, name);
+    if (kind === 'creatures') return listCreatures(db, Object.fromEntries(url.searchParams));
+    if (kind === 'ground') return listGroundItems(db, Object.fromEntries(url.searchParams));
     if (kind === 'table' && name) {
       return browseTable(db, name, {
         limit: url.searchParams.get('limit'),

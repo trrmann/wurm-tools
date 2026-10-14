@@ -12,6 +12,8 @@ import {
   listPlayers,
   listSkills,
   listInventory,
+  listCreatures,
+  listGroundItems,
   browseTable,
   clampLimit,
   safeName,
@@ -83,6 +85,32 @@ describe('wurm-db', () => {
     expect(listSkills(db, '1').rows.map((r) => r.NUMBER)).toEqual([1, 2]);
     expect(listInventory(db, 77).rows).toHaveLength(1);
     expect(() => listSkills(db, 'x')).toThrow();
+    db.close();
+  });
+
+  it('lists creatures and ground items by tile region', async () => {
+    const SQL = await initSqlJs();
+    const m = new SQL.Database();
+    m.run(
+      'CREATE TABLE CREATURES (WURMID INT, NAME TEXT, TEMPLATENAME TEXT, TEMPLATEID INT, SEX INT, KINGDOM INT, DEAD INT)'
+    );
+    m.run('CREATE TABLE POSITION (WURMID INT, POSX REAL, POSY REAL, POSZ REAL, LAYER INT)');
+    m.run("INSERT INTO CREATURES VALUES (1,'a','Horse',64,0,0,0),(2,'b','Deer',10,0,0,0)");
+    m.run('INSERT INTO POSITION VALUES (1,9.5,13,1,0),(2,400,400,1,-1)');
+    m.run(
+      'CREATE TABLE ITEMS (WURMID INT, TEMPLATEID INT, NAME TEXT, QUALITYLEVEL REAL, PARENTID INT, POSX REAL, POSY REAL, POSZ REAL)'
+    );
+    m.run("INSERT INTO ITEMS VALUES (5,1,'axe',50,-10,9.5,13,1),(6,1,'pick',40,77,9.5,13,1)");
+    fs.writeFileSync(path.join(dir, 'Creative', 'sqlite', 'objs.db'), Buffer.from(m.export()));
+    const db = await openDb(dir, 'Creative', 'objs.db');
+    const near = listCreatures(db, { x: 2, y: 3, w: 1, h: 1 });
+    expect(near.rows).toHaveLength(1);
+    expect(near.rows[0]).toMatchObject({ TEMPLATENAME: 'Horse', TILEX: 2, TILEY: 3 });
+    expect(listCreatures(db, {}).rows).toHaveLength(2);
+    expect(listGroundItems(db, { x: 2, y: 3, w: 1, h: 1 }).rows.map((r) => r.NAME)).toEqual([
+      'axe',
+    ]);
+    expect(() => listCreatures(db, { x: -1 })).toThrow();
     db.close();
   });
 
