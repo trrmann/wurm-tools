@@ -99,15 +99,65 @@ export function browseTable(db, tableName, { limit, offset, search } = {}) {
 // whichever of the well-known columns exist. Schema is discovered, not assumed.
 export function listPlayers(db) {
   const tables = rows(db, "SELECT name FROM sqlite_master WHERE type='table'").map((t) => t.name);
-  const table = tables.find((t) => /^players$/i.test(t));
+  const find = (re) => tables.find((t) => re.test(t));
+  const table = find(/^players$/i);
   if (!table) return { table: null, columns: [], rows: [] };
-  const wanted = ['WURMID', 'NAME', 'POWER', 'POSX', 'POSY', 'POSZ', 'SURFACED', 'KINGDOM'];
   const have = columnsOf(db, table);
-  const cols = wanted.filter((w) => have.some((h) => h.toUpperCase() === w));
-  const real = cols.map((w) => have.find((h) => h.toUpperCase() === w));
+  const pick = (cols, source) =>
+    cols.map((w) => source.find((h) => h.toUpperCase() === w)).filter(Boolean);
+  const own = pick(
+    ['WURMID', 'NAME', 'POWER', 'POSX', 'POSY', 'POSZ', 'SURFACED', 'KINGDOM'],
+    have
+  );
+  const select = own.map((c) => `p."${c}"`);
+  let join = '';
+  // Live coordinates are stored in a separate POSITION table keyed by WURMID.
+  const posTable = find(/^position$/i);
+  if (posTable && own.some((c) => c.toUpperCase() === 'WURMID')) {
+    const posCols = columnsOf(db, posTable);
+    const idCol = own.find((c) => c.toUpperCase() === 'WURMID');
+    const joinId = posCols.find((c) => c.toUpperCase() === 'WURMID');
+    const extra = pick(['POSX', 'POSY', 'POSZ', 'LAYER', 'ZONEID'], posCols).filter(
+      (c) => !own.some((o) => o.toUpperCase() === c.toUpperCase())
+    );
+    if (joinId && extra.length) {
+      join = ` LEFT JOIN "${posTable}" pos ON pos."${joinId}" = p."${idCol}"`;
+      select.push(...extra.map((c) => `pos."${c}"`));
+      own.push(...extra);
+    }
+  }
+  const data = rows(db, `SELECT ${select.join(', ')} FROM "${table}" p${join} LIMIT ${MAX_LIMIT}`);
+  return { table, columns: own, rows: data };
+}
+
+function toId(value) {
+  const n = Number(value);
+  if (!Number.isSafeInteger(n)) throw httpError(400, 'Invalid id');
+  return n;
+}
+
+// SKILLS.OWNER is the player's WURMID (wurmplayers.db). NUMBER is the game's
+// skill id; names live in the server jar, so the id is returned as-is.
+export function listSkills(db, wurmId) {
+  const tables = rows(db, "SELECT name FROM sqlite_master WHERE type='table'").map((t) => t.name);
+  if (!tables.includes('SKILLS')) return { columns: [], rows: [] };
   const data = rows(
     db,
-    `SELECT ${real.map((c) => `"${c}"`).join(', ')} FROM "${table}" LIMIT ${MAX_LIMIT}`
+    'SELECT NUMBER, VALUE, MINVALUE, LASTUSED FROM SKILLS WHERE OWNER = ? ORDER BY NUMBER LIMIT ?',
+    [toId(wurmId), MAX_LIMIT]
   );
-  return { table, columns: real, rows: data };
+  return { columns: ['NUMBER', 'VALUE', 'MINVALUE', 'LASTUSED'], rows: data };
+}
+
+// ITEMS.PARENTID equals the player's PLAYERS.INVENTORYID (wurmitems.db).
+export function listInventory(db, inventoryId) {
+  const tables = rows(db, "SELECT name FROM sqlite_master WHERE type='table'").map((t) => t.name);
+  if (!tables.includes('ITEMS')) return { columns: [], rows: [] };
+  const columns = ['WURMID', 'TEMPLATEID', 'NAME', 'QUALITYLEVEL', 'PLACE'];
+  const data = rows(
+    db,
+    `SELECT ${columns.join(', ')} FROM ITEMS WHERE PARENTID = ? ORDER BY NAME LIMIT ?`,
+    [toId(inventoryId), MAX_LIMIT]
+  );
+  return { columns, rows: data };
 }

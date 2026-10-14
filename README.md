@@ -202,7 +202,7 @@ npm run helper   # listens on 127.0.0.1:5180
 - `WURM_HELPER_PORT` changes the port; CORS allows `localhost:3000`/`4173` plus `WURM_ALLOWED_ORIGINS` (comma-separated).
 - Local-use only: the deployed Render site generally cannot reach your localhost helper.
 - On Fedora, `scripts/setup.sh` reports whether a Wurm install is detected; add `--helper-service` to install and start a systemd user service (`wurm-helper`) for the helper.
-- The Database Explorer reads the server's SQLite databases read-only (via `sql.js`) through `/db/...` endpoints. On the Fedora laptop, both Adventure and Creative worlds are detected. Player identity/power/kingdom, skill records, and item coordinates are available in separate tables, but the player table has no position fields. Map and border data are in binary `.map`/`.bmap` files and are not covered yet.
+- The Database Explorer reads the server's SQLite databases read-only (via `sql.js`) through `/db/...` endpoints. On the Fedora laptop, both Adventure and Creative worlds are detected. Player identity/power/kingdom, skill records, and item coordinates are available in separate tables, with live positions in the `POSITION` table (joined into the players view). Skill and inventory views join by `OWNER`/`PARENTID`. Terrain height/type can be read with `scripts/wurm-map.js`; border/resource layers and `.bmap` are not decoded yet.
 - `npm test -- tests/wurm-db.test.js` includes a local SQLite write/export/reopen/read-back test; it uses a temporary fixture and never writes to the game's databases.
 
 ## Deploying to Render
