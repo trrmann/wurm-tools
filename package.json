@@ -5,8 +5,11 @@
   "type": "module",
   "description": "A modular toolkit and dashboard for Wurm Online and Wurm Unlimited players",
   "scripts": {
+    "predev": "npm run helper",
     "dev": "vite",
+    "prepreview": "npm run helper",
     "helper": "node scripts/wurm-local.js",
+    "helper:stop": "node scripts/wurm-local.js --stop",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",

@@ -111,7 +111,7 @@ Description=Wurm Tools local helper
 
 [Service]
 WorkingDirectory=${PROJECT_ROOT}
-ExecStart=$(command -v node) ${PROJECT_ROOT}/scripts/wurm-local.js
+ExecStart=$(command -v node) ${PROJECT_ROOT}/scripts/wurm-local.js --foreground
 Restart=on-failure
 
 [Install]
