@@ -1,6 +1,6 @@
 // Starts a local Vite server, waits for HTTP 200, runs a command against it, then stops the server.
 // Usage: node scripts/run-with-server.js <preview|dev> <port> -- <command> [args...]
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { monitor } from './launch-when-ready.js';
@@ -16,6 +16,9 @@ if (sep < 0 || !['preview', 'dev'].includes(mode) || !port || cmd.length === 0) 
   console.error('Usage: run-with-server.js <preview|dev> <port> -- <command> [args...]');
   process.exit(2);
 }
+
+// Vite is spawned directly (bypassing npm's predev hook), so start the helper explicitly.
+spawnSync(process.execPath, [path.join(__dirname, 'wurm-local.js')], { stdio: 'inherit' });
 
 const viteBin = path.join(__dirname, '..', 'node_modules', 'vite', 'bin', 'vite.js');
 const viteArgs = mode === 'preview' ? ['preview'] : [];

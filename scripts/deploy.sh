@@ -453,6 +453,13 @@ if [ ${#CHROME_FLAGS[@]} -gt 0 ]; then
   CHROME_RESULT="PASSED (${CHROME_FLAGS[*]})"
 fi
 
+# Ensure the local helper is running for every target (idempotent, detaches itself)
+echo -e "${CYAN}>>> [Local Helper] Ensuring Wurm local helper is running...${NC}"
+if ! node "${SCRIPT_DIR}/wurm-local.js"; then
+  echo -e "${YELLOW}[WARN] Local helper failed to start; continuing without it.${NC}"
+fi
+echo
+
 # 8. Post-Deployment Summary & Actions
 echo -e "${GREEN}==========================================================${NC}"
 echo -e "${GREEN}  [SUCCESS] ${DISPLAY_NAME} Verification Completed!${NC}"
