@@ -127,14 +127,34 @@ export function steamLibraries() {
   return [...libs];
 }
 
-export function findInstall(target, env = process.env) {
-  const override = env[target.envDir];
-  if (override) return fs.existsSync(override) ? override : null;
-  for (const lib of steamLibraries()) {
-    const dir = path.join(lib, 'steamapps', 'common', target.folder);
-    if (fs.existsSync(dir)) return dir;
+// Non-Steam locations where a dedicated server is commonly unpacked.
+function extraRoots() {
+  const home = os.homedir();
+  if (process.platform === 'win32') {
+    return ['C:\\', 'D:\\', home, path.join(home, 'Documents')];
   }
-  return null;
+  return [
+    home,
+    path.join(home, 'Games'),
+    path.join(home, 'Downloads'),
+    '/opt',
+    '/srv',
+    '/usr/local',
+  ];
+}
+
+export function installCandidates(target, env = process.env) {
+  const override = env[target.envDir];
+  if (override) return [override];
+  const dirs = steamLibraries().map((lib) => path.join(lib, 'steamapps', 'common', target.folder));
+  const names = [target.folder, target.folder.replace(/ /g, ''), target.folder.replace(/ /g, '-')];
+  if (target.folder === TARGETS.server.folder) names.push('WurmServer', 'wurm-server', 'wurm');
+  for (const root of extraRoots()) for (const name of names) dirs.push(path.join(root, name));
+  return dirs;
+}
+
+export function findInstall(target, env = process.env) {
+  return installCandidates(target, env).find((dir) => fs.existsSync(dir)) || null;
 }
 
 function listProcesses() {
@@ -177,6 +197,7 @@ export async function getStatus() {
       label: target.label,
       installed: Boolean(dir),
       path: dir,
+      searched: dir ? undefined : installCandidates(target).slice(0, 6),
       running: pid !== false,
       pid: typeof pid === 'number' ? pid : null,
     };

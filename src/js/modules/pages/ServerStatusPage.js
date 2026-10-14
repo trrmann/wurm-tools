@@ -17,7 +17,7 @@ export function describeTarget(key, info) {
       state: 'planned',
       badgeClass: 'badge-planned',
       badge: 'Not installed',
-      detail: 'No install found. Set WURM_SERVER_DIR / WURM_CLIENT_DIR if it lives elsewhere.',
+      detail: `No install found (checked ${(info.searched || []).join(', ') || 'Steam libraries'}). Set WURM_SERVER_DIR / WURM_CLIENT_DIR if it lives elsewhere.`,
       hidden: 'hidden',
       disabled: 'disabled',
     };
@@ -62,8 +62,10 @@ export class ServerStatusPage extends BasePage {
     const pairPanel = this.viewport.querySelector('#helper-pair-panel');
     const unpairButton = this.viewport.querySelector('#helper-unpair');
     const installPanel = this.viewport.querySelector('#helper-install-panel');
+    const refreshButton = this.viewport.querySelector('#status-refresh');
     clearTimeout(this.retryTimer);
     installPanel.hidden = true;
+    refreshButton.hidden = true;
     try {
       if (!this.authToken) {
         const health = await fetch(`${HELPER_URL}/health`);
@@ -72,6 +74,7 @@ export class ServerStatusPage extends BasePage {
         pairPanel.hidden = false;
         unpairButton.hidden = true;
         this.setDatabaseControlsEnabled(false);
+        refreshButton.hidden = false;
         state.textContent = 'Helper ready. Pair this browser to view local status and databases.';
         return;
       }
@@ -87,6 +90,7 @@ export class ServerStatusPage extends BasePage {
       cards.innerHTML = ['server', 'client']
         .map((key) => fill(tpl, describeTarget(key, status[key])))
         .join('');
+      refreshButton.hidden = false;
       pairPanel.hidden = true;
       unpairButton.hidden = false;
       this.setDatabaseControlsEnabled(true);
