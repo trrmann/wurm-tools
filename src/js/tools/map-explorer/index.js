@@ -139,6 +139,7 @@ export function mount(container) {
       'Choose a saved baseline'
     );
     snapshotSelect.disabled = snapshots.length === 0;
+    updateButtons();
   }
 
   async function loadWorld(world) {
@@ -165,7 +166,7 @@ export function mount(container) {
       players.length ? 'Choose a character' : 'No positioned characters found'
     );
     playerSelect.disabled = players.length === 0;
-    element('#map-create').disabled = players.length === 0;
+    element('#map-create').disabled = false;
     await loadSnapshots(world);
     state.textContent = `${players.length} positioned character(s) found in ${world}.`;
   }
@@ -240,7 +241,8 @@ export function mount(container) {
     await loadRaster(id, layerSelect.value);
     state.textContent = `Loaded ${snapshot.playerName}'s ${bounds.width.toLocaleString()} × ${bounds.height.toLocaleString()} tile baseline.`;
     await loadTile(selectedTile.x, selectedTile.y);
-    element('#map-create').disabled = !playerSelect.value;
+    element('#map-create').disabled = false;
+    updateButtons();
   }
 
   function formatAltitude(value) {
@@ -333,6 +335,75 @@ export function mount(container) {
     }
   }
 
+  function creationOptions() {
+    if (element('#map-area').value === 'whole') {
+      return { whole: true, playerId: playerSelect.value || undefined };
+    }
+    return {
+      playerId: playerSelect.value,
+      width: Number(element('#map-width').value),
+      height: Number(element('#map-height').value),
+    };
+  }
+
+  function updateButtons() {
+    const hasSnapshot = Boolean(snapshotSelect.value);
+    element('#map-export').disabled = !hasSnapshot;
+    element('#map-delete').disabled = !hasSnapshot;
+    const custom = element('#map-area').value === 'custom';
+    element('#map-width').disabled = !custom;
+    element('#map-height').disabled = !custom;
+  }
+
+  async function exportSnapshot() {
+    const id = snapshotSelect.value;
+    if (!id) return;
+    state.textContent = 'Exporting baseline...';
+    const response = await fetch(`${HELPER_URL}/map/snapshots/${encodeURIComponent(id)}/export`, {
+      headers: authHeaders(),
+      signal,
+    });
+    if (!response.ok) {
+      throw new Error((await response.json()).error || `Local helper returned ${response.status}`);
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `wurm-map-baseline-${id.slice(0, 8)}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    state.textContent = 'Baseline exported.';
+  }
+
+  async function importSnapshot(file) {
+    state.textContent = `Importing ${file.name}...`;
+    const result = await request('/map/snapshots/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: file,
+    });
+    worldSelect.value = result.snapshot.world;
+    await loadWorld(result.snapshot.world);
+    snapshotSelect.value = result.snapshot.id;
+    await activateSnapshot(result.snapshot.id);
+    updateButtons();
+  }
+
+  async function deleteBaselines(all) {
+    const id = snapshotSelect.value;
+    const message = all
+      ? `Delete ALL saved baselines for ${worldSelect.value}? Wurm server files are not affected.`
+      : 'Delete the selected baseline? Wurm server files are not affected.';
+    if (!window.confirm(message)) return;
+    await request(
+      all ? `/map/${encodeURIComponent(worldSelect.value)}/snapshots` : `/map/snapshots/${id}`,
+      { method: 'DELETE' }
+    );
+    await loadWorld(worldSelect.value);
+    state.textContent = 'Deleted from the local map baseline database.';
+    updateButtons();
+  }
+
   async function createSnapshot() {
     const button = element('#map-create');
     button.disabled = true;
@@ -342,7 +413,7 @@ export function mount(container) {
       const job = await request(`/map/${encodeURIComponent(worldSelect.value)}/snapshots`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: playerSelect.value }),
+        body: JSON.stringify(creationOptions()),
       });
       activeSnapshotId = job.id;
       state.textContent =
@@ -376,6 +447,18 @@ export function mount(container) {
   });
   layerSelect.addEventListener('change', () => {
     if (activeSnapshotId) loadRaster(activeSnapshotId, layerSelect.value).catch(showError);
+  });
+  element('#map-area').addEventListener('change', updateButtons);
+  snapshotSelect.addEventListener('change', updateButtons);
+  element('#map-export').addEventListener('click', () => exportSnapshot().catch(showError));
+  element('#map-delete').addEventListener('click', () => deleteBaselines(false).catch(showError));
+  element('#map-delete-all').addEventListener('click', () =>
+    deleteBaselines(true).catch(showError)
+  );
+  element('#map-import').addEventListener('change', (event) => {
+    const [file] = event.target.files;
+    event.target.value = '';
+    if (file) importSnapshot(file).catch(showError);
   });
   element('#map-zoom').addEventListener('input', updateZoom);
   canvas.addEventListener('click', onCanvasClick);

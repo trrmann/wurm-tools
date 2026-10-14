@@ -9,6 +9,9 @@ import { createServer, handleMap } from '../scripts/wurm-local.js';
 import { MapTile, TerrainLayer } from '../scripts/wurm-map-model.js';
 import {
   baselineFilePath,
+  deleteMapSnapshots,
+  exportMapSnapshot,
+  importMapSnapshot,
   getMapJob,
   getMapRaster,
   getMapTile,
@@ -167,6 +170,52 @@ describe('local map baseline snapshots', () => {
     } finally {
       if (priorBaselinePath === undefined) delete process.env.WURM_MAP_BASELINE_PATH;
       else process.env.WURM_MAP_BASELINE_PATH = priorBaselinePath;
+      fs.rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it('captures the whole world or a custom size, then exports, imports and deletes locally', async () => {
+    const fixture = await createFixture();
+    try {
+      const whole = await startMapSnapshot(fixture.root, 'Adventure', undefined, {
+        whole: true,
+        filePath: fixture.file,
+      });
+      expect((await waitForJob(whole.id)).processed).toBe(16);
+      const custom = await startMapSnapshot(fixture.root, 'Adventure', 1, {
+        width: 2,
+        height: 3,
+        filePath: fixture.file,
+      });
+      const done = await waitForJob(custom.id);
+      expect(done.snapshot.bounds).toMatchObject({ width: 2, height: 3 });
+      await expect(
+        startMapSnapshot(fixture.root, 'Adventure', 1, {
+          width: 99,
+          height: 1,
+          filePath: fixture.file,
+        })
+      ).rejects.toMatchObject({ status: 400 });
+
+      const exported = JSON.parse(JSON.stringify(await exportMapSnapshot(whole.id, fixture.file)));
+      const imported = await importMapSnapshot(exported, fixture.file);
+      expect(imported.snapshot.id).not.toBe(whole.id);
+      expect([
+        ...(await getMapRaster(imported.snapshot.id, 'surface', fixture.file)).pixels,
+      ]).toEqual([...(await getMapRaster(whole.id, 'surface', fixture.file)).pixels]);
+      exported.layers.rock = exported.layers.surface.slice(0, 8);
+      await expect(importMapSnapshot(exported, fixture.file)).rejects.toMatchObject({
+        status: 400,
+      });
+
+      expect(await deleteMapSnapshots({ id: whole.id }, fixture.file)).toEqual({ deleted: 1 });
+      expect(await listMapSnapshots('Adventure', fixture.file)).toHaveLength(2);
+      await expect(getMapRaster(whole.id, 'surface', fixture.file)).rejects.toMatchObject({
+        status: 404,
+      });
+      expect(await deleteMapSnapshots({}, fixture.file)).toEqual({ deleted: 2 });
+      expect(await listMapSnapshots('Adventure', fixture.file)).toHaveLength(0);
+    } finally {
       fs.rmSync(fixture.root, { recursive: true, force: true });
     }
   });

@@ -35,11 +35,15 @@ import {
   httpError,
 } from './wurm-db.js';
 import {
+  deleteMapSnapshots,
+  exportMapSnapshot,
   getMapJob,
   getMapRaster,
   getMapTile,
+  importMapSnapshot,
   listMapSnapshots,
   startMapSnapshot,
+  worldMapInfo,
 } from './wurm-map-baseline.js';
 
 export const PORT = Number(process.env.WURM_HELPER_PORT || 5180);
@@ -248,6 +252,8 @@ export async function handleDb(url) {
   }
 }
 
+const MAX_IMPORT_BYTES = 600 * 1024 * 1024;
+
 async function readJsonBody(req, maxBytes = 4096) {
   const chunks = [];
   let size = 0;
@@ -264,8 +270,30 @@ async function readJsonBody(req, maxBytes = 4096) {
 }
 
 export async function handleMap(req, url, serverDir = findInstall(TARGETS.server)) {
-  if (!serverDir) throw httpError(404, 'Wurm server is not installed on this machine');
   const parts = url.pathname.split('/').filter(Boolean).slice(1).map(decodeURIComponent);
+  // These routes only touch the site's own baseline database, not the Wurm server files.
+  if (parts[0] === 'snapshots') {
+    if (parts.length === 2 && parts[1] === 'import' && req.method === 'POST') {
+      return {
+        statusCode: 201,
+        body: await importMapSnapshot(await readJsonBody(req, MAX_IMPORT_BYTES)),
+      };
+    }
+    if (parts.length === 3 && parts[2] === 'export' && req.method === 'GET') {
+      return exportMapSnapshot(parts[1]);
+    }
+    if (parts.length === 2 && req.method === 'DELETE') {
+      return deleteMapSnapshots({ id: parts[1] });
+    }
+    if (parts.length === 1 && req.method === 'DELETE') return deleteMapSnapshots();
+  }
+  if (parts.length === 2 && parts[1] === 'snapshots' && req.method === 'DELETE') {
+    return deleteMapSnapshots({ world: parts[0] });
+  }
+  if (!serverDir) throw httpError(404, 'Wurm server is not installed on this machine');
+  if (parts.length === 2 && parts[1] === 'info' && req.method === 'GET') {
+    return worldMapInfo(serverDir, parts[0]);
+  }
   if (parts.length === 2 && parts[1] === 'players' && req.method === 'GET') {
     const db = await openDb(serverDir, parts[0], 'wurmplayers.db');
     try {
@@ -278,7 +306,14 @@ export async function handleMap(req, url, serverDir = findInstall(TARGETS.server
     if (req.method === 'GET') return { snapshots: await listMapSnapshots(parts[0]) };
     if (req.method === 'POST') {
       const body = await readJsonBody(req, 16_384);
-      return { statusCode: 202, body: await startMapSnapshot(serverDir, parts[0], body.playerId) };
+      const { playerId, whole, width, height } = body;
+      return {
+        statusCode: 202,
+        body: await startMapSnapshot(serverDir, parts[0], playerId, {
+          ...(whole ? { whole: true } : {}),
+          ...(width !== undefined || height !== undefined ? { width, height } : {}),
+        }),
+      };
     }
   }
   if (parts[0] === 'snapshots' && parts.length === 3) {
@@ -307,7 +342,7 @@ export function createServer({ env = process.env } = {}) {
         ...(origin && originOk
           ? {
               'Access-Control-Allow-Origin': origin,
-              'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+              'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
               'Access-Control-Allow-Headers': 'Authorization, Content-Type',
               'Access-Control-Allow-Private-Network': 'true',
               'Access-Control-Max-Age': '600',

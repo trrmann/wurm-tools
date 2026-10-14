@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { promisify } from 'node:util';
+import zlib from 'node:zlib';
 import initSqlJs from 'sql.js';
 import {
   caveCeiling,
@@ -18,6 +20,11 @@ import { httpError, listPlayers, openDb, safeName } from './wurm-db.js';
 import { MapSnapshot, MapTile } from './wurm-map-model.js';
 
 export const SNAPSHOT_RADIUS = 1000;
+export const EXPORT_FORMAT = 'wurm-tools-map-baseline';
+export const EXPORT_VERSION = 1;
+const LAYER_NAMES = ['surface', 'rock', 'cave', 'resources', 'flags'];
+const deflate = promisify(zlib.deflate);
+const inflate = promisify(zlib.inflate);
 const BATCH_YIELD_ROWS = 8;
 const jobs = new Map();
 let sqlPromise;
@@ -98,11 +105,62 @@ function integer(value, label) {
   return n;
 }
 
-export async function startMapSnapshot(serverDir, world, playerId, options = {}) {
+function dimension(value, label, max) {
+  const n = integer(value, label);
+  if (n < 1 || n > max) throw httpError(400, `Invalid ${label}`);
+  return n;
+}
+
+export async function worldMapInfo(serverDir, world) {
+  if (!safeName(world)) throw httpError(400, 'Invalid world name');
+  const mapFile = path.join(serverDir, world, 'top_layer.map');
+  if (!fs.existsSync(mapFile)) throw httpError(404, 'World map files not found');
+  const size = mapSize(fs.statSync(mapFile).size);
+  if (!size) throw httpError(422, 'World map has an unrecognised size');
+  return { world, size };
+}
+
+// Region options: { whole: true } for the entire world, { width, height } for a custom
+// player-centered region (kept at the requested size by shifting at world edges), or
+// { radius } for the legacy square that is clipped at world edges.
+function snapshotBounds(center, size, options) {
+  if (options.whole) {
+    return { bounds: { x0: 0, y0: 0, width: size, height: size }, radius: Math.floor(size / 2) };
+  }
+  if (options.width !== undefined || options.height !== undefined) {
+    const width = dimension(options.width, 'width', size);
+    const height = dimension(options.height, 'height', size);
+    const x0 = Math.min(Math.max(0, center.x - Math.floor(width / 2)), size - width);
+    const y0 = Math.min(Math.max(0, center.y - Math.floor(height / 2)), size - height);
+    return {
+      bounds: { x0, y0, width, height },
+      radius: Math.max(Math.floor(width / 2), Math.floor(height / 2)),
+    };
+  }
   const radius = options.radius ?? SNAPSHOT_RADIUS;
+  if (!Number.isSafeInteger(radius) || radius < 0) throw httpError(400, 'Invalid snapshot radius');
+  const x0 = Math.max(0, center.x - radius);
+  const y0 = Math.max(0, center.y - radius);
+  return {
+    bounds: {
+      x0,
+      y0,
+      width: Math.min(size, center.x + radius + 1) - x0,
+      height: Math.min(size, center.y + radius + 1) - y0,
+    },
+    radius,
+  };
+}
+
+export async function startMapSnapshot(serverDir, world, playerId, options = {}) {
   const file = options.filePath ?? baselineFilePath();
   if (!safeName(world)) throw httpError(400, 'Invalid world name');
-  if (!Number.isSafeInteger(radius) || radius < 0 || radius > SNAPSHOT_RADIUS) {
+  if (
+    options.radius !== undefined &&
+    (!Number.isSafeInteger(options.radius) ||
+      options.radius < 0 ||
+      options.radius > SNAPSHOT_RADIUS)
+  ) {
     throw httpError(400, 'Invalid snapshot radius');
   }
   if ([...jobs.values()].some((job) => job.status === 'running')) {
@@ -110,33 +168,32 @@ export async function startMapSnapshot(serverDir, world, playerId, options = {})
   }
 
   const id = randomUUID();
-  const targetPlayerId = integer(playerId, 'player id');
-  const playerDb = await openDb(serverDir, world, 'wurmplayers.db');
+  const wholeWorld =
+    options.whole && (playerId === undefined || playerId === null || playerId === '');
+  const { size } = await worldMapInfo(serverDir, world);
   let player;
-  try {
-    player = listPlayers(playerDb, 10_000).rows.find((row) => row.WURMID === targetPlayerId);
-  } finally {
-    playerDb.close();
+  let center;
+  if (wholeWorld) {
+    player = { WURMID: 0, NAME: 'Entire world' };
+    center = { x: Math.floor(size / 2), y: Math.floor(size / 2) };
+  } else {
+    const targetPlayerId = integer(playerId, 'player id');
+    const playerDb = await openDb(serverDir, world, 'wurmplayers.db');
+    try {
+      player = listPlayers(playerDb, 10_000).rows.find((row) => row.WURMID === targetPlayerId);
+    } finally {
+      playerDb.close();
+    }
+    if (!player) throw httpError(404, 'Player not found');
+    if (!Number.isFinite(Number(player.POSX)) || !Number.isFinite(Number(player.POSY))) {
+      throw httpError(422, 'Player has no saved map position');
+    }
+    center = tileFromPosition(Number(player.POSX), Number(player.POSY));
+    if (center.x < 0 || center.y < 0 || center.x >= size || center.y >= size) {
+      throw httpError(422, 'Player position is outside the world map');
+    }
   }
-  if (!player) throw httpError(404, 'Player not found');
-  if (!Number.isFinite(Number(player.POSX)) || !Number.isFinite(Number(player.POSY))) {
-    throw httpError(422, 'Player has no saved map position');
-  }
-
-  const center = tileFromPosition(Number(player.POSX), Number(player.POSY));
-  const mapFile = path.join(serverDir, world, 'top_layer.map');
-  if (!fs.existsSync(mapFile)) throw httpError(404, 'World map files not found');
-  const size = mapSize(fs.statSync(mapFile).size);
-  if (!size) throw httpError(422, 'World map has an unrecognised size');
-  if (center.x < 0 || center.y < 0 || center.x >= size || center.y >= size) {
-    throw httpError(422, 'Player position is outside the world map');
-  }
-  const bounds = {
-    x0: Math.max(0, center.x - radius),
-    y0: Math.max(0, center.y - radius),
-  };
-  bounds.width = Math.min(size, center.x + radius + 1) - bounds.x0;
-  bounds.height = Math.min(size, center.y + radius + 1) - bounds.y0;
+  const { bounds, radius } = snapshotBounds(center, size, options);
   if (bounds.width < 1 || bounds.height < 1) {
     throw httpError(422, 'Player position is outside the world map');
   }
@@ -161,31 +218,39 @@ export async function startMapSnapshot(serverDir, world, playerId, options = {})
   return jobStatus(job);
 }
 
+function insertSnapshot(db, snapshot, records) {
+  db.run(
+    `INSERT INTO map_snapshots
+     (id, world, player_id, player_name, center_x, center_y, radius, x0, y0, width, height, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      snapshot.id,
+      snapshot.world,
+      snapshot.playerId,
+      snapshot.playerName,
+      snapshot.centerX,
+      snapshot.centerY,
+      snapshot.radius,
+      snapshot.bounds.x0,
+      snapshot.bounds.y0,
+      snapshot.bounds.width,
+      snapshot.bounds.height,
+      snapshot.createdAt,
+    ]
+  );
+  db.run(
+    `INSERT INTO map_snapshot_layers (snapshot_id, surface, rock, cave, resources, flags)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [snapshot.id, ...LAYER_NAMES.map((name) => records[name])]
+  );
+}
+
 async function writeSnapshot(serverDir, snapshot, job, file) {
   const db = await openBaseline(file);
   let transaction = false;
   try {
     db.run('BEGIN');
     transaction = true;
-    db.run(
-      `INSERT INTO map_snapshots
-       (id, world, player_id, player_name, center_x, center_y, radius, x0, y0, width, height, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        snapshot.id,
-        snapshot.world,
-        snapshot.playerId,
-        snapshot.playerName,
-        snapshot.centerX,
-        snapshot.centerY,
-        snapshot.radius,
-        snapshot.bounds.x0,
-        snapshot.bounds.y0,
-        snapshot.bounds.width,
-        snapshot.bounds.height,
-        snapshot.createdAt,
-      ]
-    );
     const bytesPerLayer = snapshot.bounds.width * snapshot.bounds.height * 4;
     const records = {
       surface: Buffer.allocUnsafe(bytesPerLayer),
@@ -212,11 +277,7 @@ async function writeSnapshot(serverDir, snapshot, job, file) {
       rowNumber++;
       if (rowNumber % BATCH_YIELD_ROWS === 0) await schedule();
     }
-    db.run(
-      `INSERT INTO map_snapshot_layers (snapshot_id, surface, rock, cave, resources, flags)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [snapshot.id, records.surface, records.rock, records.cave, records.resources, records.flags]
-    );
+    insertSnapshot(db, snapshot, records);
     db.run('COMMIT');
     transaction = false;
     persistBaseline(db, file);
@@ -457,6 +518,113 @@ export async function getMapTile(id, x, y, file = baselineFilePath()) {
       southEast: tiles.get(`${tileX + 1},${tileY + 1}`),
     });
     return { tile, cornerAltitudes };
+  } finally {
+    db.close();
+  }
+}
+
+export async function exportMapSnapshot(id, file = baselineFilePath()) {
+  const snapshot = await getMapSnapshot(id, file);
+  const db = await openBaseline(file);
+  try {
+    const record = readRows(db, 'SELECT * FROM map_snapshot_layers WHERE snapshot_id = ?', [id])[0];
+    if (!record) throw new Error('Map baseline data is missing');
+    const layers = {};
+    for (const name of LAYER_NAMES) {
+      layers[name] = (await deflate(Buffer.from(record[name]))).toString('base64');
+    }
+    return {
+      format: EXPORT_FORMAT,
+      version: EXPORT_VERSION,
+      exportedAt: new Date().toISOString(),
+      snapshot: { ...snapshot, bounds: { ...snapshot.bounds } },
+      layers,
+    };
+  } finally {
+    db.close();
+  }
+}
+
+const isInt = (value) => Number.isSafeInteger(value);
+
+export async function importMapSnapshot(data, file = baselineFilePath()) {
+  if (data?.format !== EXPORT_FORMAT) throw httpError(400, 'Not a Wurm Tools map baseline export');
+  if (data.version !== EXPORT_VERSION) throw httpError(400, 'Unsupported export version');
+  const source = data.snapshot ?? {};
+  const bounds = source.bounds ?? {};
+  if (
+    typeof source.world !== 'string' ||
+    !safeName(source.world) ||
+    typeof source.playerName !== 'string' ||
+    ![source.playerId, source.centerX, source.centerY, bounds.x0, bounds.y0].every(isInt) ||
+    !isInt(bounds.width) ||
+    !isInt(bounds.height) ||
+    bounds.width < 1 ||
+    bounds.height < 1 ||
+    bounds.x0 < 0 ||
+    bounds.y0 < 0
+  ) {
+    throw httpError(400, 'Invalid baseline metadata');
+  }
+  const expected = bounds.width * bounds.height * 4;
+  const records = {};
+  for (const name of LAYER_NAMES) {
+    if (typeof data.layers?.[name] !== 'string') throw httpError(400, `Missing ${name} layer`);
+    try {
+      records[name] = await inflate(Buffer.from(data.layers[name], 'base64'));
+    } catch {
+      throw httpError(400, `Corrupt ${name} layer`);
+    }
+    if (records[name].length !== expected) throw httpError(400, `Wrong size for ${name} layer`);
+  }
+  const snapshot = new MapSnapshot({
+    id: randomUUID(),
+    world: source.world,
+    playerId: source.playerId,
+    playerName: source.playerName,
+    centerX: source.centerX,
+    centerY: source.centerY,
+    radius: isInt(source.radius) ? source.radius : 0,
+    bounds: { x0: bounds.x0, y0: bounds.y0, width: bounds.width, height: bounds.height },
+    createdAt: typeof source.createdAt === 'string' ? source.createdAt : new Date().toISOString(),
+  });
+  const db = await openBaseline(file);
+  try {
+    db.run('BEGIN');
+    try {
+      insertSnapshot(db, snapshot, records);
+      db.run('COMMIT');
+    } catch (err) {
+      db.run('ROLLBACK');
+      throw err;
+    }
+    persistBaseline(db, file);
+  } finally {
+    db.close();
+  }
+  return { snapshot };
+}
+
+// Removes only rows in the site's own baseline database; Wurm server files are untouched.
+export async function deleteMapSnapshots({ id, world } = {}, file = baselineFilePath()) {
+  if ([...jobs.values()].some((job) => job.status === 'running')) {
+    throw httpError(409, 'A map baseline is being created');
+  }
+  const db = await openBaseline(file);
+  try {
+    const where = id ? 'WHERE id = ?' : world ? 'WHERE world = ?' : '';
+    const params = id ? [id] : world ? [world] : [];
+    const deleted = readRows(db, `SELECT COUNT(*) AS n FROM map_snapshots ${where}`, params)[0].n;
+    if (id && !deleted) throw httpError(404, 'Map baseline not found');
+    db.run(
+      `DELETE FROM map_snapshot_layers WHERE snapshot_id IN (SELECT id FROM map_snapshots ${where})`,
+      params
+    );
+    db.run(`DELETE FROM map_snapshots ${where}`, params);
+    db.run('VACUUM');
+    persistBaseline(db, file);
+    for (const [key, job] of jobs) if (!id || key === id) jobs.delete(job.id);
+    return { deleted };
   } finally {
     db.close();
   }
