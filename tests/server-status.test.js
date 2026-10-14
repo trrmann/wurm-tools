@@ -73,11 +73,16 @@ describe('wurm-local helper', () => {
 });
 
 describe('ServerStatusPage.describeTarget', () => {
-  it('disables start when not installed or already running', () => {
-    expect(describeTarget('server', { label: 'S', installed: false }).disabled).toBe('disabled');
+  it('hides start when not installed and disables it when already running', () => {
+    const missing = describeTarget('server', { label: 'S', installed: false });
+    expect(missing.hidden).toBe('hidden');
+    expect(missing.disabled).toBe('disabled');
     expect(
       describeTarget('server', { label: 'S', installed: true, running: true, path: 'p' }).badge
     ).toContain('Running');
+    expect(
+      describeTarget('server', { label: 'S', installed: true, running: true, path: 'p' }).hidden
+    ).toBe('');
     expect(
       describeTarget('client', { label: 'C', installed: true, running: false, path: 'p' }).disabled
     ).toBe('');

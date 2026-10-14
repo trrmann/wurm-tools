@@ -49,6 +49,10 @@
   padding: 0;
 }
 
+.btn[hidden] {
+  display: none;
+}
+
 body {
   font-family: var(--font-family);
   background-color: var(--bg-primary);

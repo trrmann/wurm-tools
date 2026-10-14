@@ -16,6 +16,7 @@ export function describeTarget(key, info) {
       badgeClass: 'badge-planned',
       badge: 'Not installed',
       detail: 'No install found. Set WURM_SERVER_DIR / WURM_CLIENT_DIR if it lives elsewhere.',
+      hidden: 'hidden',
       disabled: 'disabled',
     };
   }
@@ -26,6 +27,7 @@ export function describeTarget(key, info) {
     badgeClass: info.running ? 'badge-active' : 'badge-planned',
     badge: info.running ? '✓ Running' : 'Stopped',
     detail: info.path,
+    hidden: '',
     disabled: info.running ? 'disabled' : '',
   };
 }
