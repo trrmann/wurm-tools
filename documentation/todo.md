@@ -36,7 +36,7 @@
 ## Planned Items & Backlog
 
 - [x] Live character positions are in the `POSITION` table of `wurmplayers.db` (keyed by `WURMID`, with `POSX/POSY/POSZ/LAYER/ZONEID`); `listPlayers` joins it.
-- [x] `.map` layers (top/rock/flags/resources/cave) are a 1024-byte header plus 2048x2048 little-endian uint32 tiles; low byte = tile type, bits 16-31 = signed height (/2560 m, verified against item Z). Reader: `scripts/wurm-map.js`. Other layers' bit meanings and `protectedTiles.bmap` are not decoded yet.
+- [x] `.map` layers decoded in `scripts/wurm-map.js`: 1024-byte header plus 2048x2048 4-byte records `[type, data, heightHi, heightLo]`; height is a big-endian int16 in decimetres (verified against item Z, median error 0.05 m). `flags.map` keeps its flag bits in the last byte; `resources.map` is `0xFFFFFFFF` when empty (other records not decoded). `protectedTiles.bmap` is a Java-serialized `boolean[2048][2048]` (empty in the sample world, so axis order is unverified). Tile type ids are returned raw, not named.
 - [x] Joined skill/inventory views added (`/db/<world>/wurmplayers.db/skills/<wurmId>`, `/db/<world>/wurmitems.db/inventory/<inventoryId>`); verified `SKILLS.OWNER = PLAYERS.WURMID` and `ITEMS.PARENTID = PLAYERS.INVENTORYID`. Skill `NUMBER` is returned as an id (names live in the server jar).
 
 - add a local sqllite db on the client laptop to track info for the page in the future. this will not be allowed to update the actual wurm db, that is to be read only.

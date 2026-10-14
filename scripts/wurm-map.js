@@ -1,8 +1,13 @@
-// Read-only reader for Wurm Unlimited *.map layers.
-// Layout (verified on the Adventure world): 1024-byte header, then size*size
-// little-endian uint32 tiles, row-major (index = y * size + x).
-// Tile: low byte = tile type id, bits 16-31 = signed 16-bit height.
-// Height in metres = signed value / 2560 (verified against item Z, median error 0.25 m).
+// Read-only reader for Wurm Unlimited map layers (verified on the Adventure world).
+//
+// *.map files: 1024-byte header, then size*size 4-byte records, row-major
+// (index = y * size + x). Record bytes:
+//   top_layer / rock_layer / map_cave: [type, data, heightHi, heightLo]
+//     height = big-endian int16 in decimetres (/10 = metres); matches item Z (median error 0.05 m).
+//   flags: last byte holds the flag bits (observed values 0/64/128/192).
+//   resources: 0xFFFFFFFF = empty; other values are resource records (not decoded).
+// protectedTiles.bmap: Java-serialized boolean[size][size]; every row holds `size` bytes.
+// Which axis the outer array indexes has not been verified (the sample world has no protected tiles).
 import fs from 'node:fs';
 
 export const HEADER_BYTES = 1024;
@@ -12,12 +17,15 @@ export function mapSize(fileBytes) {
   return size * size * 4 + HEADER_BYTES === fileBytes ? size : null;
 }
 
-export function decodeTile(raw) {
-  const h = raw >>> 16;
-  return { type: raw & 0xff, height: (h > 32767 ? h - 65536 : h) / 2560 };
+export function decodeTile(bytes) {
+  return {
+    type: bytes[0],
+    data: bytes[1],
+    height: (((bytes[2] << 8) | bytes[3]) << 16) >> 16,
+  };
 }
 
-export function readTile(file, x, y) {
+export function readRecord(file, x, y) {
   const size = mapSize(fs.statSync(file).size);
   if (!size) throw new Error('unrecognised map size');
   if (x < 0 || y < 0 || x >= size || y >= size) throw new RangeError('tile out of range');
@@ -25,12 +33,37 @@ export function readTile(file, x, y) {
   try {
     const buf = Buffer.alloc(4);
     fs.readSync(fd, buf, 0, 4, HEADER_BYTES + (y * size + x) * 4);
-    return decodeTile(buf.readUInt32LE(0));
+    return buf;
   } finally {
     fs.closeSync(fd);
   }
 }
 
+export function readTile(file, x, y) {
+  const t = decodeTile(readRecord(file, x, y));
+  return { ...t, height: t.height / 10 };
+}
+
+export function readFlags(file, x, y) {
+  return readRecord(file, x, y)[3];
+}
+
 export function tileFromPosition(posX, posY) {
   return { x: Math.floor(posX / 4), y: Math.floor(posY / 4) };
+}
+
+// Returns { size, protectedCount, isProtected(a, b) } with a = outer index, b = inner index.
+export function readProtectedTiles(file) {
+  const d = fs.readFileSync(file);
+  if (d.readUInt32BE(0) !== 0xaced0005) throw new Error('not a Java serialized stream');
+  const first = d.indexOf(Buffer.from([0x75, 0x72, 0x00, 0x02, 0x5b, 0x5a]));
+  const size = d.readUInt32BE(first - 4);
+  const firstData = first + 23;
+  const rowStart = (r) => (r === 0 ? firstData : firstData + size + (r - 1) * (size + 10) + 10);
+  if (rowStart(size) - 10 !== d.length) throw new Error('unexpected protected tile layout');
+  let protectedCount = 0;
+  for (let r = 0; r < size; r++) {
+    for (let i = 0; i < size; i++) if (d[rowStart(r) + i]) protectedCount++;
+  }
+  return { size, protectedCount, isProtected: (a, b) => d[rowStart(a) + b] !== 0 };
 }
