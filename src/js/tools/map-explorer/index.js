@@ -4,6 +4,7 @@ import { MapTile } from '../../../../scripts/wurm-map-model.js';
 import { fill, getShell } from '../../modules/template.js';
 
 export const HELPER_URL = 'http://127.0.0.1:5180';
+const HELPER_TOKEN_KEY = 'wurm-tools-helper-token-v1';
 export const toolMetadata = {
   id: 'map-explorer',
   name: 'World Map Explorer',
@@ -88,8 +89,17 @@ export function mount(container) {
   let raster = null;
   let rasterLayer = null;
 
-  async function request(path, options) {
-    const response = await fetch(`${HELPER_URL}${path}`, { ...options, signal });
+  function authHeaders(headers = {}) {
+    const token = localStorage.getItem(HELPER_TOKEN_KEY);
+    return token ? { ...headers, Authorization: `Bearer ${token}` } : headers;
+  }
+
+  async function request(path, options = {}) {
+    const response = await fetch(`${HELPER_URL}${path}`, {
+      ...options,
+      headers: authHeaders(options.headers),
+      signal,
+    });
     const body = response.headers.get('content-type')?.includes('application/json')
       ? await response.json()
       : null;
@@ -203,7 +213,7 @@ export function mount(container) {
   async function loadRaster(id, layer) {
     const response = await fetch(
       `${HELPER_URL}/map/snapshots/${encodeURIComponent(id)}/raster?layer=${encodeURIComponent(layer)}`,
-      { signal }
+      { headers: authHeaders(), signal }
     );
     if (!response.ok) {
       const body = await response.json();
