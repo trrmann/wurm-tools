@@ -60,6 +60,9 @@ export class ServerStatusPage extends BasePage {
     const cards = this.viewport.querySelector('#server-cards');
     const pairPanel = this.viewport.querySelector('#helper-pair-panel');
     const unpairButton = this.viewport.querySelector('#helper-unpair');
+    const installPanel = this.viewport.querySelector('#helper-install-panel');
+    clearTimeout(this.retryTimer);
+    installPanel.hidden = true;
     try {
       if (!this.authToken) {
         const health = await fetch(`${HELPER_URL}/health`);
@@ -94,8 +97,9 @@ export class ServerStatusPage extends BasePage {
       pairPanel.hidden = true;
       unpairButton.hidden = true;
       this.setDatabaseControlsEnabled(false);
-      state.textContent =
-        'Helper not reachable. Restart the local site or run "npm run helper" to start it.';
+      installPanel.hidden = false;
+      state.textContent = `Helper not reachable from ${window.location.origin}. Start it with "npm run helper" (see below); retrying automatically.`;
+      this.retryTimer = setTimeout(() => this.refresh(), 5000);
     }
   }
 
@@ -318,6 +322,7 @@ export class ServerStatusPage extends BasePage {
   }
 
   unbindEvents() {
+    clearTimeout(this.retryTimer);
     this.viewport?.removeEventListener('click', this.onClick);
     this.viewport?.removeEventListener('change', this.onChange);
     this.viewport?.removeEventListener('submit', this.onSubmit);

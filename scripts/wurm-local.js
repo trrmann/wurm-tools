@@ -337,7 +337,7 @@ export function createServer({ env = process.env } = {}) {
     const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
     try {
       if (req.method === 'GET' && url.pathname === '/health') {
-        return send(200, { ok: true });
+        return send(200, { ok: true, platform: process.platform });
       }
       if (req.method === 'POST' && url.pathname === '/pair') {
         if (!origin || !originOk) return send(403, { error: 'An approved app origin is required' });
@@ -516,6 +516,12 @@ export async function startDetachedHelper() {
     }
     console.info(`Wurm local helper started in the background (PID ${child.pid}).`);
     console.info(`Listening on http://127.0.0.1:${PORT}`);
+    for (let i = 0; i < 10 && !(await helperAlreadyServing()); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    if (!(await helperAlreadyServing())) {
+      console.warn(`Warning: helper is not answering on port ${PORT}; check for a port conflict.`);
+    }
     console.info(`Stop with "npm run helper:stop" or delete ${file}.`);
   } catch (err) {
     removeSemaphore(file, token);
