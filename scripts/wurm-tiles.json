@@ -1,0 +1,634 @@
+{
+  "0": {
+    "name": "Hole",
+    "enum": "TILE_HOLE"
+  },
+  "1": {
+    "name": "Sand",
+    "enum": "TILE_SAND"
+  },
+  "2": {
+    "name": "Grass",
+    "enum": "TILE_GRASS"
+  },
+  "3": {
+    "name": "TreePosition",
+    "enum": "TILE_TREE"
+  },
+  "4": {
+    "name": "Rock",
+    "enum": "TILE_ROCK"
+  },
+  "5": {
+    "name": "Dirt",
+    "enum": "TILE_DIRT"
+  },
+  "6": {
+    "name": "Clay",
+    "enum": "TILE_CLAY"
+  },
+  "7": {
+    "name": "Field",
+    "enum": "TILE_FIELD"
+  },
+  "8": {
+    "name": "Packed dirt",
+    "enum": "TILE_DIRT_PACKED"
+  },
+  "9": {
+    "name": "Cobblestone",
+    "enum": "TILE_COBBLESTONE"
+  },
+  "10": {
+    "name": "Mycelium",
+    "enum": "TILE_MYCELIUM"
+  },
+  "11": {
+    "name": "Infected tree",
+    "enum": "TILE_MYCELIUM_TREE"
+  },
+  "12": {
+    "name": "Lava",
+    "enum": "TILE_LAVA"
+  },
+  "13": {
+    "name": "Enchanted grass",
+    "enum": "TILE_ENCHANTED_GRASS"
+  },
+  "14": {
+    "name": "Enchanted tree",
+    "enum": "TILE_ENCHANTED_TREE"
+  },
+  "15": {
+    "name": "Wooden planks",
+    "enum": "TILE_PLANKS"
+  },
+  "16": {
+    "name": "Stone slabs",
+    "enum": "TILE_STONE_SLABS"
+  },
+  "17": {
+    "name": "Gravel",
+    "enum": "TILE_GRAVEL"
+  },
+  "18": {
+    "name": "Peat",
+    "enum": "TILE_PEAT"
+  },
+  "19": {
+    "name": "Tundra",
+    "enum": "TILE_TUNDRA"
+  },
+  "20": {
+    "name": "Moss",
+    "enum": "TILE_MOSS"
+  },
+  "21": {
+    "name": "Cliff",
+    "enum": "TILE_CLIFF"
+  },
+  "22": {
+    "name": "Steppe",
+    "enum": "TILE_STEPPE"
+  },
+  "23": {
+    "name": "Marsh",
+    "enum": "TILE_MARSH"
+  },
+  "24": {
+    "name": "Tar",
+    "enum": "TILE_TAR"
+  },
+  "25": {
+    "name": "Mine door",
+    "enum": "TILE_MINE_DOOR_WOOD"
+  },
+  "26": {
+    "name": "Rock",
+    "enum": "TILE_MINE_DOOR_STONE"
+  },
+  "27": {
+    "name": "Mine door",
+    "enum": "TILE_MINE_DOOR_GOLD"
+  },
+  "28": {
+    "name": "Mine door",
+    "enum": "TILE_MINE_DOOR_SILVER"
+  },
+  "29": {
+    "name": "Mine door",
+    "enum": "TILE_MINE_DOOR_STEEL"
+  },
+  "30": {
+    "name": "Snow",
+    "enum": "TILE_SNOW"
+  },
+  "31": {
+    "name": "BushPosition",
+    "enum": "TILE_BUSH"
+  },
+  "32": {
+    "name": "Kelp",
+    "enum": "TILE_KELP"
+  },
+  "33": {
+    "name": "Reed",
+    "enum": "TILE_REED"
+  },
+  "34": {
+    "name": "Enchanted bush",
+    "enum": "TILE_ENCHANTED_BUSH"
+  },
+  "35": {
+    "name": "Infected bush",
+    "enum": "TILE_MYCELIUM_BUSH"
+  },
+  "36": {
+    "name": "Slate bricks",
+    "enum": "TILE_SLATE_BRICKS"
+  },
+  "37": {
+    "name": "Marble slabs",
+    "enum": "TILE_MARBLE_SLABS"
+  },
+  "38": {
+    "name": "Lawn",
+    "enum": "TILE_LAWN"
+  },
+  "39": {
+    "name": "Wooden planks",
+    "enum": "TILE_PLANKS_TARRED"
+  },
+  "40": {
+    "name": "Mycelium Lawn",
+    "enum": "TILE_MYCELIUM_LAWN"
+  },
+  "41": {
+    "name": "Rough cobblestone",
+    "enum": "TILE_COBBLESTONE_ROUGH"
+  },
+  "42": {
+    "name": "Round cobblestone",
+    "enum": "TILE_COBBLESTONE_ROUND"
+  },
+  "43": {
+    "name": "Field",
+    "enum": "TILE_FIELD2"
+  },
+  "44": {
+    "name": "Sandstone bricks",
+    "enum": "TILE_SANDSTONE_BRICKS"
+  },
+  "45": {
+    "name": "Sandstone slabs",
+    "enum": "TILE_SANDSTONE_SLABS"
+  },
+  "46": {
+    "name": "Slate slabs",
+    "enum": "TILE_SLATE_SLABS"
+  },
+  "47": {
+    "name": "Marble bricks",
+    "enum": "TILE_MARBLE_BRICKS"
+  },
+  "48": {
+    "name": "Pottery bricks",
+    "enum": "TILE_POTTERY_BRICKS"
+  },
+  "49": {
+    "name": "Prepared for paving",
+    "enum": "TILE_PREPARED_BRIDGE"
+  },
+  "100": {
+    "name": "Birch tree",
+    "enum": "TILE_TREE_BIRCH"
+  },
+  "101": {
+    "name": "Pine tree",
+    "enum": "TILE_TREE_PINE"
+  },
+  "102": {
+    "name": "Oak tree",
+    "enum": "TILE_TREE_OAK"
+  },
+  "103": {
+    "name": "Cedar tree",
+    "enum": "TILE_TREE_CEDAR"
+  },
+  "104": {
+    "name": "Willow tree",
+    "enum": "TILE_TREE_WILLOW"
+  },
+  "105": {
+    "name": "Maple tree",
+    "enum": "TILE_TREE_MAPLE"
+  },
+  "106": {
+    "name": "Apple tree",
+    "enum": "TILE_TREE_APPLE"
+  },
+  "107": {
+    "name": "Lemon tree",
+    "enum": "TILE_TREE_LEMON"
+  },
+  "108": {
+    "name": "Olive tree",
+    "enum": "TILE_TREE_OLIVE"
+  },
+  "109": {
+    "name": "Cherry tree",
+    "enum": "TILE_TREE_CHERRY"
+  },
+  "110": {
+    "name": "Chestnut tree",
+    "enum": "TILE_TREE_CHESTNUT"
+  },
+  "111": {
+    "name": "Walnut tree",
+    "enum": "TILE_TREE_WALNUT"
+  },
+  "112": {
+    "name": "Fir tree",
+    "enum": "TILE_TREE_FIR"
+  },
+  "113": {
+    "name": "Linden tree",
+    "enum": "TILE_TREE_LINDEN"
+  },
+  "114": {
+    "name": "Infected birch tree",
+    "enum": "TILE_MYCELIUM_TREE_BIRCH"
+  },
+  "115": {
+    "name": "Infected pine tree",
+    "enum": "TILE_MYCELIUM_TREE_PINE"
+  },
+  "116": {
+    "name": "Infected oak tree",
+    "enum": "TILE_MYCELIUM_TREE_OAK"
+  },
+  "117": {
+    "name": "Infected cedar tree",
+    "enum": "TILE_MYCELIUM_TREE_CEDAR"
+  },
+  "118": {
+    "name": "Infected willow tree",
+    "enum": "TILE_MYCELIUM_TREE_WILLOW"
+  },
+  "119": {
+    "name": "Infected maple tree",
+    "enum": "TILE_MYCELIUM_TREE_MAPLE"
+  },
+  "120": {
+    "name": "Infected apple tree",
+    "enum": "TILE_MYCELIUM_TREE_APPLE"
+  },
+  "121": {
+    "name": "Infected lemon tree",
+    "enum": "TILE_MYCELIUM_TREE_LEMON"
+  },
+  "122": {
+    "name": "Infected olive tree",
+    "enum": "TILE_MYCELIUM_TREE_OLIVE"
+  },
+  "123": {
+    "name": "Infected cherry tree",
+    "enum": "TILE_MYCELIUM_TREE_CHERRY"
+  },
+  "124": {
+    "name": "Infected chestnut tree",
+    "enum": "TILE_MYCELIUM_TREE_CHESTNUT"
+  },
+  "125": {
+    "name": "Infected walnut tree",
+    "enum": "TILE_MYCELIUM_TREE_WALNUT"
+  },
+  "126": {
+    "name": "Infected fir tree",
+    "enum": "TILE_MYCELIUM_TREE_FIR"
+  },
+  "127": {
+    "name": "Infected linden tree",
+    "enum": "TILE_MYCELIUM_TREE_LINDEN"
+  },
+  "128": {
+    "name": "Enchanted birch tree",
+    "enum": "TILE_ENCHANTED_TREE_BIRCH"
+  },
+  "129": {
+    "name": "Enchanted pine tree",
+    "enum": "TILE_ENCHANTED_TREE_PINE"
+  },
+  "130": {
+    "name": "Enchanted oak tree",
+    "enum": "TILE_ENCHANTED_TREE_OAK"
+  },
+  "131": {
+    "name": "Enchanted cedar tree",
+    "enum": "TILE_ENCHANTED_TREE_CEDAR"
+  },
+  "132": {
+    "name": "Enchanted willow tree",
+    "enum": "TILE_ENCHANTED_TREE_WILLOW"
+  },
+  "133": {
+    "name": "Enchanted maple tree",
+    "enum": "TILE_ENCHANTED_TREE_MAPLE"
+  },
+  "134": {
+    "name": "Enchanted apple tree",
+    "enum": "TILE_ENCHANTED_TREE_APPLE"
+  },
+  "135": {
+    "name": "Enchanted lemon tree",
+    "enum": "TILE_ENCHANTED_TREE_LEMON"
+  },
+  "136": {
+    "name": "Enchanted olive tree",
+    "enum": "TILE_ENCHANTED_TREE_OLIVE"
+  },
+  "137": {
+    "name": "Enchanted cherry tree",
+    "enum": "TILE_ENCHANTED_TREE_CHERRY"
+  },
+  "138": {
+    "name": "Enchanted chestnut tree",
+    "enum": "TILE_ENCHANTED_TREE_CHESTNUT"
+  },
+  "139": {
+    "name": "Enchanted walnut tree",
+    "enum": "TILE_ENCHANTED_TREE_WALNUT"
+  },
+  "140": {
+    "name": "Enchanted fir tree",
+    "enum": "TILE_ENCHANTED_TREE_FIR"
+  },
+  "141": {
+    "name": "Enchanted linden tree",
+    "enum": "TILE_ENCHANTED_TREE_LINDEN"
+  },
+  "142": {
+    "name": "Lavender bush",
+    "enum": "TILE_BUSH_LAVENDER"
+  },
+  "143": {
+    "name": "Rose bush",
+    "enum": "TILE_BUSH_ROSE"
+  },
+  "144": {
+    "name": "Thorn bush",
+    "enum": "TILE_BUSH_THORN"
+  },
+  "145": {
+    "name": "Grape bush",
+    "enum": "TILE_BUSH_GRAPE"
+  },
+  "146": {
+    "name": "Camellia bush",
+    "enum": "TILE_BUSH_CAMELLIA"
+  },
+  "147": {
+    "name": "Oleander bush",
+    "enum": "TILE_BUSH_OLEANDER"
+  },
+  "148": {
+    "name": "Infected lavender bush",
+    "enum": "TILE_MYCELIUM_BUSH_LAVENDER"
+  },
+  "149": {
+    "name": "Infected rose bush",
+    "enum": "TILE_MYCELIUM_BUSH_ROSE"
+  },
+  "150": {
+    "name": "Infected thorn bush",
+    "enum": "TILE_MYCELIUM_BUSH_THORN"
+  },
+  "151": {
+    "name": "Infected grape bush",
+    "enum": "TILE_MYCELIUM_BUSH_GRAPE"
+  },
+  "152": {
+    "name": "Infected camellia bush",
+    "enum": "TILE_MYCELIUM_BUSH_CAMELLIA"
+  },
+  "153": {
+    "name": "Infected oleander bush",
+    "enum": "TILE_MYCELIUM_BUSH_OLEANDER"
+  },
+  "154": {
+    "name": "Enchanted lavender bush",
+    "enum": "TILE_ENCHANTED_BUSH_LAVENDER"
+  },
+  "155": {
+    "name": "Enchanted rose bush",
+    "enum": "TILE_ENCHANTED_BUSH_ROSE"
+  },
+  "156": {
+    "name": "Enchanted thorn bush",
+    "enum": "TILE_ENCHANTED_BUSH_THORN"
+  },
+  "157": {
+    "name": "Enchanted grape bush",
+    "enum": "TILE_ENCHANTED_BUSH_GRAPE"
+  },
+  "158": {
+    "name": "Enchanted camellia bush",
+    "enum": "TILE_ENCHANTED_BUSH_CAMELLIA"
+  },
+  "159": {
+    "name": "Enchanted oleander bush",
+    "enum": "TILE_ENCHANTED_BUSH_OLEANDER"
+  },
+  "160": {
+    "name": "Hazelnut bush",
+    "enum": "TILE_BUSH_HAZELNUT"
+  },
+  "161": {
+    "name": "Infected hazelnut bush",
+    "enum": "TILE_MYCELIUM_BUSH_HAZELNUT"
+  },
+  "162": {
+    "name": "Enchanted hazelnut bush",
+    "enum": "TILE_ENCHANTED_BUSH_HAZELNUT"
+  },
+  "163": {
+    "name": "Orange tree",
+    "enum": "TILE_TREE_ORANGE"
+  },
+  "164": {
+    "name": "Infected orange tree",
+    "enum": "TILE_MYCELIUM_TREE_ORANGE"
+  },
+  "165": {
+    "name": "Enchanted orange tree",
+    "enum": "TILE_ENCHANTED_TREE_ORANGE"
+  },
+  "166": {
+    "name": "Raspberry bush",
+    "enum": "TILE_BUSH_RASPBERRYE"
+  },
+  "167": {
+    "name": "Infected raspberry bush",
+    "enum": "TILE_MYCELIUM_BUSH_RASPBERRY"
+  },
+  "168": {
+    "name": "Enchanted raspberry bush",
+    "enum": "TILE_ENCHANTED_BUSH_RASPBERRY"
+  },
+  "169": {
+    "name": "Blueberry bush",
+    "enum": "TILE_BUSH_BLUEBERRY"
+  },
+  "170": {
+    "name": "Infected blueberry bush",
+    "enum": "TILE_MYCELIUM_BUSH_BLUEBERRY"
+  },
+  "171": {
+    "name": "Enchanted blueberry bush",
+    "enum": "TILE_ENCHANTED_BUSH_BLUEBERRY"
+  },
+  "172": {
+    "name": "Lingonberry bush",
+    "enum": "TILE_BUSH_LINGONBERRY"
+  },
+  "200": {
+    "name": "Cave",
+    "enum": "TILE_CAVE"
+  },
+  "201": {
+    "name": "Cave",
+    "enum": "TILE_CAVE_EXIT"
+  },
+  "202": {
+    "name": "Cave wall",
+    "enum": "TILE_CAVE_WALL"
+  },
+  "203": {
+    "name": "Reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_REINFORCED"
+  },
+  "204": {
+    "name": "Lava wall",
+    "enum": "TILE_CAVE_WALL_LAVA"
+  },
+  "205": {
+    "name": "Slate wall",
+    "enum": "TILE_CAVE_WALL_SLATE"
+  },
+  "206": {
+    "name": "Marble wall",
+    "enum": "TILE_CAVE_WALL_MARBLE"
+  },
+  "207": {
+    "name": "Reinforced cave",
+    "enum": "TILE_CAVE_FLOOR_REINFORCED"
+  },
+  "220": {
+    "name": "Gold vein",
+    "enum": "TILE_CAVE_WALL_ORE_GOLD"
+  },
+  "221": {
+    "name": "Silver vein",
+    "enum": "TILE_CAVE_WALL_ORE_SILVER"
+  },
+  "222": {
+    "name": "Iron vein",
+    "enum": "TILE_CAVE_WALL_ORE_IRON"
+  },
+  "223": {
+    "name": "Copper vein",
+    "enum": "TILE_CAVE_WALL_ORE_COPPER"
+  },
+  "224": {
+    "name": "Lead vein",
+    "enum": "TILE_CAVE_WALL_ORE_LEAD"
+  },
+  "225": {
+    "name": "Zinc vein",
+    "enum": "TILE_CAVE_WALL_ORE_ZINC"
+  },
+  "226": {
+    "name": "Tin vein",
+    "enum": "TILE_CAVE_WALL_ORE_TIN"
+  },
+  "227": {
+    "name": "Adamantine vein",
+    "enum": "TILE_CAVE_WALL_ORE_ADAMANTINE"
+  },
+  "228": {
+    "name": "Glimmersteel vein",
+    "enum": "TILE_CAVE_WALL_ORE_GLIMMERSTEEL"
+  },
+  "229": {
+    "name": "Rocksalt",
+    "enum": "TILE_CAVE_WALL_ROCKSALT"
+  },
+  "230": {
+    "name": "Sandstone",
+    "enum": "TILE_CAVE_WALL_SANDSTONE"
+  },
+  "231": {
+    "name": "Stone brick reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_STONE_REINFORCED"
+  },
+  "232": {
+    "name": "Slate brick reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_SLATE_REINFORCED"
+  },
+  "233": {
+    "name": "Pottery brick reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_POTTERY_REINFORCED"
+  },
+  "234": {
+    "name": "Rounded stone brick reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_ROUNDED_STONE_REINFORCED"
+  },
+  "235": {
+    "name": "Sandstone brick reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_SANDSTONE_REINFORCED"
+  },
+  "236": {
+    "name": "Rendered brick reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_RENDERED_REINFORCED"
+  },
+  "237": {
+    "name": "Marble brick reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_MARBLE_REINFORCED"
+  },
+  "238": {
+    "name": "Wood clad reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_WOOD_REINFORCED"
+  },
+  "239": {
+    "name": "Incomplete stone brick reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_PART_STONE_REINFORCED"
+  },
+  "240": {
+    "name": "Incomplete slate brick reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_PART_SLATE_REINFORCED"
+  },
+  "241": {
+    "name": "Incomplete pottery brick reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_PART_POTTERY_REINFORCED"
+  },
+  "242": {
+    "name": "Incomplete rounded stone brick reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_PART_ROUNDED_STONE_REINFORCED"
+  },
+  "243": {
+    "name": "Incomplete sandstone brick reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_PART_SANDSTONE_REINFORCED"
+  },
+  "244": {
+    "name": "Incomplete marble brick reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_PART_MARBLE_REINFORCED"
+  },
+  "245": {
+    "name": "Incomplete wood clad reinforced cave wall",
+    "enum": "TILE_CAVE_WALL_PART_WOOD_REINFORCED"
+  },
+  "246": {
+    "name": "Prepared reinforced cave",
+    "enum": "TILE_CAVE_PREPATED_FLOOR_REINFORCED"
+  }
+}

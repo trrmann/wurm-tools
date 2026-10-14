@@ -9,6 +9,18 @@
 // protectedTiles.bmap: Java-serialized boolean[size][size]; every row holds `size` bytes.
 // Which axis the outer array indexes has not been verified (the sample world has no protected tiles).
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
+
+// Tile ids -> { name, enum } extracted from the server's com.wurmonline.mesh.Tiles.
+const TILE_TYPES = createRequire(import.meta.url)('./wurm-tiles.json');
+
+export function tileTypeName(id) {
+  return TILE_TYPES[id]?.name ?? null;
+}
+
+export function tileTypeEnum(id) {
+  return TILE_TYPES[id]?.enum ?? null;
+}
 
 export const HEADER_BYTES = 1024;
 
@@ -66,4 +78,21 @@ export function readProtectedTiles(file) {
     for (let i = 0; i < size; i++) if (d[rowStart(r) + i]) protectedCount++;
   }
   return { size, protectedCount, isProtected: (a, b) => d[rowStart(a) + b] !== 0 };
+}
+
+// Altitudes (metres, sea level = 0) for a tile corner across all layers, with names.
+// waterDepth is positive when the surface is below sea level.
+export function readAltitudes(dir, x, y) {
+  const top = readTile(`${dir}/top_layer.map`, x, y);
+  const rock = readTile(`${dir}/rock_layer.map`, x, y);
+  const cave = readTile(`${dir}/map_cave.map`, x, y);
+  return {
+    surface: top.height,
+    rock: rock.height,
+    caveFloor: cave.height,
+    soilDepth: Math.round((top.height - rock.height) * 10) / 10,
+    waterDepth: top.height < 0 ? -top.height : 0,
+    surfaceType: tileTypeName(top.type),
+    caveType: tileTypeName(cave.type),
+  };
 }

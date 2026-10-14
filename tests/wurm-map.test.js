@@ -64,3 +64,12 @@ describe('wurm-map', () => {
     expect(p.isProtected(1, 1)).toBe(false);
   });
 });
+
+describe('tile names and altitudes', () => {
+  it('names tile ids', async () => {
+    const m = await import('../scripts/wurm-map.js');
+    expect(m.tileTypeName(2)).toBe('Grass');
+    expect(m.tileTypeEnum(4)).toBe('TILE_ROCK');
+    expect(m.tileTypeName(999)).toBeNull();
+  });
+});
