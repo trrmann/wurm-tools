@@ -9,12 +9,14 @@
     </div>
     <div class="card-body">
       <div id="helper-state" class="server-helper-state" role="status">Checking helper...</div>
-      <div id="helper-install-panel" hidden>
+      <div id="helper-launch-row">
         <p>
           <button type="button" id="helper-launch" class="btn btn-primary">Start helper</button>
           Works after the one-time setup below registers the <code>wurm-helper://</code> launcher
           (Windows and Fedora).
         </p>
+      </div>
+      <div id="helper-install-panel" hidden>
         <p>
           <strong>One-time setup, both Windows and Fedora:</strong>
           <code>npm run helper:protocol:install</code>
