@@ -30,14 +30,15 @@ export function baselineFilePath(
   platform = process.platform,
   home = os.homedir()
 ) {
-  if (env.WURM_MAP_BASELINE_PATH) return path.resolve(env.WURM_MAP_BASELINE_PATH);
+  const pathApi = platform === 'win32' ? path.win32 : path.posix;
+  if (env.WURM_MAP_BASELINE_PATH) return pathApi.resolve(env.WURM_MAP_BASELINE_PATH);
   const root =
     platform === 'win32'
-      ? env.LOCALAPPDATA || path.join(home, 'AppData', 'Local')
+      ? env.LOCALAPPDATA || pathApi.join(home, 'AppData', 'Local')
       : platform === 'darwin'
-        ? path.join(home, 'Library', 'Application Support')
-        : env.XDG_DATA_HOME || path.join(home, '.local', 'share');
-  return path.join(root, 'wurm-tools', 'map-baseline.db');
+        ? pathApi.join(home, 'Library', 'Application Support')
+        : env.XDG_DATA_HOME || pathApi.join(home, '.local', 'share');
+  return pathApi.join(root, 'wurm-tools', 'map-baseline.db');
 }
 
 async function openBaseline(file) {

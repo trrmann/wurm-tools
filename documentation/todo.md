@@ -45,8 +45,6 @@
 
 - [x] Approved Render-to-local database access through a paired loopback helper. Status, read-only database, and Steam-launch routes require a per-browser token; pairing uses an expiring local CLI code; only exact app origins are allowed. Added opt-in Windows logon-task and Fedora systemd startup. Validated HTTPS Render-origin pairing, authentication, and private-network preflight in a browser; no database contents are uploaded.
 
-::::::do not proceed past this point without approval:::::
-
 ## Map object loading (Fedora)
 
 - `scripts/wurm-map.js` now exposes `loadTile(dir, x, y)` / `loadRegion(dir, x0, y0, w, h)` returning plain objects:
