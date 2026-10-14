@@ -10,11 +10,15 @@ import {
   readFlags,
   readProtectedTiles,
   tileFromPosition,
+  decodeResources,
+  decodeFlags,
+  decodeTileData,
+  loadTile,
 } from '../scripts/wurm-map.js';
 
-describe('wurm-map', () => {
-  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'map-'));
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'map-'));
 
+describe('wurm-map', () => {
   it('detects size and decodes tiles', () => {
     expect(mapSize(1024 + 4 * 4)).toBe(2);
     expect(mapSize(100)).toBeNull();
@@ -71,5 +75,27 @@ describe('tile names and altitudes', () => {
     expect(m.tileTypeName(2)).toBe('Grass');
     expect(m.tileTypeEnum(4)).toBe('TILE_ROCK');
     expect(m.tileTypeName(999)).toBeNull();
+  });
+
+  it('decodes resources, flags, tile data and loads a tile', () => {
+    expect(decodeResources(0xffffffff | 0)).toEqual({ cave: null, world: null });
+    expect(decodeResources(0x11630000 | 0)).toEqual({ cave: 4451, world: 0 });
+    expect(decodeFlags(0xffffffc0 | 0)).toMatchObject({
+      botanizable: true,
+      foragable: true,
+      gatherable: false,
+    });
+    expect(decodeTileData(2, 0)).toMatchObject({ growth: 'SHORT', grassType: 'GRASS' });
+    expect(decodeTileData(1, 0)).toBeNull();
+    const dir = tmp();
+    for (const n of ['top_layer', 'rock_layer', 'map_cave', 'resources', 'flags']) {
+      const b = Buffer.alloc(1024 + 16);
+      b.writeInt32BE(n === 'resources' ? -1 : n === 'flags' ? 0x80 : (2 << 24) | 50, 1024 + 4 * 3);
+      fs.writeFileSync(path.join(dir, n + '.map'), b);
+    }
+    const t = loadTile(dir, 1, 1);
+    expect(t.surface).toMatchObject({ name: 'Grass', height: 5 });
+    expect(t.resources).toEqual({ cave: null, world: null });
+    expect(t.flags.botanizable).toBe(true);
   });
 });

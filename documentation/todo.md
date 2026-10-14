@@ -42,3 +42,11 @@
 - add a local sqllite db on the client laptop to track info for the page in the future. this will not be allowed to update the actual wurm db, that is to be read only.
 
 ::::::do not proceed past this point without approval:::::
+
+## Map object loading (Fedora)
+
+- `scripts/wurm-map.js` now exposes `loadTile(dir, x, y)` / `loadRegion(dir, x0, y0, w, h)` returning plain objects:
+  surface/rock/cave layers (type name, tags, height in m, decoded data byte), resources (cave/world, null = empty) and flags (botanizable/foragable/gatherable + raw).
+- Data byte: trees/bushes → foliage age + growth stage; grass → growth, grass type, flower; other tiles → `{raw}` or null.
+  Lookup tables are generated from the server jar into `scripts/wurm-tile-data.json`; per-tile tags in `scripts/wurm-tiles.json`.
+- Unverified: cave-layer ceiling height, meaning of non-grass/tree data bytes, protected-tile axis order.

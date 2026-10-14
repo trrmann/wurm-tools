@@ -96,3 +96,94 @@ export function readAltitudes(dir, x, y) {
     caveType: tileTypeName(cave.type),
   };
 }
+
+const TILE_DATA = createRequire(import.meta.url)('./wurm-tile-data.json');
+
+export function tileTags(id) {
+  return TILE_TAGS_CACHE[id] ?? [];
+}
+const TILE_TAGS_CACHE = Object.fromEntries(
+  Object.entries(TILE_TYPES).map(([k, v]) => [k, v.tags ?? []])
+);
+
+/** resources.map: high 16 bits = cave (ore) resource, low 16 = world resource; 0xFFFF = none. */
+export function decodeResources(int32) {
+  const cave = (int32 >>> 16) & 0xffff;
+  const world = int32 & 0xffff;
+  return {
+    cave: cave === 0xffff ? null : cave,
+    world: world === 0xffff ? null : world,
+  };
+}
+
+/** flags.map: byte 3 holds the surface client flags (botanizable/foragable/gatherable). */
+export function decodeFlags(int32) {
+  return {
+    raw: int32 >>> 0,
+    botanizable: (int32 & 0x80) !== 0,
+    foragable: (int32 & 0x40) !== 0,
+    gatherable: (int32 & 0x20) !== 0,
+  };
+}
+
+/** Decode the tile data byte according to the tile's tags. */
+export function decodeTileData(typeId, data) {
+  const tags = tileTags(typeId);
+  const d = data & 0xff;
+  if (tags.includes('tree') || tags.includes('bush')) {
+    return {
+      age: TILE_DATA.foliageAge[d],
+      growth: TILE_DATA.treeGrowth[d],
+    };
+  }
+  if (tags.includes('grass')) {
+    return {
+      growth: TILE_DATA.grassGrowth[d],
+      grassType: TILE_DATA.grassType[d],
+      flower: TILE_DATA.flower[d] || null,
+    };
+  }
+  return d === 0 ? null : { raw: d };
+}
+
+function readInt(file, x, y) {
+  const b = readRecord(file, x, y);
+  return (b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3] | 0;
+}
+
+/** Load one tile as a plain object combining every map layer. */
+export function loadTile(dir, x, y) {
+  const layer = (name) => {
+    const t = readTile(`${dir}/${name}.map`, x, y);
+    return {
+      type: t.type,
+      name: tileTypeName(t.type),
+      tags: tileTags(t.type),
+      height: t.height,
+      data: decodeTileData(t.type, t.data),
+    };
+  };
+  const out = {
+    x,
+    y,
+    surface: layer('top_layer'),
+    rock: layer('rock_layer'),
+    cave: layer('map_cave'),
+  };
+  if (fs.existsSync(`${dir}/resources.map`)) {
+    out.resources = decodeResources(readInt(`${dir}/resources.map`, x, y));
+  }
+  if (fs.existsSync(`${dir}/flags.map`)) {
+    out.flags = decodeFlags(readInt(`${dir}/flags.map`, x, y));
+  }
+  return out;
+}
+
+/** Load a rectangular region as an array of tile objects (row-major). */
+export function loadRegion(dir, x0, y0, w, h) {
+  const tiles = [];
+  for (let y = y0; y < y0 + h; y++) {
+    for (let x = x0; x < x0 + w; x++) tiles.push(loadTile(dir, x, y));
+  }
+  return tiles;
+}
