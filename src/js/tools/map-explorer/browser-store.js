@@ -1,6 +1,7 @@
 // Browser-only copy of map baselines (IndexedDB) used when the local helper is unreachable.
 // It never touches Wurm server files; it only holds baselines the user imported.
 import { layerPixels, tileFromLayers } from '../../../../scripts/wurm-tile-decode.js';
+import { oreKind, summarizeOres, oreTiles, tileOre } from '../../../../scripts/wurm-ore.js';
 
 export const EXPORT_FORMAT = 'wurm-tools-map-baseline';
 export const EXPORT_VERSION = 1;
@@ -50,14 +51,50 @@ export async function getLocal(id) {
 
 export async function rasterLocal(id, layer) {
   const record = await getLocal(id);
-  const sourceLayer = layer === 'water' || layer === 'topography' ? 'surface' : layer;
+  const sourceLayer =
+    layer === 'water' || layer === 'topography' ? 'surface' : layer === 'ores' ? 'cave' : layer;
   if (!record.layers[sourceLayer]) throw new Error('Invalid map layer');
+  if (layer === 'ores') {
+    return layerPixels(record.layers.cave, 'cave').map((type) => (oreKind(type) ? type : 0));
+  }
   return layerPixels(record.layers[sourceLayer], layer);
 }
 
 export async function tileLocal(id, x, y) {
   const record = await getLocal(id);
-  return tileFromLayers(record.layers, record.bounds, x, y);
+  const result = tileFromLayers(record.layers, record.bounds, x, y);
+  const { x0, y0, width } = record.bounds;
+  const offset = ((y - y0) * width + (x - x0)) * 4;
+  const raw = new DataView(
+    record.layers.resources.buffer,
+    record.layers.resources.byteOffset + offset,
+    4
+  ).getInt32(0);
+  const ore = tileOre(result.tile.cave.type, raw, x, y, record.worldSize);
+  return { ...result, ore };
+}
+
+export async function oresLocal(id, { type, limit } = {}) {
+  const record = await getLocal(id);
+  const { cave, resources } = record.layers;
+  const ores = summarizeOres(cave, resources, record.bounds, record.worldSize).map(
+    ({ qualitySum, ...ore }) => ({
+      ...ore,
+      qualityAvg: ore.qualityMin === null ? null : Math.round((qualitySum / ore.count) * 10) / 10,
+    })
+  );
+  const result = { snapshotId: id, bounds: record.bounds, worldSize: record.worldSize, ores };
+  if (type !== undefined && type !== null && type !== '') {
+    result.tiles = oreTiles(
+      cave,
+      resources,
+      record.bounds,
+      Number(type),
+      Math.min(Number(limit) || 1000, 10_000),
+      record.worldSize
+    );
+  }
+  return result;
 }
 
 export async function deleteLocal({ id, world }) {
@@ -154,7 +191,16 @@ export async function importLocal(text) {
     radius: isInt(source.radius) ? source.radius : 0,
     bounds: { x0: bounds.x0, y0: bounds.y0, width: bounds.width, height: bounds.height },
     createdAt: typeof source.createdAt === 'string' ? source.createdAt : new Date().toISOString(),
+    worldSize: isInt(source.worldSize) && source.worldSize > 0 ? source.worldSize : null,
   };
+  if (
+    snapshot.worldSize === null &&
+    bounds.x0 === 0 &&
+    bounds.y0 === 0 &&
+    bounds.width === bounds.height
+  ) {
+    snapshot.worldSize = bounds.width;
+  }
   await run('readwrite', (store) => store.put({ ...snapshot, layers }));
   return snapshot;
 }

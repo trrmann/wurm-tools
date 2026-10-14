@@ -9,6 +9,7 @@ import { mapSize, readRegionRows, tileFromPosition } from './wurm-map.js';
 import { layerPixels, tileFromRow } from './wurm-tile-decode.js';
 import { httpError, listPlayers, openDb, safeName } from './wurm-db.js';
 import { MapSnapshot } from './wurm-map-model.js';
+import { oreKind, oreTiles, summarizeOres, tileOre } from './wurm-ore.js';
 
 export const SNAPSHOT_RADIUS = 1000;
 export const EXPORT_FORMAT = 'wurm-tools-map-baseline';
@@ -39,6 +40,30 @@ export function baselineFilePath(
   return pathApi.join(root, 'wurm-tools', 'map-baseline.db');
 }
 
+const ORES_TABLE = `
+  CREATE TABLE IF NOT EXISTS map_snapshot_ores (
+      snapshot_id TEXT NOT NULL,
+      tile_type INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      tile_count INTEGER NOT NULL,
+      rolled_count INTEGER NOT NULL,
+      quantity INTEGER NOT NULL,
+      min_x INTEGER NOT NULL,
+      max_x INTEGER NOT NULL,
+      min_y INTEGER NOT NULL,
+      max_y INTEGER NOT NULL,
+      cell_size INTEGER NOT NULL,
+      columns INTEGER NOT NULL,
+      rows INTEGER NOT NULL,
+      density TEXT NOT NULL,
+      qual_min INTEGER,
+      qual_max INTEGER,
+      qual_sum INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (snapshot_id, tile_type)
+    );
+`;
+
 async function openBaseline(file) {
   const SQL = await getSql();
   const db = fs.existsSync(file) ? new SQL.Database(fs.readFileSync(file)) : new SQL.Database();
@@ -55,7 +80,8 @@ async function openBaseline(file) {
       y0 INTEGER NOT NULL,
       width INTEGER NOT NULL,
       height INTEGER NOT NULL,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      world_size INTEGER
     );
     CREATE TABLE IF NOT EXISTS map_snapshot_layers (
       snapshot_id TEXT NOT NULL,
@@ -68,6 +94,14 @@ async function openBaseline(file) {
       FOREIGN KEY (snapshot_id) REFERENCES map_snapshots(id) ON DELETE CASCADE
     );
   `);
+  db.run(ORES_TABLE);
+  if (!readRows(db, 'PRAGMA table_info(map_snapshots)').some((c) => c.name === 'world_size')) {
+    db.run('ALTER TABLE map_snapshots ADD COLUMN world_size INTEGER');
+  }
+  if (!readRows(db, 'PRAGMA table_info(map_snapshot_ores)').some((c) => c.name === 'qual_min')) {
+    db.run('DROP TABLE map_snapshot_ores');
+    db.run(ORES_TABLE);
+  }
   return db;
 }
 
@@ -198,6 +232,7 @@ export async function startMapSnapshot(serverDir, world, playerId, options = {})
     radius,
     bounds,
     createdAt: new Date().toISOString(),
+    worldSize: size,
   });
   const job = { ...snapshot, status: 'running', processed: 0, total: bounds.width * bounds.height };
   jobs.set(id, job);
@@ -212,8 +247,8 @@ export async function startMapSnapshot(serverDir, world, playerId, options = {})
 function insertSnapshot(db, snapshot, records) {
   db.run(
     `INSERT INTO map_snapshots
-     (id, world, player_id, player_name, center_x, center_y, radius, x0, y0, width, height, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (id, world, player_id, player_name, center_x, center_y, radius, x0, y0, width, height, created_at, world_size)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       snapshot.id,
       snapshot.world,
@@ -227,6 +262,7 @@ function insertSnapshot(db, snapshot, records) {
       snapshot.bounds.width,
       snapshot.bounds.height,
       snapshot.createdAt,
+      snapshot.worldSize,
     ]
   );
   db.run(
@@ -234,6 +270,101 @@ function insertSnapshot(db, snapshot, records) {
      VALUES (?, ?, ?, ?, ?, ?)`,
     [snapshot.id, ...LAYER_NAMES.map((name) => records[name])]
   );
+  storeOres(db, snapshot.id, records.cave, records.resources, snapshot.bounds, snapshot.worldSize);
+}
+
+function storeOres(db, id, cave, resources, bounds, worldSize) {
+  db.run('DELETE FROM map_snapshot_ores WHERE snapshot_id = ?', [id]);
+  for (const ore of summarizeOres(cave, resources, bounds, worldSize)) {
+    db.run('INSERT INTO map_snapshot_ores VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [
+      id,
+      ore.tileType,
+      ore.name,
+      ore.kind,
+      ore.count,
+      ore.rolled,
+      ore.quantity,
+      ore.minX,
+      ore.maxX,
+      ore.minY,
+      ore.maxY,
+      ore.cellSize,
+      ore.columns,
+      ore.rows,
+      JSON.stringify(ore.density),
+      ore.qualityMin,
+      ore.qualityMax,
+      ore.qualitySum,
+    ]);
+  }
+}
+
+/**
+ * Ore summary for a baseline (summaries are derived from the cave and resources layers and stored
+ * with it; baselines saved before this existed are filled in on first request). Pass `type` to
+ * also list that ore's tiles.
+ */
+export async function getMapOres(id, { type, limit } = {}, file = baselineFilePath()) {
+  const db = await openBaseline(file);
+  try {
+    const row = readRows(
+      db,
+      'SELECT x0, y0, width, height, world_size AS worldSize FROM map_snapshots WHERE id = ?',
+      [id]
+    )[0];
+    if (!row) throw httpError(404, 'Map baseline not found');
+    const bounds = { x0: row.x0, y0: row.y0, width: row.width, height: row.height };
+    const { worldSize } = new MapSnapshot({ ...row, bounds });
+    const layers = () => {
+      const row = readRows(
+        db,
+        'SELECT cave, resources FROM map_snapshot_layers WHERE snapshot_id = ?',
+        [id]
+      )[0];
+      if (!row) throw new Error('Map baseline data is missing');
+      return { cave: Buffer.from(row.cave), resources: Buffer.from(row.resources) };
+    };
+    const hasSummary = readRows(
+      db,
+      'SELECT 1 AS found FROM map_snapshot_ores WHERE snapshot_id = ? LIMIT 1',
+      [id]
+    ).length;
+    if (!hasSummary) {
+      const { cave, resources } = layers();
+      storeOres(db, id, cave, resources, bounds, worldSize);
+      persistBaseline(db, file);
+    }
+    const ores = readRows(
+      db,
+      `SELECT tile_type AS tileType, name, kind, tile_count AS count, rolled_count AS rolled,
+              quantity, min_x AS minX, max_x AS maxX, min_y AS minY, max_y AS maxY,
+              cell_size AS cellSize, columns, rows, density,
+              qual_min AS qualityMin, qual_max AS qualityMax, qual_sum AS qualitySum
+       FROM map_snapshot_ores WHERE snapshot_id = ? ORDER BY tile_type`,
+      [id]
+    ).map(({ qualitySum, ...ore }) => ({
+      ...ore,
+      qualityAvg: ore.qualityMin === null ? null : Math.round((qualitySum / ore.count) * 10) / 10,
+      density: JSON.parse(ore.density),
+    }));
+    const result = { snapshotId: id, bounds, worldSize, ores };
+    if (type !== undefined && type !== null && type !== '') {
+      const tileType = integer(type, 'ore type');
+      if (!ores.some((ore) => ore.tileType === tileType)) throw httpError(404, 'Ore not found');
+      const { cave, resources } = layers();
+      result.tiles = oreTiles(
+        cave,
+        resources,
+        bounds,
+        tileType,
+        Math.min(Number(limit) || 1000, 10_000),
+        worldSize
+      );
+    }
+    return result;
+  } finally {
+    db.close();
+  }
 }
 
 async function writeSnapshot(serverDir, snapshot, job, file) {
@@ -317,7 +448,7 @@ export async function listMapSnapshots(world, file = baselineFilePath()) {
       db,
       `SELECT id, world, player_id AS playerId, player_name AS playerName,
               center_x AS centerX, center_y AS centerY, radius, x0, y0, width, height,
-              created_at AS createdAt
+              created_at AS createdAt, world_size AS worldSize
        FROM map_snapshots ${world ? 'WHERE world = ?' : ''}
        ORDER BY created_at DESC LIMIT 50`,
       world ? [world] : []
@@ -341,7 +472,7 @@ export async function getMapSnapshot(id, file = baselineFilePath()) {
       db,
       `SELECT id, world, player_id AS playerId, player_name AS playerName,
               center_x AS centerX, center_y AS centerY, radius, x0, y0, width, height,
-              created_at AS createdAt
+              created_at AS createdAt, world_size AS worldSize
        FROM map_snapshots WHERE id = ?`,
       [id]
     )[0];
@@ -363,6 +494,7 @@ export async function getMapRaster(id, layer, file = baselineFilePath()) {
     rock: 'rock',
     cave: 'cave',
     resources: 'resources',
+    ores: 'cave',
     flags: 'flags',
   };
   const column = columns[layer];
@@ -373,7 +505,7 @@ export async function getMapRaster(id, layer, file = baselineFilePath()) {
       db,
       `SELECT id, world, player_id AS playerId, player_name AS playerName,
               center_x AS centerX, center_y AS centerY, radius, x0, y0, width, height,
-              created_at AS createdAt
+              created_at AS createdAt, world_size AS worldSize
        FROM map_snapshots WHERE id = ?`,
       [id]
     )[0];
@@ -402,7 +534,9 @@ export async function getMapRaster(id, layer, file = baselineFilePath()) {
     const pixels = Buffer.alloc(width * height);
     for (let i = 0; i < pixels.length; i++) {
       const offset = i * 4;
-      if (layer === 'resources') {
+      if (layer === 'ores') {
+        pixels[i] = oreKind(bytes[offset]) ? bytes[offset] : 0;
+      } else if (layer === 'resources') {
         const caveResource = bytes.readUInt16BE(offset);
         const worldResource = bytes.readUInt16BE(offset + 2);
         pixels[i] = caveResource === 0xffff && worldResource === 0xffff ? 0 : 1;
@@ -427,11 +561,17 @@ export async function getMapTile(id, x, y, file = baselineFilePath()) {
   const tileY = integer(y, 'tile y');
   const db = await openBaseline(file);
   try {
-    const snapshot = readRows(db, 'SELECT x0, y0, width, height FROM map_snapshots WHERE id = ?', [
-      id,
-    ])[0];
-    if (!snapshot) throw httpError(404, 'Map baseline not found');
-    const { x0, y0, width, height } = snapshot;
+    const snapshotRow = readRows(
+      db,
+      'SELECT x0, y0, width, height, world_size AS worldSize FROM map_snapshots WHERE id = ?',
+      [id]
+    )[0];
+    if (!snapshotRow) throw httpError(404, 'Map baseline not found');
+    const { x0, y0, width, height } = snapshotRow;
+    const { worldSize } = new MapSnapshot({
+      ...snapshotRow,
+      bounds: { x0, y0, width, height },
+    });
     if (tileX < x0 || tileY < y0 || tileX >= x0 + width || tileY >= y0 + height) {
       throw httpError(404, 'Tile is outside this map baseline');
     }
@@ -442,6 +582,7 @@ export async function getMapTile(id, x, y, file = baselineFilePath()) {
       [tileX + 1, tileY + 1],
     ].filter(([pointX, pointY]) => pointX < x0 + width && pointY < y0 + height);
     const tiles = new Map();
+    let rawResources = 0;
     for (const [pointX, pointY] of points) {
       const byteOffset = ((pointY - y0) * width + (pointX - x0)) * 4 + 1;
       const records = readRows(
@@ -481,6 +622,7 @@ export async function getMapTile(id, x, y, file = baselineFilePath()) {
         resources: resourceBytes.readInt32BE(0),
         flags: flagBytes.readInt32BE(0),
       };
+      if (pointX === tileX && pointY === tileY) rawResources = row.resources;
       tiles.set(`${pointX},${pointY}`, tileFromRow(row));
     }
     const tile = tiles.get(`${tileX},${tileY}`);
@@ -489,7 +631,8 @@ export async function getMapTile(id, x, y, file = baselineFilePath()) {
       south: tiles.get(`${tileX},${tileY + 1}`),
       southEast: tiles.get(`${tileX + 1},${tileY + 1}`),
     });
-    return { tile, cornerAltitudes };
+    const ore = tileOre(tile.cave.type, rawResources, tileX, tileY, worldSize);
+    return { tile, cornerAltitudes, ore };
   } finally {
     db.close();
   }
@@ -557,6 +700,7 @@ export async function importMapSnapshot(data, file = baselineFilePath()) {
     centerX: source.centerX,
     centerY: source.centerY,
     radius: isInt(source.radius) ? source.radius : 0,
+    worldSize: isInt(source.worldSize) && source.worldSize > 0 ? source.worldSize : null,
     bounds: { x0: bounds.x0, y0: bounds.y0, width: bounds.width, height: bounds.height },
     createdAt: typeof source.createdAt === 'string' ? source.createdAt : new Date().toISOString(),
   });
@@ -590,6 +734,10 @@ export async function deleteMapSnapshots({ id, world } = {}, file = baselineFile
     if (id && !deleted) throw httpError(404, 'Map baseline not found');
     db.run(
       `DELETE FROM map_snapshot_layers WHERE snapshot_id IN (SELECT id FROM map_snapshots ${where})`,
+      params
+    );
+    db.run(
+      `DELETE FROM map_snapshot_ores WHERE snapshot_id IN (SELECT id FROM map_snapshots ${where})`,
       params
     );
     db.run(`DELETE FROM map_snapshots ${where}`, params);

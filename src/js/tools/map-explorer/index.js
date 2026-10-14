@@ -7,6 +7,7 @@ import {
   exportLocal,
   importLocal,
   listLocal,
+  oresLocal,
   rasterLocal,
   tileLocal,
 } from './browser-store.js';
@@ -39,8 +40,24 @@ export function zoomByStep(value, direction, min = 0.25, max = 16, step = 0.25) 
 let controller;
 let pollTimer;
 
+const ORE_COLORS = {
+  220: [255, 215, 0],
+  221: [220, 224, 230],
+  222: [168, 96, 74],
+  223: [214, 122, 52],
+  224: [120, 128, 150],
+  225: [150, 196, 210],
+  226: [200, 200, 170],
+  227: [255, 70, 160],
+  228: [90, 230, 200],
+  205: [110, 90, 140],
+  206: [240, 240, 240],
+  229: [235, 205, 215],
+  230: [214, 176, 120],
+};
+
 function colorForType(type, layer) {
-  if (layer === 'resources') return type ? [178, 92, 222] : [31, 42, 58];
+  if (layer === 'resources') return type ? ORE_COLORS[type] || [178, 92, 222] : [31, 42, 58];
   if (layer === 'flags') {
     if (type & 0x80) return [224, 169, 67];
     if (type & 0x40) return [80, 190, 150];
@@ -303,7 +320,8 @@ export function mount(container) {
     element('#map-zoom-value').value = `${zoom.toFixed(1)}×`;
   }
 
-  async function fetchRaster(id, layer) {
+  async function fetchRaster(id, requestedLayer) {
+    const layer = requestedLayer === 'resources' ? 'ores' : requestedLayer;
     if (offline) return rasterLocal(id, layer);
     const response = await fetch(
       `${HELPER_URL}/map/snapshots/${encodeURIComponent(id)}/raster?layer=${encodeURIComponent(layer)}`,
@@ -340,13 +358,53 @@ export function mount(container) {
         rock: 'Rock colors show tile types. Select a tile to inspect its rock type and altitude.',
         cave: 'Cave colors show floor tile types. Select a tile to inspect floor and ceiling altitude.',
         resources:
-          'Resource colors show decoded IDs. Select a tile to inspect cave and world resource IDs.',
+          'Ore walls colored by ore type. Select a tile for its quantity (unrolled until first mined) and derived quality ceiling.',
         flags:
           'Flag colors show surface flag states. Select a tile to inspect the individual flags.',
       };
       legend.textContent = legendByLayer[layer] || '';
     }
     drawRaster();
+    await renderOres(id, layer);
+  }
+
+  async function renderOres(id, layer) {
+    const target = element('#map-ores');
+    if (!target) return;
+    target.replaceChildren();
+    if (layer !== 'resources') return;
+    try {
+      const result = offline
+        ? await oresLocal(id)
+        : await request(`/map/snapshots/${encodeURIComponent(id)}/ores`);
+      if (!result.ores.length) {
+        target.textContent = 'No ore found in this baseline.';
+        return;
+      }
+      const table = document.createElement('table');
+      const head = table.createTHead().insertRow();
+      for (const label of ['Ore', 'Tiles', 'Unrolled', 'Rolled qty', 'Quality cap (derived)']) {
+        head.insertCell().textContent = label;
+      }
+      const body = table.createTBody();
+      for (const ore of result.ores) {
+        const row = body.insertRow();
+        const swatch = document.createElement('span');
+        swatch.className = 'map-swatch';
+        swatch.style.background = `rgb(${(ORE_COLORS[ore.tileType] || [178, 92, 222]).join(',')})`;
+        row.insertCell().append(swatch, ` ${ore.name}`);
+        row.insertCell().textContent = ore.count.toLocaleString();
+        row.insertCell().textContent = (ore.count - ore.rolled).toLocaleString();
+        row.insertCell().textContent = ore.rolled ? ore.quantity.toLocaleString() : '—';
+        row.insertCell().textContent =
+          ore.qualityMin === null
+            ? 'unknown (world size not recorded)'
+            : `${ore.qualityMin}–${ore.qualityMax} (avg ${ore.qualityAvg})`;
+      }
+      target.append(table);
+    } catch (error) {
+      showError(error);
+    }
   }
 
   async function activateSnapshot(id) {
@@ -427,6 +485,12 @@ export function mount(container) {
         `${formatAltitude(tile.cave.height)} / ${formatAltitude(tile.cave.ceiling)}`;
       element('#map-resources').textContent =
         `${tile.resources.cave ?? 'none'} / ${tile.resources.world ?? 'none'}`;
+      const ore = result.ore;
+      element('#map-ore').textContent = ore
+        ? `${ore.name} — ${
+            ore.unrolled ? 'unrolled (quantity rolled on first mining)' : `quantity ${ore.quantity}`
+          }; quality cap ${ore.qualityCap ?? 'unknown'} (derived)`
+        : 'none';
       element('#map-flags').textContent =
         Object.entries(tile.flags)
           .filter(([key, value]) => key !== 'raw' && value)

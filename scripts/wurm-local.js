@@ -40,6 +40,7 @@ import {
   getMapJob,
   getMapRaster,
   getMapTile,
+  getMapOres,
   importMapSnapshot,
   listMapSnapshots,
   startMapSnapshot,
@@ -217,7 +218,7 @@ export function startTarget(key) {
 // Map baseline routes write only to the separate local map-baseline.db:
 //   /map/<world>/players
 //   /map/<world>/snapshots (POST { playerId }, or GET to list)
-//   /map/snapshots/<id>/status|raster?layer=surface|rock|resources|tile?x=&y=
+//   /map/snapshots/<id>/status|raster?layer=surface|rock|resources|ores|tile?x=&y=
 export async function handleDb(url) {
   const dir = findInstall(TARGETS.server);
   if (!dir) throw httpError(404, 'Wurm server is not installed on this machine');
@@ -278,6 +279,12 @@ export async function handleMap(req, url, serverDir = findInstall(TARGETS.server
         statusCode: 201,
         body: await importMapSnapshot(await readJsonBody(req, MAX_IMPORT_BYTES)),
       };
+    }
+    if (parts.length === 3 && parts[2] === 'ores' && req.method === 'GET') {
+      return getMapOres(parts[1], {
+        type: url.searchParams.get('type'),
+        limit: url.searchParams.get('limit'),
+      });
     }
     if (parts.length === 3 && parts[2] === 'export' && req.method === 'GET') {
       return exportMapSnapshot(parts[1]);

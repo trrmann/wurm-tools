@@ -73,7 +73,13 @@
 - [ ] Id-to-name maps from the server jar for skills, item templates, creature templates and deities.
 - [ ] Sensitive tables (accounts, IP history, email history, tickets): schema and counts only unless approved.
 
-- [ ] Determine which ores are available and where; decode this on the Fedora laptop with live data access.
+- [x] Determine which ores are available and where; decode this on the Fedora laptop with live data access.
+  - Ores are the cave-layer wall tile types (iron, copper, gold, etc., plus slate, marble, rocksalt, sandstone). `scripts/wurm-ore.js` summarizes them per baseline (count, bounds, 32x32 density, quantity) and stores that in the baseline DB table `map_snapshot_ores`; it is filled on create/import and backfilled for older baselines, and removed on delete.
+  - Helper route: `GET /map/snapshots/<id>/ores?type=<tileType>&limit=<n>` (summary, plus tile list when `type` is given).
+  - Result for the "Creative" world: gold 2,775, silver 4,431, iron 56,508, copper 4,479, lead 4,488, zinc 4,569, tin 4,492, slate 859, marble 1,118, rocksalt 39,357, sandstone 62,435; no adamantine or glimmersteel.
+  - Ore quantities are all 0xFFFF (not yet rolled; Wurm sets them when a tile is first mined), so quantity is reported as unrolled. Unconfirmed assumption.
+  - Quality is a derived per-tile ceiling (see README); stored per ore (min/avg/max) and per tile, and shown on the Underground resources layer with the unrolled state. The x/y seed order is not independently verified.
+  - Not done: a UI panel for ores, and ore queries in browser-only mode.
 
 in the object classes, the thing name , needs classification nams, specification names, catogorization names, also these are a good replacement parent object to person and place names.
 

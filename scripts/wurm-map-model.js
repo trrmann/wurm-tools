@@ -48,7 +48,19 @@ export class MapTile {
 }
 
 export class MapSnapshot {
-  constructor({ id, world, playerId, playerName, centerX, centerY, radius, bounds, createdAt }) {
+  constructor({
+    id,
+    world,
+    playerId,
+    playerName,
+    centerX,
+    centerY,
+    radius,
+    bounds,
+    createdAt,
+    worldSize = null,
+  }) {
+    const wholeWorld = bounds.x0 === 0 && bounds.y0 === 0 && bounds.width === bounds.height;
     Object.assign(this, {
       id,
       world,
@@ -59,6 +71,7 @@ export class MapSnapshot {
       radius,
       bounds,
       createdAt,
+      worldSize: worldSize ?? (wholeWorld ? bounds.width : null),
     });
   }
 }

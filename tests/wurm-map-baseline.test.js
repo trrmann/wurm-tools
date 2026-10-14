@@ -196,6 +196,7 @@ describe('local map baseline snapshots', () => {
       });
       const done = await waitForJob(custom.id);
       expect(done.snapshot.bounds).toMatchObject({ width: 2, height: 3 });
+      expect(done.snapshot.worldSize).toBe(4);
       await expect(
         startMapSnapshot(fixture.root, 'Adventure', 1, {
           width: 99,
@@ -207,6 +208,11 @@ describe('local map baseline snapshots', () => {
       const exported = JSON.parse(JSON.stringify(await exportMapSnapshot(whole.id, fixture.file)));
       const imported = await importMapSnapshot(exported, fixture.file);
       expect(imported.snapshot.id).not.toBe(whole.id);
+      expect(imported.snapshot.worldSize).toBe(4);
+      const ores = await getMapRaster(imported.snapshot.id, 'ores', fixture.file);
+      expect(ores.pixels).toHaveLength(16);
+      const tileResult = await getMapTile(imported.snapshot.id, 0, 0, fixture.file);
+      expect(tileResult).toHaveProperty('ore');
       expect([
         ...(await getMapRaster(imported.snapshot.id, 'surface', fixture.file)).pixels,
       ]).toEqual([...(await getMapRaster(whole.id, 'surface', fixture.file)).pixels]);
