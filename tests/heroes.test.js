@@ -35,6 +35,7 @@ import {
   HerosVariablePowerPools,
   HEROS_OBJECT_MODEL_TYPES,
   HEROS_TYPED_ELEMENT_GROUPS,
+  registerHerosFiguredCharacteristicFormula,
   HerosAdvantageModifier,
   HerosAdvantageModifiers,
   normalizeHerosEdition,
@@ -97,6 +98,44 @@ describe('Heroes domain model', () => {
     expect(body.primaryCharacteristics.first).toBe(strength);
   });
 
+  it('resolves figured-characteristic formulas by edition and passes exact inputs to callbacks', () => {
+    const disposeFifth = registerHerosFiguredCharacteristicFormula(
+      'test-body',
+      '5e',
+      ({ points, primaryCharacteristics, edition }) => {
+        expect(edition).toBe(HEROS_EDITIONS['5e']);
+        return primaryCharacteristics.first.baseValue.add(points.sum());
+      }
+    );
+    const disposeSixth = registerHerosFiguredCharacteristicFormula(
+      'test-body',
+      '6e',
+      ({ points, primaryCharacteristics, edition }) => {
+        expect(edition).toBe(HEROS_EDITIONS['6e']);
+        return primaryCharacteristics.first.baseValue.add(points.sum().multiply(2));
+      }
+    );
+    try {
+      const inputs = {
+        name: 'Body',
+        formulaId: 'test-body',
+        primaryCharacteristics: [{ name: 'Strength', baseValue: 10 }],
+        points: [2],
+      };
+      const fifth = new HerosFiguredCharacteristic({ ...inputs, edition: '5e' });
+      const sixth = new HerosFiguredCharacteristic({ ...inputs, edition: '6e' });
+
+      expect(fifth.value.toString()).toBe('12');
+      expect(sixth.value.toString()).toBe('14');
+      expect(() => new HerosFiguredCharacteristic({ ...inputs, edition: '4e' })).toThrow(
+        /is registered for 4th Edition/
+      );
+    } finally {
+      disposeFifth();
+      disposeSixth();
+    }
+  });
+
   it('calculates the requested advantages plus points equals disadvantages equation', () => {
     const equation = new HerosEquation({
       advantages: [{ name: 'Skill', value: 8 }],
@@ -145,6 +184,7 @@ describe('Heroes domain model', () => {
       name: 'Field Operative',
       skills: [{ name: 'Survival', value: 3 }],
       disadvantages: [{ name: 'Code of honor', value: 5 }],
+      children: [{ type: 'power', name: 'Night vision', value: 2 }],
     });
     const character = new HerosCharacter({
       name: 'Trailblazer',
@@ -155,7 +195,13 @@ describe('Heroes domain model', () => {
       talents: [{ name: 'Eidetic memory', value: 3 }],
       perks: [{ name: 'Fringe benefit', value: 2 }],
       powers: [{ name: 'Enhanced senses', value: 5 }],
-      powerFrameworks: [{ name: 'Multipower', value: 10 }],
+      powerFrameworks: [
+        {
+          name: 'Multipower',
+          value: 10,
+          children: [{ type: 'power', name: 'Energy blast', value: 5 }],
+        },
+      ],
       variablePowerPools: [{ name: 'VPP', value: 15, poolPoints: 30 }],
       physicalDisadvantages: [{ name: 'Vulnerable skin', value: 10 }],
       mentalDisadvantages: [{ name: 'Phobia', value: 5 }],
@@ -170,7 +216,9 @@ describe('Heroes domain model', () => {
     expect(character.edition).toBe(HEROS_EDITIONS['4e']);
     expect(character.everymanSkills).toBeInstanceOf(HerosEverymanSkills);
     expect(character.packageDeals.first).toBe(packageDeal);
+    expect(packageDeal.powers.first.toString()).toBe('Night vision');
     expect(character.powerFrameworks).toBeInstanceOf(HerosPowerFrameworks);
+    expect(character.powerFrameworks.first.powers.first.toString()).toBe('Energy blast');
     expect(character.variablePowerPools).toBeInstanceOf(HerosVariablePowerPools);
     expect(character.physicalDisadvantages.first).toBeInstanceOf(HerosPhysicalDisadvantage);
     expect(character.mentalDisadvantages.first).toBeInstanceOf(HerosMentalDisadvantage);
@@ -183,10 +231,10 @@ describe('Heroes domain model', () => {
     expect(character.descriptions.first.toString()).toBe('A field-trained hero');
     expect(character.equation.advantages.size).toBeGreaterThan(0);
     expect(character.equation.disadvantages.size).toBeGreaterThan(0);
-    expect(character.equation.advantagesValue.toString()).toBe('45');
+    expect(character.equation.advantagesValue.toString()).toBe('47');
     expect(character.equation.pointsValue.toString()).toBe('0');
     expect(character.equation.disadvantagesValue.toString()).toBe('30');
-    expect(character.equation.difference.toString()).toBe('15');
+    expect(character.equation.difference.toString()).toBe('17');
   });
 
   it('models non-character objects, object traits, point levels, and worlds', () => {

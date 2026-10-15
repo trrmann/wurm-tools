@@ -53,10 +53,31 @@
           <option value="">No world selected</option>
         </select>
       </label>
+      <div class="heroes-world-actions">
+        <button id="heroes-world-export" class="btn" type="button" disabled>Export world</button>
+        <label class="btn heroes-file-label" for="heroes-world-import-file">
+          Import world
+          <input id="heroes-world-import-file" type="file" accept="application/json,.json" hidden />
+        </label>
+        <button id="heroes-world-delete" class="btn" type="button" disabled>Delete world</button>
+      </div>
       <div class="heroes-object-list-heading">
         <h4>Objects</h4>
         <output id="heroes-object-count">0</output>
       </div>
+      <label
+        class="btn heroes-file-label heroes-object-import-label"
+        for="heroes-object-import-file"
+      >
+        Import object into selected world
+        <input
+          id="heroes-object-import-file"
+          type="file"
+          accept="application/json,.json"
+          hidden
+          disabled
+        />
+      </label>
       <ul id="heroes-object-list" class="heroes-object-list" aria-live="polite"></ul>
     </section>
 
@@ -234,6 +255,38 @@
             <button id="heroes-cancel-typed-edit" class="btn" type="button" hidden>
               Cancel typed edit
             </button>
+          </div>
+          <div id="heroes-nested-editor" class="heroes-nested-editor" hidden>
+            <h4 id="heroes-nested-title">Nested elements</h4>
+            <div class="heroes-form-grid heroes-nested-controls">
+              <label class="heroes-field" for="heroes-nested-kind">
+                Child type
+                <select id="heroes-nested-kind" class="custom-select">
+                  <option value="advantage">Advantage</option>
+                  <option value="disadvantage">Disadvantage</option>
+                  <option value="physicalDisadvantage">Physical disadvantage</option>
+                  <option value="mentalDisadvantage">Mental disadvantage</option>
+                  <option value="socialDisadvantage">Social disadvantage</option>
+                  <option value="skill">Skill</option>
+                  <option value="talent">Talent</option>
+                  <option value="perk">Perk</option>
+                  <option value="power">Power</option>
+                </select>
+              </label>
+              <label class="heroes-field" for="heroes-nested-name">
+                Child name
+                <input id="heroes-nested-name" maxlength="120" />
+              </label>
+              <label class="heroes-field" for="heroes-nested-value">
+                Point value
+                <input id="heroes-nested-value" inputmode="decimal" placeholder="e.g. 3/2" />
+              </label>
+              <button id="heroes-add-nested" class="btn" type="button">Add child</button>
+              <button id="heroes-cancel-nested-edit" class="btn" type="button" hidden>
+                Cancel child edit
+              </button>
+            </div>
+            <ul id="heroes-nested-elements" class="heroes-equation-elements"></ul>
           </div>
           <fieldset id="heroes-typed-trait-fieldset" class="heroes-typed-trait-fieldset">
             <legend>Applies to model traits</legend>

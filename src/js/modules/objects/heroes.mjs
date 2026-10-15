@@ -202,25 +202,51 @@ export class HerosPrimaryCharacteristics extends HerosCharacteristics {
   static NameType = HerosPrimaryCharacteristic;
 }
 
+const figuredCharacteristicFormulas = new Map();
+
+export function registerHerosFiguredCharacteristicFormula(formulaId, edition, deriveValue) {
+  const id = String(formulaId).trim();
+  if (!id) throw new TypeError('Figured characteristic formula id is required');
+  if (typeof deriveValue !== 'function') {
+    throw new TypeError('Figured characteristic formula must be a function');
+  }
+  const editionId = normalizeHerosEdition(edition).id;
+  const key = `${editionId}:${id}`;
+  figuredCharacteristicFormulas.set(key, deriveValue);
+  return () => figuredCharacteristicFormulas.delete(key);
+}
+
 export class HerosFiguredCharacteristic extends HerosCharacteristic {
   constructor(options = {}) {
     const config = typeof options === 'string' ? { name: options } : options;
-    if (typeof config.deriveValue !== 'function') {
-      throw new TypeError('Figured characteristics require a deriveValue function');
+    const edition = normalizeHerosEdition(config.edition);
+    const formulaId = config.formulaId == null ? null : String(config.formulaId);
+    const deriveValue =
+      config.deriveValue ??
+      (formulaId ? figuredCharacteristicFormulas.get(`${edition.id}:${formulaId}`) : undefined);
+    if (typeof deriveValue !== 'function') {
+      throw new TypeError(
+        formulaId
+          ? `No figured characteristic formula "${formulaId}" is registered for ${edition.label}`
+          : 'Figured characteristics require a deriveValue callback or registered formulaId'
+      );
     }
     const points = asPoints(config.points);
     const primaryCharacteristics = new HerosPrimaryCharacteristics(
       config.primaryCharacteristics ?? []
     );
-    const calculated = config.deriveValue({
+    const calculated = deriveValue({
       points,
       primaryCharacteristics,
       options: config,
+      edition,
     });
     super({ ...config, value: calculated });
     this.points = points;
     this.primaryCharacteristics = primaryCharacteristics;
-    this.deriveValue = config.deriveValue;
+    this.edition = edition;
+    this.formulaId = formulaId;
+    this.deriveValue = deriveValue;
   }
 }
 /** @extends {HerosCharacteristics<HerosFiguredCharacteristic>} */
@@ -262,7 +288,11 @@ export class HerosPowerFramework extends HerosPower {
   constructor(options = {}) {
     const config = typeof options === 'string' ? { name: options } : options;
     super(config);
-    this.powers = new HerosPowers(config.powers ?? []);
+    this.children = (config.children ?? []).map((child) => ({ ...child }));
+    this.powers = new HerosPowers([
+      ...(config.powers ?? []),
+      ...this.children.filter((child) => child.type === 'power'),
+    ]);
   }
 }
 /** @extends {HerosPowers<HerosPowerFramework>} */
@@ -312,12 +342,34 @@ export class HerosPackageDeal extends ThingName {
   constructor(options = {}) {
     const config = typeof options === 'string' ? { name: options } : options;
     super(config.name ?? config.label ?? '', config);
-    this.advantages = new HerosAdvantages(config.advantages ?? []);
-    this.disadvantages = new HerosDisadvantages(config.disadvantages ?? []);
-    this.skills = new HerosSkills(config.skills ?? []);
-    this.talents = new HerosTalents(config.talents ?? []);
-    this.perks = new HerosPerks(config.perks ?? []);
-    this.powers = new HerosPowers(config.powers ?? []);
+    this.children = (config.children ?? []).map((child) => ({ ...child }));
+    this.advantages = new HerosAdvantages([
+      ...(config.advantages ?? []),
+      ...this.children.filter((child) => child.type === 'advantage'),
+    ]);
+    this.disadvantages = new HerosDisadvantages([
+      ...(config.disadvantages ?? []),
+      ...this.children.filter((child) => child.type === 'disadvantage'),
+      ...this.children.filter((child) =>
+        ['physicalDisadvantage', 'mentalDisadvantage', 'socialDisadvantage'].includes(child.type)
+      ),
+    ]);
+    this.skills = new HerosSkills([
+      ...(config.skills ?? []),
+      ...this.children.filter((child) => child.type === 'skill'),
+    ]);
+    this.talents = new HerosTalents([
+      ...(config.talents ?? []),
+      ...this.children.filter((child) => child.type === 'talent'),
+    ]);
+    this.perks = new HerosPerks([
+      ...(config.perks ?? []),
+      ...this.children.filter((child) => child.type === 'perk'),
+    ]);
+    this.powers = new HerosPowers([
+      ...(config.powers ?? []),
+      ...this.children.filter((child) => child.type === 'power'),
+    ]);
   }
 }
 /** @extends {ThingNames<HerosPackageDeal>} */

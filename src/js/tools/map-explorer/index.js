@@ -10,12 +10,16 @@ import {
 import { MapTile } from '../../../../scripts/wurm-map-model.js';
 import { fill, getShell } from '../../modules/template.js';
 import {
+  applyEditsLocal,
   deleteLocal,
+  editReportCsvLocal,
+  editReportLocal,
   exportLocal,
   importLocal,
   listLocal,
   oresLocal,
   rasterLocal,
+  resetEditsLocal,
   tileLocal,
 } from './browser-store.js';
 
@@ -167,6 +171,8 @@ export function mount(container) {
 
   const element = (selector) => container.querySelector(selector);
   const state = element('#map-state');
+  const pairingPanel = element('#map-pair-panel');
+  const pairingForm = element('#map-pair-form');
   const worldSelect = element('#map-world');
   const playerSelect = element('#map-player');
   const snapshotSelect = element('#map-snapshot');
@@ -204,7 +210,15 @@ export function mount(container) {
     const body = response.headers.get('content-type')?.includes('application/json')
       ? await response.json()
       : null;
-    if (!response.ok) throw new Error(body?.error || `Local helper returned ${response.status}`);
+    if (!response.ok) {
+      if (response.status === 401) {
+        localStorage.removeItem(HELPER_TOKEN_KEY);
+        offline = true;
+        editBox.disabled = true;
+        pairingPanel.hidden = false;
+      }
+      throw new Error(body?.error || `Local helper returned ${response.status}`);
+    }
     return body ?? response.arrayBuffer();
   }
 
@@ -333,7 +347,7 @@ export function mount(container) {
 
   async function fetchRaster(id, requestedLayer) {
     const layer = requestedLayer === 'resources' ? 'ores' : requestedLayer;
-    if (offline) return rasterLocal(id, layer);
+    if (offline) return rasterLocal(id, layer, showEdited.checked);
     const edited = showEdited.checked ? '&edited=1' : '';
     const response = await fetch(
       `${HELPER_URL}/map/snapshots/${encodeURIComponent(id)}/raster?layer=${encodeURIComponent(layer)}${edited}`,
@@ -558,7 +572,7 @@ export function mount(container) {
     drawRaster();
     try {
       const result = offline
-        ? await tileLocal(activeSnapshotId, x, y)
+        ? await tileLocal(activeSnapshotId, x, y, showEdited.checked)
         : await request(
             `/map/snapshots/${encodeURIComponent(activeSnapshotId)}/tile?x=${x}&y=${y}${showEdited.checked ? '&edited=1' : ''}`
           );
@@ -635,7 +649,7 @@ export function mount(container) {
     const custom = element('#map-area').value === 'custom';
     element('#map-width').disabled = !custom;
     element('#map-height').disabled = !custom;
-    editBox.disabled = offline || !activeSnapshotId;
+    editBox.disabled = !activeSnapshotId;
     goToCharacterButton.disabled =
       !bounds || (!activeSnapshot && !playersById.has(String(playerSelect.value)));
   }
@@ -809,18 +823,21 @@ export function mount(container) {
     }
     if (!Object.keys(set).length) throw new Error('Enter at least one value to change');
     const radius = Number(element('#map-edit-brush').value);
-    const result = await request(editPath(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        layer: editLayer.value,
-        x0: selectedTile.x - radius,
-        y0: selectedTile.y - radius,
-        x1: selectedTile.x + radius,
-        y1: selectedTile.y + radius,
-        set,
-      }),
-    });
+    const edit = {
+      layer: editLayer.value,
+      x0: selectedTile.x - radius,
+      y0: selectedTile.y - radius,
+      x1: selectedTile.x + radius,
+      y1: selectedTile.y + radius,
+      set,
+    };
+    const result = offline
+      ? await applyEditsLocal(activeSnapshotId, edit)
+      : await request(editPath(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(edit),
+        });
     state.textContent = `Edit applied: ${result.changed} changed, ${result.reverted} back to baseline.`;
     await refreshAfterEdit();
   }
@@ -831,7 +848,9 @@ export function mount(container) {
     if (!window.confirm(`Discard ${label} for this baseline? The baseline itself is unchanged.`)) {
       return;
     }
-    const result = await request(`${editPath()}${query}`, { method: 'DELETE' });
+    const result = offline
+      ? await resetEditsLocal(activeSnapshotId, layer)
+      : await request(`${editPath()}${query}`, { method: 'DELETE' });
     state.textContent = `Discarded ${result.removed} edited tile records.`;
     await refreshAfterEdit();
   }
@@ -839,7 +858,9 @@ export function mount(container) {
   const ratesQuery = () => encodeURIComponent(JSON.stringify(pileRates));
 
   async function showReport() {
-    const report = await request(`${editPath()}?limit=200&rates=${ratesQuery()}`);
+    const report = offline
+      ? await editReportLocal(activeSnapshotId, { limit: 200, rates: pileRates })
+      : await request(`${editPath()}?limit=200&rates=${ratesQuery()}`);
     const view = element('#map-report-view');
     view.replaceChildren();
     const heading = document.createElement('h4');
@@ -877,11 +898,18 @@ export function mount(container) {
     let blob;
     let name;
     if (kind === 'csv') {
-      const { csv } = await request(`${editPath('report-csv')}?rates=${ratesQuery()}`);
+      const csv = offline
+        ? await editReportCsvLocal(activeSnapshotId, pileRates)
+        : (await request(`${editPath('report-csv')}?rates=${ratesQuery()}`)).csv;
       blob = new Blob([csv], { type: 'text/csv' });
       name = 'csv';
     } else {
-      const report = await request(`${editPath()}?limit=1000000000&rates=${ratesQuery()}`);
+      const report = offline
+        ? await editReportLocal(activeSnapshotId, {
+            limit: Number.MAX_SAFE_INTEGER,
+            rates: pileRates,
+          })
+        : await request(`${editPath()}?limit=1000000000&rates=${ratesQuery()}`);
       blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
       name = 'json';
     }
@@ -990,8 +1018,9 @@ export function mount(container) {
     }
   });
 
-  function startOffline(reason) {
+  function startOffline(reason, showPairing = true) {
     offline = true;
+    pairingPanel.hidden = !showPairing;
     return listLocal().then((snapshots) => {
       const worlds = [...new Set(snapshots.map((snapshot) => snapshot.world))];
       fillSelect(
@@ -1008,19 +1037,49 @@ export function mount(container) {
     });
   }
 
-  request('/db/worlds')
-    .then(({ worlds }) => {
-      if (!worlds.length) return startOffline('No local Wurm worlds were found.');
-      fillSelect(
-        worldSelect,
-        worlds.map(({ world }) => ({ value: world, label: world })),
-        'Choose a world'
-      );
-      worldSelect.value = worlds[0].world;
-      return loadWorld(worldSelect.value);
-    })
-    .catch((error) =>
-      signal.aborted ? null : startOffline(`Local helper unavailable (${error.message}).`)
-    )
-    .catch(showError);
+  async function loadHelperWorlds() {
+    const { worlds } = await request('/db/worlds');
+    if (!worlds.length) {
+      pairingPanel.hidden = true;
+      return startOffline('No local Wurm worlds were found.', false);
+    }
+    offline = false;
+    pairingPanel.hidden = true;
+    fillSelect(
+      worldSelect,
+      worlds.map(({ world }) => ({ value: world, label: world })),
+      'Choose a world'
+    );
+    worldSelect.value = worlds[0].world;
+    return loadWorld(worldSelect.value);
+  }
+
+  pairingForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const code = new FormData(pairingForm).get('code').trim();
+    const button = pairingForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    localStorage.removeItem(HELPER_TOKEN_KEY);
+    try {
+      const { token } = await request('/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      localStorage.setItem(HELPER_TOKEN_KEY, token);
+      offline = false;
+      await loadHelperWorlds();
+      pairingForm.reset();
+      state.textContent = 'Browser paired with the local helper.';
+    } catch (error) {
+      pairingPanel.hidden = false;
+      state.textContent = `Pairing failed: ${error.message}`;
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  loadHelperWorlds().catch((error) => {
+    if (!signal.aborted) startOffline(`Local helper unavailable (${error.message}).`);
+  });
 }

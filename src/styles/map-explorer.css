@@ -24,6 +24,54 @@
   width: 100%;
 }
 
+.map-pair-panel {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent-gold);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+}
+
+.map-pair-panel h3 {
+  color: var(--text-main);
+  font-size: 1rem;
+}
+
+.map-pair-panel p {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.map-pair-panel code {
+  color: var(--text-main);
+}
+
+.map-pair-form {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.map-pair-form label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.map-pair-form input {
+  width: min(100%, 18rem);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-main);
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+}
+
 .map-zoom-control output {
   color: var(--text-main);
   font-variant-numeric: tabular-nums;

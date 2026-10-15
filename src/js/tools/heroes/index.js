@@ -45,6 +45,10 @@ export function mount(container) {
   const pairingForm = element('#heroes-pair-form');
   const worldForm = element('#heroes-world-form');
   const worldSelect = element('#heroes-world-select');
+  const worldExportButton = element('#heroes-world-export');
+  const worldDeleteButton = element('#heroes-world-delete');
+  const worldImportInput = element('#heroes-world-import-file');
+  const objectImportInput = element('#heroes-object-import-file');
   const objectForm = element('#heroes-object-form');
   const objectList = element('#heroes-object-list');
   const objectCount = element('#heroes-object-count');
@@ -54,9 +58,11 @@ export function mount(container) {
   const pointValueInput = element('#heroes-points-value');
   const equationElements = { advantages: [], disadvantages: [] };
   const typedElements = [];
+  const nestedElements = [];
   let activeWorldId = null;
   let editingObjectId = null;
   let editingTypedIndex = null;
+  let editingNestedIndex = null;
   let editingEquationElement = null;
 
   function setState(message, isError = false) {
@@ -92,6 +98,10 @@ export function mount(container) {
       control.disabled = !enabled;
     });
     worldSelect.disabled = !enabled;
+    worldExportButton.disabled = !enabled || !activeWorldId;
+    worldDeleteButton.disabled = !enabled || !activeWorldId;
+    worldImportInput.disabled = !enabled;
+    objectImportInput.disabled = !enabled || !activeWorldId;
     objectForm.querySelectorAll('input, select, textarea, button').forEach((control) => {
       control.disabled = !enabled || !activeWorldId;
     });
@@ -109,13 +119,24 @@ export function mount(container) {
       }
       return { name: item.name, value: value.toString() };
     };
+    const packageChildren = typedElements
+      .filter((item) => item.type === 'packageDeal')
+      .flatMap((item) => item.children || []);
+    const childAdvantages = packageChildren.filter(
+      (item) => item.type === 'advantage' || ADVANTAGE_TYPES.has(item.type)
+    );
+    const childDisadvantages = packageChildren.filter(
+      (item) => item.type === 'disadvantage' || DISADVANTAGE_TYPES.has(item.type)
+    );
     const advantages = [
       ...equationElements.advantages,
       ...typedElements.filter((item) => ADVANTAGE_TYPES.has(item.type) && item.value),
+      ...childAdvantages,
     ].map(applyModifiers);
     const disadvantages = [
       ...equationElements.disadvantages,
       ...typedElements.filter((item) => DISADVANTAGE_TYPES.has(item.type) && item.value),
+      ...childDisadvantages,
     ].map(applyModifiers);
     return new HerosEquation({
       advantages,
@@ -199,10 +220,11 @@ export function mount(container) {
       const row = document.createElement('li');
       const label = document.createElement('span');
       const price = item.value ? `: ${item.value} points` : '';
+      const nested = item.children?.length ? ` · ${item.children.length} nested` : '';
       const detail = item.detail ? ` · ${item.detail}` : '';
       const target = item.target ? ` → ${item.target}` : '';
       const traits = item.modelTypes?.length ? ` · ${item.modelTypes.join(', ')}` : ' · unassigned';
-      label.textContent = `${item.type} · ${item.name}${price}${detail}${target}${traits}${item.isBase ? ' · base' : ' · extra'}`;
+      label.textContent = `${item.type} · ${item.name}${price}${detail}${target}${nested}${traits}${item.isBase ? ' · base' : ' · extra'}`;
       const edit = document.createElement('button');
       edit.type = 'button';
       edit.className = 'btn';
@@ -230,6 +252,55 @@ export function mount(container) {
       empty.textContent = 'No typed elements added.';
       typedElementList.append(empty);
     }
+  }
+
+  function renderNestedElements() {
+    const list = element('#heroes-nested-elements');
+    list.replaceChildren();
+    nestedElements.forEach((item, index) => {
+      const row = document.createElement('li');
+      const label = document.createElement('span');
+      label.textContent = `${item.type} · ${item.name}: ${item.value}`;
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'btn';
+      edit.textContent = 'Edit';
+      edit.addEventListener('click', () => {
+        editingNestedIndex = index;
+        element('#heroes-nested-kind').value = item.type;
+        element('#heroes-nested-name').value = item.name;
+        element('#heroes-nested-value').value = item.value;
+        element('#heroes-add-nested').textContent = 'Update child';
+        element('#heroes-cancel-nested-edit').hidden = false;
+      });
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn';
+      remove.textContent = 'Remove';
+      remove.addEventListener('click', () => {
+        if (editingNestedIndex === index) resetNestedForm();
+        else if (editingNestedIndex > index) editingNestedIndex -= 1;
+        nestedElements.splice(index, 1);
+        renderNestedElements();
+        updateEquationReadout();
+      });
+      row.append(label, edit, remove);
+      list.append(row);
+    });
+    if (!list.childElementCount) {
+      const empty = document.createElement('li');
+      empty.className = 'heroes-empty-list';
+      empty.textContent = 'No nested elements added.';
+      list.append(empty);
+    }
+  }
+
+  function resetNestedForm() {
+    editingNestedIndex = null;
+    element('#heroes-nested-name').value = '';
+    element('#heroes-nested-value').value = '';
+    element('#heroes-add-nested').textContent = 'Add child';
+    element('#heroes-cancel-nested-edit').hidden = true;
   }
 
   function resetEditor() {
@@ -313,6 +384,9 @@ export function mount(container) {
       const detail = document.createElement('small');
       const definition = object.definition;
       const typedElements = definition.typedElements || [];
+      const packageChildren = typedElements
+        .filter((item) => item.type === 'packageDeal')
+        .flatMap((item) => item.children || []);
       const adjusted = (item) => {
         let value = MixedNumber.from(item.value);
         for (const modifier of typedElements) {
@@ -330,11 +404,17 @@ export function mount(container) {
         advantages: [
           ...(definition.equation?.advantages ?? []),
           ...typedElements.filter((item) => ADVANTAGE_TYPES.has(item.type) && item.value),
+          ...packageChildren.filter(
+            (item) => item.type === 'advantage' || ADVANTAGE_TYPES.has(item.type)
+          ),
         ].map(adjusted),
         points: definition.equation?.points ?? [],
         disadvantages: [
           ...(definition.equation?.disadvantages ?? []),
           ...typedElements.filter((item) => DISADVANTAGE_TYPES.has(item.type) && item.value),
+          ...packageChildren.filter(
+            (item) => item.type === 'disadvantage' || DISADVANTAGE_TYPES.has(item.type)
+          ),
         ].map(adjusted),
       });
       name.textContent = object.name;
@@ -347,6 +427,20 @@ export function mount(container) {
       edit.textContent = 'Edit';
       edit.setAttribute('aria-label', `Edit ${object.name}`);
       edit.addEventListener('click', () => beginEditing(object));
+      const exportButton = document.createElement('button');
+      exportButton.type = 'button';
+      exportButton.className = 'btn';
+      exportButton.textContent = 'Export';
+      exportButton.setAttribute('aria-label', `Export ${object.name}`);
+      exportButton.addEventListener('click', async () => {
+        try {
+          const backup = await request(`/heroes/objects/${encodeURIComponent(object.id)}/export`);
+          downloadJson(backup, `${safeFileName(object.name)}.heroes-object.json`);
+          setState(`Exported ${object.name}.`);
+        } catch (error) {
+          setState(error.message, true);
+        }
+      });
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'btn';
@@ -362,7 +456,7 @@ export function mount(container) {
           setState(error.message, true);
         }
       });
-      row.append(content, edit, remove);
+      row.append(content, edit, exportButton, remove);
       objectList.append(row);
     }
   }
@@ -390,6 +484,25 @@ export function mount(container) {
         ? `Connected. ${worlds.length} world(s) stored locally.`
         : 'Connected. Create a world to begin.'
     );
+  }
+
+  function safeFileName(value) {
+    return (
+      String(value)
+        .trim()
+        .replace(/[^a-z0-9._-]+/gi, '-')
+        .replace(/^-+|-+$/g, '') || 'heroes'
+    );
+  }
+
+  function downloadJson(value, fileName) {
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
   pairingForm.addEventListener('submit', async (event) => {
@@ -431,6 +544,72 @@ export function mount(container) {
     activeWorldId = worldSelect.value || null;
     setEditorEnabled(true);
     await loadObjects(activeWorldId);
+  });
+
+  worldExportButton.addEventListener('click', async () => {
+    if (!activeWorldId) return;
+    try {
+      const backup = await request(`/heroes/worlds/${encodeURIComponent(activeWorldId)}/export`);
+      downloadJson(backup, `${safeFileName(backup.world.name)}.heroes-world.json`);
+      setState(`Exported world ${backup.world.name}.`);
+    } catch (error) {
+      setState(error.message, true);
+    }
+  });
+
+  worldDeleteButton.addEventListener('click', async () => {
+    const worldName = worldSelect.selectedOptions[0]?.textContent;
+    if (!activeWorldId || !window.confirm(`Delete ${worldName} and all of its objects?`)) return;
+    try {
+      const result = await request(`/heroes/worlds/${encodeURIComponent(activeWorldId)}`, {
+        method: 'DELETE',
+      });
+      resetEditor();
+      await loadWorlds();
+      setState(`Deleted world ${worldName} and ${result.objectsDeleted} object(s).`);
+    } catch (error) {
+      setState(error.message, true);
+    }
+  });
+
+  worldImportInput.addEventListener('change', async () => {
+    const [file] = worldImportInput.files || [];
+    worldImportInput.value = '';
+    if (!file) return;
+    try {
+      const backup = JSON.parse(await file.text());
+      const result = await request('/heroes/worlds/import', {
+        method: 'POST',
+        body: JSON.stringify(backup),
+      });
+      await loadWorlds(result.world.id);
+      setState(`Imported world ${result.world.name} with ${result.objectCount} object(s).`);
+    } catch (error) {
+      setState(
+        error instanceof SyntaxError ? 'World file is not valid JSON.' : error.message,
+        true
+      );
+    }
+  });
+
+  objectImportInput.addEventListener('change', async () => {
+    const [file] = objectImportInput.files || [];
+    objectImportInput.value = '';
+    if (!file || !activeWorldId) return;
+    try {
+      const backup = JSON.parse(await file.text());
+      const { object } = await request(
+        `/heroes/worlds/${encodeURIComponent(activeWorldId)}/objects/import`,
+        { method: 'POST', body: JSON.stringify(backup) }
+      );
+      await loadObjects(activeWorldId);
+      setState(`Imported ${object.name} into ${worldSelect.selectedOptions[0].textContent}.`);
+    } catch (error) {
+      setState(
+        error instanceof SyntaxError ? 'Object file is not valid JSON.' : error.message,
+        true
+      );
+    }
   });
 
   element('#heroes-object-kind').addEventListener('change', (event) => {
@@ -495,11 +674,16 @@ export function mount(container) {
 
   function resetTypedForm() {
     editingTypedIndex = null;
+    element('#heroes-typed-kind').value = 'characteristic';
+    updateTypedFields();
     element('#heroes-typed-name').value = '';
     element('#heroes-typed-value').value = '';
     element('#heroes-typed-detail').value = '';
     element('#heroes-typed-target').value = '';
     element('#heroes-typed-base').checked = false;
+    nestedElements.length = 0;
+    resetNestedForm();
+    renderNestedElements();
     element('#heroes-add-typed').textContent = 'Add typed element';
     element('#heroes-cancel-typed-edit').hidden = true;
     renderTypedTraitOptions();
@@ -516,6 +700,12 @@ export function mount(container) {
     element('#heroes-typed-detail').value = item.detail ?? '';
     element('#heroes-typed-target').value = item.target ?? '';
     element('#heroes-typed-base').checked = Boolean(item.isBase);
+    nestedElements.splice(
+      0,
+      nestedElements.length,
+      ...(item.children || []).map((child) => ({ ...child }))
+    );
+    renderNestedElements();
     renderTypedTraitOptions(item.modelTypes || []);
     element('#heroes-add-typed').textContent = 'Update typed element';
     element('#heroes-cancel-typed-edit').hidden = false;
@@ -530,7 +720,7 @@ export function mount(container) {
     const valueInput = element('#heroes-typed-value');
     const labels = {
       primaryCharacteristic: 'Base value',
-      figuredCharacteristic: 'Derivation inputs',
+      figuredCharacteristic: 'Edition formula ID',
       variablePowerPool: 'Pool points',
       packageDeal: 'Included elements',
       powerFramework: 'Included powers',
@@ -546,16 +736,75 @@ export function mount(container) {
     const detailName = labels[type] || 'Description or detail';
     detailLabel.textContent = detailName;
     detailInput.placeholder = type === 'modifier' || type === 'limitation' ? '-1/4 or 1/2' : '';
-    detailInput.required = type === 'modifier' || type === 'limitation';
+    detailInput.required =
+      type === 'modifier' || type === 'limitation' || type === 'figuredCharacteristic';
     targetInput.disabled = !['modifier', 'limitation'].includes(type);
     targetInput.required = !targetInput.disabled;
     valueInput.disabled =
-      NON_PRICED_TYPES.has(type) || type === 'modifier' || type === 'limitation';
-    valueInput.required = ADVANTAGE_TYPES.has(type) || DISADVANTAGE_TYPES.has(type);
+      NON_PRICED_TYPES.has(type) ||
+      type === 'modifier' ||
+      type === 'limitation' ||
+      type === 'packageDeal';
+    valueInput.required =
+      (ADVANTAGE_TYPES.has(type) && type !== 'packageDeal') || DISADVANTAGE_TYPES.has(type);
+    updateNestedEditor();
+  }
+
+  function updateNestedEditor() {
+    const parentType = element('#heroes-typed-kind').value;
+    const isFramework = [
+      'powerFramework',
+      'multipower',
+      'elementalControl',
+      'variablePowerPool',
+    ].includes(parentType);
+    const isPackage = parentType === 'packageDeal';
+    const editor = element('#heroes-nested-editor');
+    const select = element('#heroes-nested-kind');
+    editor.hidden = !isFramework && !isPackage;
+    const allowed = isFramework
+      ? new Set(['power'])
+      : new Set([
+          'advantage',
+          'disadvantage',
+          'physicalDisadvantage',
+          'mentalDisadvantage',
+          'socialDisadvantage',
+          'skill',
+          'talent',
+          'perk',
+          'power',
+        ]);
+    for (const option of select.options) option.hidden = !allowed.has(option.value);
+    if (!allowed.has(select.value)) select.value = isFramework ? 'power' : 'advantage';
+    element('#heroes-nested-title').textContent = isFramework
+      ? 'Framework powers'
+      : 'Package elements';
   }
 
   element('#heroes-typed-kind').addEventListener('change', updateTypedFields);
   updateTypedFields();
+
+  element('#heroes-add-nested').addEventListener('click', () => {
+    const name = element('#heroes-nested-name').value.trim();
+    try {
+      if (!name) throw new Error('Enter a nested element name.');
+      const item = {
+        type: element('#heroes-nested-kind').value,
+        name,
+        value: MixedNumber.from(element('#heroes-nested-value').value).toString(),
+      };
+      if (editingNestedIndex === null) nestedElements.push(item);
+      else nestedElements[editingNestedIndex] = item;
+      resetNestedForm();
+      renderNestedElements();
+      updateEquationReadout();
+    } catch (error) {
+      setState(error.message, true);
+    }
+  });
+
+  element('#heroes-cancel-nested-edit').addEventListener('click', resetNestedForm);
 
   element('#heroes-add-typed').addEventListener('click', () => {
     const type = element('#heroes-typed-kind').value;
@@ -566,14 +815,48 @@ export function mount(container) {
     const name = nameInput.value.trim();
     try {
       if (!name) throw new Error('Enter a typed element name.');
+      const parentType = element('#heroes-typed-kind').value;
+      const frameworkType = [
+        'powerFramework',
+        'multipower',
+        'elementalControl',
+        'variablePowerPool',
+      ].includes(parentType);
+      const allowedNestedTypes = frameworkType
+        ? new Set(['power'])
+        : new Set([
+            'advantage',
+            'disadvantage',
+            'physicalDisadvantage',
+            'mentalDisadvantage',
+            'socialDisadvantage',
+            'skill',
+            'talent',
+            'perk',
+            'power',
+          ]);
+      if (
+        nestedElements.some((child) => !allowedNestedTypes.has(child.type)) &&
+        (parentType === 'packageDeal' || frameworkType)
+      ) {
+        throw new Error('Remove or change nested entries that are not valid for this category.');
+      }
       const item = { type, name };
       if (valueInput.required) item.value = MixedNumber.from(valueInput.value).toString();
       if (detailInput.value.trim()) item.detail = detailInput.value.trim();
+      if (type === 'figuredCharacteristic') {
+        item.formulaId = detailInput.value.trim();
+        item.edition = element('#heroes-edition').value;
+      }
       if (targetInput.required) {
         item.target = targetInput.value.trim();
         if (!item.target) throw new Error('Enter the equation element this modifier affects.');
         MixedNumber.from(item.detail);
       }
+      if (element('#heroes-nested-editor').hidden && nestedElements.length) {
+        throw new Error('Nested elements can only be saved inside a package or power framework.');
+      }
+      if (nestedElements.length) item.children = nestedElements.map((child) => ({ ...child }));
       item.isBase = element('#heroes-typed-base').checked;
       item.modelTypes = Array.from(
         element('#heroes-typed-trait-options').querySelectorAll('input:checked'),

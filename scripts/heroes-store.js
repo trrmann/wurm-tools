@@ -6,6 +6,11 @@ import initSqlJs from 'sql.js';
 import { httpError } from './wurm-db.js';
 
 const OBJECT_KINDS = new Set(['object', 'character', 'base', 'vehicle', 'equipment']);
+export const HEROES_WORLD_EXPORT_FORMAT = 'wurm-tools-heroes-world';
+export const HEROES_WORLD_EXPORT_VERSION = 1;
+export const HEROES_OBJECT_EXPORT_FORMAT = 'wurm-tools-heroes-object';
+export const HEROES_OBJECT_EXPORT_VERSION = 1;
+const MAX_IMPORTED_OBJECTS = 1000;
 let sqlPromise;
 let operationQueue = Promise.resolve();
 
@@ -154,6 +159,86 @@ export function createHeroesWorld(name, filePath = heroesDatabasePath()) {
   });
 }
 
+export function deleteHeroesWorld(id, filePath = heroesDatabasePath()) {
+  if (!id) throw httpError(400, 'Invalid world id');
+  return withDatabase(filePath, true, (db) => {
+    const exists = queryRows(db, 'SELECT id FROM heroes_worlds WHERE id = ?', [id])[0];
+    if (!exists) throw httpError(404, 'Heroes world not found');
+    const objectsDeleted = queryRows(
+      db,
+      'SELECT COUNT(*) AS count FROM heroes_objects WHERE world_id = ?',
+      [id]
+    )[0].count;
+    db.run('DELETE FROM heroes_worlds WHERE id = ?', [id]);
+    return { deleted: 1, objectsDeleted };
+  });
+}
+
+export function exportHeroesWorld(id, filePath = heroesDatabasePath()) {
+  if (!id) throw httpError(400, 'Invalid world id');
+  return withDatabase(filePath, false, (db) => {
+    const worldRow = queryRows(db, 'SELECT id, name, created_at FROM heroes_worlds WHERE id = ?', [
+      id,
+    ])[0];
+    if (!worldRow) throw httpError(404, 'Heroes world not found');
+    const objects = queryRows(
+      db,
+      'SELECT id, world_id, name, kind, definition_json, created_at FROM heroes_objects WHERE world_id = ? ORDER BY name COLLATE NOCASE',
+      [id]
+    ).map(objectFromRow);
+    return {
+      format: HEROES_WORLD_EXPORT_FORMAT,
+      version: HEROES_WORLD_EXPORT_VERSION,
+      exportedAt: new Date().toISOString(),
+      world: worldFromRow(worldRow),
+      objects,
+    };
+  });
+}
+
+export function importHeroesWorld(data, filePath = heroesDatabasePath()) {
+  if (data?.format !== HEROES_WORLD_EXPORT_FORMAT) {
+    throw httpError(400, 'Not a Wurm Tools Heroes world export');
+  }
+  if (data.version !== HEROES_WORLD_EXPORT_VERSION) {
+    throw httpError(400, 'Unsupported Heroes world export version');
+  }
+  const name = requireName(data.world?.name, 'world name');
+  if (!Array.isArray(data.objects) || data.objects.length > MAX_IMPORTED_OBJECTS) {
+    throw httpError(400, 'Invalid Heroes world objects');
+  }
+  const objects = data.objects.map((object) => {
+    const { name: objectName, kind, definitionJson } = normalizeDefinition(object.definition);
+    if (object.name !== objectName || object.kind !== kind) {
+      throw httpError(400, 'Heroes object metadata does not match its definition');
+    }
+    return { name: objectName, kind, definitionJson };
+  });
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  return withDatabase(filePath, true, (db) => {
+    db.run('BEGIN');
+    try {
+      db.run('INSERT INTO heroes_worlds (id, name, created_at) VALUES (?, ?, ?)', [
+        id,
+        name,
+        createdAt,
+      ]);
+      for (const object of objects) {
+        db.run(
+          'INSERT INTO heroes_objects (id, world_id, name, kind, definition_json, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+          [randomUUID(), id, object.name, object.kind, object.definitionJson, createdAt]
+        );
+      }
+      db.run('COMMIT');
+    } catch (error) {
+      db.run('ROLLBACK');
+      throw error;
+    }
+    return { world: { id, name, createdAt }, objectCount: objects.length };
+  });
+}
+
 export function listHeroesObjects(worldId, filePath = heroesDatabasePath()) {
   if (!worldId) throw httpError(400, 'Invalid world id');
   return withDatabase(filePath, false, (db) => {
@@ -213,5 +298,55 @@ export function deleteHeroesObject(id, filePath = heroesDatabasePath()) {
   return withDatabase(filePath, true, (db) => {
     db.run('DELETE FROM heroes_objects WHERE id = ?', [id]);
     return { deleted: db.getRowsModified() };
+  });
+}
+
+export function exportHeroesObject(id, filePath = heroesDatabasePath()) {
+  if (!id) throw httpError(400, 'Invalid object id');
+  return withDatabase(filePath, false, (db) => {
+    const row = queryRows(
+      db,
+      'SELECT id, world_id, name, kind, definition_json, created_at FROM heroes_objects WHERE id = ?',
+      [id]
+    )[0];
+    if (!row) throw httpError(404, 'Heroes object not found');
+    const object = objectFromRow(row);
+    return {
+      format: HEROES_OBJECT_EXPORT_FORMAT,
+      version: HEROES_OBJECT_EXPORT_VERSION,
+      exportedAt: new Date().toISOString(),
+      object: { name: object.name, kind: object.kind, definition: object.definition },
+    };
+  });
+}
+
+export function importHeroesObject(worldId, data, filePath = heroesDatabasePath()) {
+  if (!worldId) throw httpError(400, 'Invalid world id');
+  if (data?.format !== HEROES_OBJECT_EXPORT_FORMAT) {
+    throw httpError(400, 'Not a Wurm Tools Heroes object export');
+  }
+  if (data.version !== HEROES_OBJECT_EXPORT_VERSION) {
+    throw httpError(400, 'Unsupported Heroes object export version');
+  }
+  const source = data.object;
+  if (
+    !source ||
+    source.name !== source.definition?.name ||
+    source.kind !== source.definition?.kind
+  ) {
+    throw httpError(400, 'Heroes object metadata does not match its definition');
+  }
+  const { name, kind, definitionJson } = normalizeDefinition(source.definition);
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  return withDatabase(filePath, true, (db) => {
+    if (!queryRows(db, 'SELECT id FROM heroes_worlds WHERE id = ?', [worldId]).length) {
+      throw httpError(404, 'Heroes world not found');
+    }
+    db.run(
+      'INSERT INTO heroes_objects (id, world_id, name, kind, definition_json, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [id, worldId, name, kind, definitionJson, createdAt]
+    );
+    return { id, worldId, name, kind, definition: JSON.parse(definitionJson), createdAt };
   });
 }

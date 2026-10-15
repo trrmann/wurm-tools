@@ -8,7 +8,12 @@ import { Readable } from 'node:stream';
 import {
   createHeroesObject,
   createHeroesWorld,
+  deleteHeroesWorld,
   deleteHeroesObject,
+  exportHeroesObject,
+  importHeroesObject,
+  exportHeroesWorld,
+  importHeroesWorld,
   heroesDatabasePath,
   listHeroesObjects,
   listHeroesWorlds,
@@ -127,6 +132,101 @@ describe('local Heroes SQLite store', () => {
     }
   });
 
+  it('exports and imports a world with objects and deletes the world cascade', async () => {
+    const fixture = tempDatabase();
+    try {
+      const sourceWorld = await createHeroesWorld('Asterion', fixture.file);
+      const sourceObject = await createHeroesObject(
+        sourceWorld.id,
+        {
+          name: 'Scout',
+          kind: 'character',
+          typedElements: [{ type: 'skill', name: 'Stealth', value: '3/2' }],
+        },
+        fixture.file
+      );
+      const exported = await exportHeroesWorld(sourceWorld.id, fixture.file);
+      expect(exported).toMatchObject({
+        format: 'wurm-tools-heroes-world',
+        version: 1,
+        world: { name: 'Asterion' },
+        objects: [{ name: 'Scout', definition: sourceObject.definition }],
+      });
+
+      const imported = await importHeroesWorld(exported, fixture.file);
+      expect(imported.world.name).toBe(sourceWorld.name);
+      expect(imported.world.id).not.toBe(sourceWorld.id);
+      expect(imported.objectCount).toBe(1);
+      const importedObjects = await listHeroesObjects(imported.world.id, fixture.file);
+      expect(importedObjects).toHaveLength(1);
+      expect(importedObjects[0].id).not.toBe(sourceObject.id);
+      expect(importedObjects[0].definition).toEqual(sourceObject.definition);
+
+      expect(await deleteHeroesWorld(imported.world.id, fixture.file)).toEqual({
+        deleted: 1,
+        objectsDeleted: 1,
+      });
+      await expect(listHeroesObjects(imported.world.id, fixture.file)).rejects.toMatchObject({
+        status: 404,
+      });
+    } finally {
+      fs.rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it('exports and imports an individual object into a selected world with a new id', async () => {
+    const fixture = tempDatabase();
+    try {
+      const world = await createHeroesWorld('Asterion', fixture.file);
+      const source = await createHeroesObject(
+        world.id,
+        { name: 'Scout', kind: 'character', typedElements: [{ type: 'skill', name: 'Stealth' }] },
+        fixture.file
+      );
+      const exported = await exportHeroesObject(source.id, fixture.file);
+      expect(exported).toMatchObject({
+        format: 'wurm-tools-heroes-object',
+        version: 1,
+        object: { name: 'Scout', kind: 'character', definition: source.definition },
+      });
+      const imported = await importHeroesObject(world.id, exported, fixture.file);
+      expect(imported.id).not.toBe(source.id);
+      expect(imported.worldId).toBe(world.id);
+      expect(imported.definition).toEqual(source.definition);
+      await expect(importHeroesObject('missing', exported, fixture.file)).rejects.toMatchObject({
+        status: 404,
+      });
+    } finally {
+      fs.rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects unsupported or inconsistent world exports', async () => {
+    const fixture = tempDatabase();
+    try {
+      expect(() => importHeroesWorld({ format: 'wrong', version: 1 }, fixture.file)).toThrow(
+        expect.objectContaining({ status: 400 })
+      );
+      const world = await createHeroesWorld('Asterion', fixture.file);
+      expect(() =>
+        importHeroesWorld(
+          {
+            format: 'wurm-tools-heroes-world',
+            version: 1,
+            world: { name: 'Broken' },
+            objects: [
+              { name: 'Mismatch', kind: 'vehicle', definition: { name: 'Mismatch', kind: 'base' } },
+            ],
+          },
+          fixture.file
+        )
+      ).toThrow(expect.objectContaining({ status: 400 }));
+      expect(await listHeroesWorlds(fixture.file)).toEqual([world]);
+    } finally {
+      fs.rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
   it('validates world and object names, kinds, and referenced worlds', async () => {
     const fixture = tempDatabase();
     try {
@@ -178,6 +278,38 @@ describe('local Heroes SQLite store', () => {
           fixture.file
         )
       ).toMatchObject({ objects: [{ name: 'Sentinel Prime', kind: 'character' }] });
+
+      const objectExport = await handleHeroes(
+        { method: 'GET' },
+        new URL(`http://localhost/heroes/objects/${createObject.body.object.id}/export`),
+        fixture.file
+      );
+      expect(objectExport.format).toBe('wurm-tools-heroes-object');
+      const importedObject = await handleHeroes(
+        bodyRequest('POST', objectExport),
+        new URL(`http://localhost/heroes/worlds/${world.id}/objects/import`),
+        fixture.file
+      );
+      expect(importedObject.statusCode).toBe(201);
+      expect(importedObject.body.object.id).not.toBe(createObject.body.object.id);
+
+      const worldExport = await handleHeroes(
+        { method: 'GET' },
+        new URL(`http://localhost/heroes/worlds/${world.id}/export`),
+        fixture.file
+      );
+      const importedWorld = await handleHeroes(
+        bodyRequest('POST', worldExport),
+        new URL('http://localhost/heroes/worlds/import'),
+        fixture.file
+      );
+      expect(importedWorld.body.objectCount).toBe(2);
+      const deletedWorld = await handleHeroes(
+        { method: 'DELETE' },
+        new URL(`http://localhost/heroes/worlds/${importedWorld.body.world.id}`),
+        fixture.file
+      );
+      expect(deletedWorld).toEqual({ deleted: 1, objectsDeleted: 2 });
     } finally {
       fs.rmSync(fixture.root, { recursive: true, force: true });
     }

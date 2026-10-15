@@ -54,7 +54,12 @@ import {
 import {
   createHeroesObject,
   createHeroesWorld,
+  deleteHeroesWorld,
   deleteHeroesObject,
+  exportHeroesWorld,
+  exportHeroesObject,
+  importHeroesWorld,
+  importHeroesObject,
   heroesDatabasePath,
   listHeroesObjects,
   listHeroesWorlds,
@@ -270,6 +275,7 @@ export async function handleDb(url) {
 }
 
 const MAX_IMPORT_BYTES = 600 * 1024 * 1024;
+const MAX_HEROES_IMPORT_BYTES = 64 * 1024 * 1024;
 
 async function readJsonBody(req, maxBytes = 4096) {
   const chunks = [];
@@ -389,12 +395,56 @@ export async function handleMap(req, url, serverDir = findInstall(TARGETS.server
 
 export async function handleHeroes(req, url, filePath = heroesDatabasePath()) {
   const parts = url.pathname.split('/').filter(Boolean).slice(1).map(decodeURIComponent);
+  if (
+    parts.length === 2 &&
+    parts[0] === 'worlds' &&
+    parts[1] === 'import' &&
+    req.method === 'POST'
+  ) {
+    return {
+      statusCode: 201,
+      body: await importHeroesWorld(await readJsonBody(req, MAX_HEROES_IMPORT_BYTES), filePath),
+    };
+  }
   if (parts.length === 1 && parts[0] === 'worlds' && req.method === 'GET') {
     return { worlds: await listHeroesWorlds(filePath) };
   }
   if (parts.length === 1 && parts[0] === 'worlds' && req.method === 'POST') {
     const world = await createHeroesWorld((await readJsonBody(req, 4096)).name, filePath);
     return { statusCode: 201, body: { world } };
+  }
+  if (parts.length === 2 && parts[0] === 'worlds' && req.method === 'DELETE') {
+    return deleteHeroesWorld(parts[1], filePath);
+  }
+  if (
+    parts.length === 4 &&
+    parts[0] === 'worlds' &&
+    parts[2] === 'objects' &&
+    parts[3] === 'import' &&
+    req.method === 'POST'
+  ) {
+    return {
+      statusCode: 201,
+      body: {
+        object: await importHeroesObject(parts[1], await readJsonBody(req, 300 * 1024), filePath),
+      },
+    };
+  }
+  if (
+    parts.length === 3 &&
+    parts[0] === 'worlds' &&
+    parts[2] === 'export' &&
+    req.method === 'GET'
+  ) {
+    return exportHeroesWorld(parts[1], filePath);
+  }
+  if (
+    parts.length === 3 &&
+    parts[0] === 'objects' &&
+    parts[2] === 'export' &&
+    req.method === 'GET'
+  ) {
+    return exportHeroesObject(parts[1], filePath);
   }
   if (parts.length === 3 && parts[0] === 'worlds' && parts[2] === 'objects') {
     if (req.method === 'GET') {
