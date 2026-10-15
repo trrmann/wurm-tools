@@ -1,5 +1,5 @@
-import { MixedNumber } from './mixed-numbers.mjs';
-import { Points } from './points.mjs';
+import { MixedNumber } from '../mixed-numbers.mjs';
+import { Points } from '../points.mjs';
 import { HerosValues } from './heros-values.mjs';
 import {
   ActionNames,
@@ -14,7 +14,7 @@ import {
   EventNames,
   ThingName,
   ThingNames,
-} from './things.mjs';
+} from '../things.mjs';
 
 export const HEROS_EDITIONS = Object.freeze({
   '4e': Object.freeze({ id: '4e', label: '4th Edition', disadvantageLabel: 'Disadvantages' }),

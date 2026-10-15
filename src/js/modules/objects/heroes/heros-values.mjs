@@ -1,6 +1,6 @@
-import { Collection } from './collection.mjs';
-import { MixedNumber } from './mixed-numbers.mjs';
-import { Value } from './values.mjs';
+import { Collection } from '../collection.mjs';
+import { MixedNumber } from '../mixed-numbers.mjs';
+import { Value } from '../values.mjs';
 
 function optionalMixedNumber(value) {
   return value === undefined || value === null ? undefined : MixedNumber.from(value);
@@ -22,10 +22,11 @@ export class HerosValues extends Value {
    * @param {(parameters: object) => number | bigint | Number | MixedNumber} options.ValueFunction
    */
   constructor({
-    absoluteMinValue,
-    absoluteMaxValue,
+    AbsoluteMinValue,
+    AbsoluteMaxValue,
     MinValue,
     UnderMinValueRate,
+    MaxValue,
     OverMaxValueRate,
     ValueRate,
     BaseValue,
@@ -47,9 +48,10 @@ export class HerosValues extends Value {
           ? OptionFlagCollection
           : new Collection(OptionFlagCollection);
     const parameters = {
-      absoluteMinValue: optionalMixedNumber(absoluteMinValue),
-      absoluteMaxValue: optionalMixedNumber(absoluteMaxValue),
+      absoluteMinValue: optionalMixedNumber(AbsoluteMinValue),
+      absoluteMaxValue: optionalMixedNumber(AbsoluteMaxValue),
       MinValue: optionalMixedNumber(MinValue),
+      MaxValue: optionalMixedNumber(MaxValue),
       UnderMinValueRate: optionalMixedNumber(UnderMinValueRate),
       OverMaxValueRate: optionalMixedNumber(OverMaxValueRate),
       ValueRate: optionalMixedNumber(ValueRate),

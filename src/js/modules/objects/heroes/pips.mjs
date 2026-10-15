@@ -1,6 +1,6 @@
-import { CollectionOfNumbers } from './collection.mjs';
-import { MixedNumber } from './mixed-numbers.mjs';
-import { Point } from './points.mjs';
+import { CollectionOfNumbers } from '../collection.mjs';
+import { MixedNumber } from '../mixed-numbers.mjs';
+import { Point } from '../points.mjs';
 
 /** A non-negative fractional point value smaller than one whole point. */
 export class Pip extends MixedNumber {
