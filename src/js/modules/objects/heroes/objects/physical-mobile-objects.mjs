@@ -1,5 +1,6 @@
 import { PhysicalObject } from './physical-objects.mjs';
 import { MobileObject } from './mobile-objects.mjs';
+import { Collection } from '../../../../collection.mjs';
 
 export class PhysicalMobileObject extends PhysicalObject {
     constructor({points=0,basePoints=0,maxDisadvantagePoints=0,maxPointsFromAnyOneTypeOfDisadvantage=0} = {}) {
@@ -10,4 +11,8 @@ export class PhysicalMobileObject extends PhysicalObject {
         });
         this.pilot = null;
     }
+}
+/** @extends {Collection<PhysicalMobileObject>} */
+export class PhysicalMobileObjects extends Collection {
+
 }

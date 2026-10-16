@@ -1,5 +1,12 @@
-import { CharacterElement } from '../../character-element.mjs';
+import { Collection } from '../../../../collection.mjs'
+import { CharacterElement, CharacterElements } from '../../character-element.mjs';
 export class Skill extends CharacterElement {
+  static Filter(characterElements) {
+    if(characterElements instanceof CharacterElements === false) {
+      throw new Error('Filter expects a CharacterElements object');
+    }
+    return characterElements.filter(element => element instanceof Skill);
+  }
   constructor({
     Points = 0,
     AbsoluteMinValue,
@@ -29,4 +36,8 @@ export class Skill extends CharacterElement {
       ValueFunction: ValueFunction,
     });
   }
+}
+/** @extends {Collection<Skill>} */
+export class Skills extends Collection {
+
 }

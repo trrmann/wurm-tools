@@ -1,5 +1,6 @@
 import { PhysicalObject } from './physical-objects.mjs';
 import { LivingObject } from './living-objects.mjs';
+import { Collection } from '../../../../collection.mjs';
 export class PhysicalLivingObject extends PhysicalObject {
     constructor({points=0,basePoints=0,maxDisadvantagePoints=0,maxPointsFromAnyOneTypeOfDisadvantage=0} = {}) {
         super({points:points,basePoints:basePoints,maxDisadvantagePoints: maxDisadvantagePoints,maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage});
@@ -8,4 +9,8 @@ export class PhysicalLivingObject extends PhysicalObject {
             this.characteristics().Add(characteristic);
         });
     }
+}
+/** @extends {Collection<PhysicalLivingObject>} */
+export class PhysicalLivingObjects extends Collection {
+
 }
