@@ -9,6 +9,38 @@
     </div>
     <div class="card-body">
       <div id="helper-state" class="server-helper-state" role="status">Checking helper...</div>
+      <div id="helper-launch-row">
+        <p>
+          <button type="button" id="helper-launch" class="btn btn-primary">Start helper</button>
+          Works after the one-time setup below registers the <code>wurm-helper://</code> launcher
+          (Windows and Fedora).
+        </p>
+      </div>
+      <div id="helper-install-panel" hidden>
+        <p>
+          <strong>One-time setup, both Windows and Fedora:</strong>
+          <code>npm run helper:protocol:install</code>
+        </p>
+        <p>
+          The browser cannot start programs itself, so the helper must run on your computer. Run
+          these in a terminal inside the wurm-tools folder, then this page will connect
+          automatically.
+        </p>
+        <p>
+          <strong>Fedora / Linux</strong> (start now and at every login):
+          <code>npm run helper:startup:install</code> &mdash; or once only:
+          <code>npm run helper</code>
+        </p>
+        <p>
+          <strong>Windows</strong> (PowerShell; start now and at every logon):
+          <code>npm run helper:startup:install</code> &mdash; or once only:
+          <code>npm run helper</code>
+        </p>
+        <p>
+          This site must be one of the helper's allowed origins. For other addresses set
+          <code>WURM_ALLOWED_ORIGINS</code>.
+        </p>
+      </div>
       <div id="helper-pair-panel" hidden>
         <p>
           Pair this browser with the local helper. Generate a one-time code in a terminal with
@@ -35,7 +67,7 @@
         Forget this browser
       </button>
       <div id="server-cards" class="server-cards">{{{cards}}}</div>
-      <button type="button" id="status-refresh" class="btn btn-secondary">Refresh</button>
+      <button type="button" id="status-refresh" class="btn btn-secondary" hidden>Refresh</button>
     </div>
   </div>
 

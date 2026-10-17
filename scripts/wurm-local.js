@@ -151,14 +151,34 @@ export function steamLibraries() {
   return [...libs];
 }
 
-export function findInstall(target, env = process.env) {
-  const override = env[target.envDir];
-  if (override) return fs.existsSync(override) ? override : null;
-  for (const lib of steamLibraries()) {
-    const dir = path.join(lib, 'steamapps', 'common', target.folder);
-    if (fs.existsSync(dir)) return dir;
+// Non-Steam locations where a dedicated server is commonly unpacked.
+function extraRoots() {
+  const home = os.homedir();
+  if (process.platform === 'win32') {
+    return ['C:\\', 'D:\\', home, path.join(home, 'Documents')];
   }
-  return null;
+  return [
+    home,
+    path.join(home, 'Games'),
+    path.join(home, 'Downloads'),
+    '/opt',
+    '/srv',
+    '/usr/local',
+  ];
+}
+
+export function installCandidates(target, env = process.env) {
+  const override = env[target.envDir];
+  if (override) return [override];
+  const dirs = steamLibraries().map((lib) => path.join(lib, 'steamapps', 'common', target.folder));
+  const names = [target.folder, target.folder.replace(/ /g, ''), target.folder.replace(/ /g, '-')];
+  if (target.folder === TARGETS.server.folder) names.push('WurmServer', 'wurm-server', 'wurm');
+  for (const root of extraRoots()) for (const name of names) dirs.push(path.join(root, name));
+  return dirs;
+}
+
+export function findInstall(target, env = process.env) {
+  return installCandidates(target, env).find((dir) => fs.existsSync(dir)) || null;
 }
 
 function listProcesses() {
@@ -201,6 +221,7 @@ export async function getStatus() {
       label: target.label,
       installed: Boolean(dir),
       path: dir,
+      searched: dir ? undefined : installCandidates(target).slice(0, 6),
       running: pid !== false,
       pid: typeof pid === 'number' ? pid : null,
     };
@@ -514,7 +535,7 @@ export function createServer({ env = process.env } = {}) {
     const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
     try {
       if (req.method === 'GET' && url.pathname === '/health') {
-        return send(200, { ok: true });
+        return send(200, { ok: true, platform: process.platform });
       }
       if (req.method === 'POST' && url.pathname === '/pair') {
         if (!origin || !originOk) return send(403, { error: 'An approved app origin is required' });
@@ -699,6 +720,12 @@ export async function startDetachedHelper() {
     }
     console.info(`Wurm local helper started in the background (PID ${child.pid}).`);
     console.info(`Listening on http://127.0.0.1:${PORT}`);
+    for (let i = 0; i < 10 && !(await helperAlreadyServing()); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    if (!(await helperAlreadyServing())) {
+      console.warn(`Warning: helper is not answering on port ${PORT}; check for a port conflict.`);
+    }
     console.info(`Stop with "npm run helper:stop" or delete ${file}.`);
   } catch (err) {
     removeSemaphore(file, token);

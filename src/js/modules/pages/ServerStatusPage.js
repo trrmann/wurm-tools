@@ -5,6 +5,7 @@ import { fill, getShell, getTemplate } from '../template.js';
 import { renderShell, setHeader, initSidebar } from '../shell.js';
 
 export const HELPER_URL = 'http://127.0.0.1:5180';
+export const HELPER_PROTOCOL_URL = 'wurm-helper://start';
 const HELPER_TOKEN_KEY = 'wurm-tools-helper-token-v1';
 
 // Turns the helper's /status payload into card view-models.
@@ -16,7 +17,7 @@ export function describeTarget(key, info) {
       state: 'planned',
       badgeClass: 'badge-planned',
       badge: 'Not installed',
-      detail: 'No install found. Set WURM_SERVER_DIR / WURM_CLIENT_DIR if it lives elsewhere.',
+      detail: `No install found (checked ${(info.searched || []).join(', ') || 'Steam libraries'}). Set WURM_SERVER_DIR / WURM_CLIENT_DIR if it lives elsewhere.`,
       hidden: 'hidden',
       disabled: 'disabled',
     };
@@ -60,6 +61,11 @@ export class ServerStatusPage extends BasePage {
     const cards = this.viewport.querySelector('#server-cards');
     const pairPanel = this.viewport.querySelector('#helper-pair-panel');
     const unpairButton = this.viewport.querySelector('#helper-unpair');
+    const installPanel = this.viewport.querySelector('#helper-install-panel');
+    const refreshButton = this.viewport.querySelector('#status-refresh');
+    clearTimeout(this.retryTimer);
+    installPanel.hidden = true;
+    refreshButton.hidden = true;
     try {
       if (!this.authToken) {
         const health = await fetch(`${HELPER_URL}/health`);
@@ -68,6 +74,7 @@ export class ServerStatusPage extends BasePage {
         pairPanel.hidden = false;
         unpairButton.hidden = true;
         this.setDatabaseControlsEnabled(false);
+        refreshButton.hidden = false;
         state.textContent = 'Helper ready. Pair this browser to view local status and databases.';
         return;
       }
@@ -83,6 +90,7 @@ export class ServerStatusPage extends BasePage {
       cards.innerHTML = ['server', 'client']
         .map((key) => fill(tpl, describeTarget(key, status[key])))
         .join('');
+      refreshButton.hidden = false;
       pairPanel.hidden = true;
       unpairButton.hidden = false;
       this.setDatabaseControlsEnabled(true);
@@ -94,8 +102,9 @@ export class ServerStatusPage extends BasePage {
       pairPanel.hidden = true;
       unpairButton.hidden = true;
       this.setDatabaseControlsEnabled(false);
-      state.textContent =
-        'Helper not reachable. Restart the local site or run "npm run helper" to start it.';
+      installPanel.hidden = false;
+      state.textContent = `Helper not reachable from ${window.location.origin}. Start it with "npm run helper" (see below); retrying automatically.`;
+      this.retryTimer = setTimeout(() => this.refresh(), 5000);
     }
   }
 
@@ -287,6 +296,14 @@ export class ServerStatusPage extends BasePage {
         });
         return;
       }
+      if (e.target.closest('#helper-launch')) {
+        window.location.href = HELPER_PROTOCOL_URL;
+        this.viewport.querySelector('#helper-state').textContent =
+          'Asking your system to start the helper... allow the browser prompt if shown.';
+        clearTimeout(this.retryTimer);
+        this.retryTimer = setTimeout(() => this.refresh(), 2500);
+        return;
+      }
       if (e.target.closest('#status-refresh')) this.refresh();
       if (e.target.closest('#db-load')) this.runDb('table');
       if (e.target.closest('#db-players')) this.runDb('players');
@@ -318,6 +335,7 @@ export class ServerStatusPage extends BasePage {
   }
 
   unbindEvents() {
+    clearTimeout(this.retryTimer);
     this.viewport?.removeEventListener('click', this.onClick);
     this.viewport?.removeEventListener('change', this.onChange);
     this.viewport?.removeEventListener('submit', this.onSubmit);
