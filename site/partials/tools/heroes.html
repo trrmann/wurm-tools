@@ -106,7 +106,19 @@
           </label>
           <label class="heroes-field" for="heroes-point-level">
             Point-level classification
-            <input id="heroes-point-level" name="pointLevel" placeholder="Standard" />
+            <select id="heroes-point-level" name="pointLevel" class="custom-select">
+              <option value="">No point-level classification</option>
+              <option value="custom">Custom classification</option>
+            </select>
+          </label>
+          <label
+            id="heroes-point-level-custom-field"
+            class="heroes-field"
+            for="heroes-point-level-custom"
+            hidden
+          >
+            Custom classification name
+            <input id="heroes-point-level-custom" name="customPointLevel" maxlength="120" />
           </label>
           <label class="heroes-field" for="heroes-point-level-value">
             Point-level value
@@ -114,32 +126,31 @@
               id="heroes-point-level-value"
               name="pointLevelValue"
               inputmode="decimal"
-              placeholder="150"
+              placeholder="Choose a classification"
             />
           </label>
           <label class="heroes-field" for="heroes-edition">
             Rules edition
-            <select id="heroes-edition" name="edition" class="custom-select">
-              <option value="4e">4th Edition</option>
+            <select id="heroes-edition" class="custom-select" disabled>
               <option value="5e" selected>5th Edition</option>
-              <option value="6e">6th Edition</option>
             </select>
           </label>
         </div>
 
         <fieldset id="heroes-model-traits" class="heroes-traits">
           <legend>Object model traits</legend>
-          <label><input type="checkbox" name="trait" value="physical" /> Physical</label>
-          <label><input type="checkbox" name="trait" value="non-physical" /> Non-physical</label>
-          <label><input type="checkbox" name="trait" value="sentient" /> Sentient</label>
-          <label><input type="checkbox" name="trait" value="non-sentient" /> Non-sentient</label>
-          <label><input type="checkbox" name="trait" value="mobile" /> Mobile</label>
-          <label><input type="checkbox" name="trait" value="non-mobile" /> Non-mobile</label>
+          <p class="heroes-field-hint">Traits are derived from the selected object kind.</p>
+          <label><input type="checkbox" value="physical" disabled /> Physical</label>
+          <label><input type="checkbox" value="non-physical" disabled /> Non-physical</label>
+          <label><input type="checkbox" value="sentient" disabled /> Sentient</label>
+          <label><input type="checkbox" value="non-sentient" disabled /> Non-sentient</label>
+          <label><input type="checkbox" value="mobile" disabled /> Mobile</label>
+          <label><input type="checkbox" value="non-mobile" disabled /> Non-mobile</label>
           <label
-            ><input type="checkbox" name="trait" value="player-character" /> Player character</label
+            ><input type="checkbox" value="player-character" disabled /> Player character</label
           >
           <label
-            ><input type="checkbox" name="trait" value="non-player-character" /> Non-player
+            ><input type="checkbox" value="non-player-character" disabled /> Non-player
             character</label
           >
         </fieldset>

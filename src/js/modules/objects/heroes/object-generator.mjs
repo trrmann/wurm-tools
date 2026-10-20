@@ -31,18 +31,16 @@ const objectTypes = new Map([
 ]);
 
 export function getHerosObjectTypes() {
-  return [...objectTypes].map(([type, { label }]) => ({ type, label }));
+  return [...objectTypes].map(([type, { label, Type }]) => ({
+    type,
+    label,
+    modelTypes: [...Type.ModelTypes],
+  }));
 }
 
-function inferCharacterType(definition, objectType) {
+function inferCharacterType(objectType) {
   if (objectType === 'player-character') return 'player';
   if (objectType === 'non-player-character') return 'nonPlayer';
-  if (objectType !== 'character') return undefined;
-  if (definition.characterType) return definition.characterType;
-
-  const traits = new Set(definition.objectModelTypes ?? []);
-  if (traits.has('player-character')) return 'player';
-  if (traits.has('non-player-character')) return 'nonPlayer';
   return undefined;
 }
 
@@ -58,31 +56,11 @@ export function generateHerosObject(definition = {}) {
     throw new RangeError(`Unsupported HERO object type: ${objectType}`);
   }
 
-  const selectedTraits = new Set(definition.objectModelTypes ?? []);
-  if (selectedTraits.has('player-character') && selectedTraits.has('non-player-character')) {
-    throw new TypeError('An object cannot be both a player character and a non-player character');
-  }
-  const isCharacterKind = ['character', 'player-character', 'non-player-character'].includes(
-    objectType
-  );
-  if (
-    !isCharacterKind &&
-    (selectedTraits.has('player-character') || selectedTraits.has('non-player-character'))
-  ) {
-    throw new TypeError('Player/non-player character traits require a character object kind');
-  }
-  if (
-    (objectType === 'player-character' && selectedTraits.has('non-player-character')) ||
-    (objectType === 'non-player-character' && selectedTraits.has('player-character'))
-  ) {
-    throw new TypeError('The selected character kind conflicts with its character traits');
-  }
-
   const edition = normalizeHerosEdition(definition.edition);
   const character = generateHerosCharacter({
     ...definition,
     edition: edition.id,
-    characterType: inferCharacterType(definition, objectType),
+    characterType: inferCharacterType(objectType),
   });
   const options = {
     ...definition,

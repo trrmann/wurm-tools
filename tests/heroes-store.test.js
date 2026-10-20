@@ -50,7 +50,7 @@ describe('local Heroes SQLite store', () => {
           name: 'Skimmer',
           kind: 'vehicle',
           bodyShapes: ['hovercraft'],
-          pointLevelClassifications: [{ name: 'Standard', points: 150, edition: '6e' }],
+          pointLevelClassifications: [{ name: 'Standard', points: 150, edition: '5e' }],
           objectModelTypes: ['physical', 'mobile'],
           equation: {
             advantages: [{ name: 'Flight', value: '1/2' }],

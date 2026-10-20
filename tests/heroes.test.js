@@ -57,13 +57,13 @@ describe('Heroes domain model', () => {
     expect(character.categorizationNames.first.toString()).toBe('player character');
   });
 
-  it('normalizes 4th, 5th, and 6th edition identifiers and terminology', () => {
+  it('locks HERO edition metadata to 5th Edition', () => {
     expect(normalizeHerosEdition()).toBe(HEROS_EDITIONS['5e']);
     expect(new HerosCharacter('Default edition').edition).toBe(HEROS_EDITIONS['5e']);
-    expect(normalizeHerosEdition(4)).toBe(HEROS_EDITIONS['4e']);
+    expect(normalizeHerosEdition(5)).toBe(HEROS_EDITIONS['5e']);
     expect(normalizeHerosEdition('5th Edition')).toBe(HEROS_EDITIONS['5e']);
-    expect(normalizeHerosEdition('6e').disadvantageLabel).toBe('Complications');
-    expect(HEROS_EDITIONS['4e'].disadvantageLabel).toBe('Disadvantages');
+    expect(() => normalizeHerosEdition('4e')).toThrow(RangeError);
+    expect(() => normalizeHerosEdition('6e')).toThrow(RangeError);
     expect(() => normalizeHerosEdition('7e')).toThrow(RangeError);
   });
 
@@ -98,21 +98,13 @@ describe('Heroes domain model', () => {
     expect(body.primaryCharacteristics.first).toBe(strength);
   });
 
-  it('resolves figured-characteristic formulas by edition and passes exact inputs to callbacks', () => {
+  it('resolves 5th-edition figured-characteristic formulas with exact inputs', () => {
     const disposeFifth = registerHerosFiguredCharacteristicFormula(
       'test-body',
       '5e',
       ({ points, primaryCharacteristics, edition }) => {
         expect(edition).toBe(HEROS_EDITIONS['5e']);
         return primaryCharacteristics.first.baseValue.add(points.sum());
-      }
-    );
-    const disposeSixth = registerHerosFiguredCharacteristicFormula(
-      'test-body',
-      '6e',
-      ({ points, primaryCharacteristics, edition }) => {
-        expect(edition).toBe(HEROS_EDITIONS['6e']);
-        return primaryCharacteristics.first.baseValue.add(points.sum().multiply(2));
       }
     );
     try {
@@ -123,16 +115,13 @@ describe('Heroes domain model', () => {
         points: [2],
       };
       const fifth = new HerosFiguredCharacteristic({ ...inputs, edition: '5e' });
-      const sixth = new HerosFiguredCharacteristic({ ...inputs, edition: '6e' });
 
       expect(fifth.value.toString()).toBe('12');
-      expect(sixth.value.toString()).toBe('14');
-      expect(() => new HerosFiguredCharacteristic({ ...inputs, edition: '4e' })).toThrow(
-        /is registered for 4th Edition/
+      expect(() => new HerosFiguredCharacteristic({ ...inputs, edition: '6e' })).toThrow(
+        /Only HERO System 5th Edition/
       );
     } finally {
       disposeFifth();
-      disposeSixth();
     }
   });
 
@@ -188,7 +177,7 @@ describe('Heroes domain model', () => {
     });
     const character = new HerosCharacter({
       name: 'Trailblazer',
-      edition: '4e',
+      edition: '5e',
       advantages: [{ name: 'Contact', value: 2 }],
       skills: [{ name: 'Tracking', value: 4 }],
       everymanSkills: [{ name: 'Conversation', value: 1 }],
@@ -213,7 +202,7 @@ describe('Heroes domain model', () => {
       descriptions: ['A field-trained hero'],
     });
 
-    expect(character.edition).toBe(HEROS_EDITIONS['4e']);
+    expect(character.edition).toBe(HEROS_EDITIONS['5e']);
     expect(character.everymanSkills).toBeInstanceOf(HerosEverymanSkills);
     expect(character.packageDeals.first).toBe(packageDeal);
     expect(packageDeal.powers.first.toString()).toBe('Night vision');
@@ -242,7 +231,7 @@ describe('Heroes domain model', () => {
       name: 'Skimmer',
       bodyShapes: ['hovercraft'],
       objectModelTypes: ['physical', 'mobile'],
-      pointLevelClassifications: [{ name: 'Standard', points: 150, edition: '6e' }],
+      pointLevelClassifications: [{ name: 'Standard', points: 150, edition: '5e' }],
       advantages: [{ name: 'Flight', value: 20 }],
     });
     const equipment = new HerosEquipment('Field kit');
@@ -263,7 +252,7 @@ describe('Heroes domain model', () => {
   });
 
   it('groups base characteristics, advantages, and disadvantages by model trait', () => {
-    const object = new HerosGameObject({
+    const object = new HerosCharacter({
       name: 'Sentinel',
       objectModelTypes: ['physical', 'sentient', 'mobile'],
       typedElements: [
@@ -331,11 +320,27 @@ describe('Heroes domain model', () => {
     }
   });
 
-  it('does not infer model traits from concrete object subclasses', () => {
-    const vehicle = new HerosVehicle('Vehicle');
-    const character = new HerosPlayerCharacter('Player');
+  it('derives immutable model traits from concrete object kinds', () => {
+    const vehicle = new HerosVehicle({ name: 'Vehicle', objectModelTypes: ['sentient'] });
+    const character = new HerosPlayerCharacter({ name: 'Player', objectModelTypes: [] });
 
-    expect(vehicle.objectModelTypes).toHaveLength(0);
-    expect(character.objectModelTypes).toHaveLength(0);
+    expect(vehicle.objectModelTypes.map(String)).toEqual(['physical', 'non-sentient', 'mobile']);
+    expect(character.objectModelTypes.map(String)).toEqual([
+      'physical',
+      'sentient',
+      'mobile',
+      'player-character',
+    ]);
+    expect(() => vehicle.objectModelTypes.add('sentient')).toThrow(TypeError);
+    expect(vehicle.objectModelTypes.map(String)).toEqual(['physical', 'non-sentient', 'mobile']);
+  });
+
+  it('provides point-level presets whose values match the model classifications', () => {
+    const preset = HerosPointLevelClassification.fromPreset('heroic-standard');
+
+    expect(String(preset)).toBe('Standard Heroic');
+    expect(preset.points.toString()).toBe('75');
+    expect(preset.edition).toBe(HEROS_EDITIONS['5e']);
+    expect(() => HerosPointLevelClassification.fromPreset('unknown')).toThrow(RangeError);
   });
 });

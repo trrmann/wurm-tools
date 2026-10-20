@@ -14,7 +14,7 @@
 - [x] Compose package-deal children and framework powers as nested editable elements; package child point values contribute to the equation while framework-contained powers stay nested.
 - [x] Add an edition-keyed figured-characteristic callback registry; callbacks receive exact point and primary-characteristic inputs plus the normalized edition.
 - [x] Record the user-provided `Suburban Base` sheet as a base-object example with narrative description, characteristics, and Abilities & Equipment fields.
-- [x] Build all selectable concrete object kinds through one object generator and the same typed HERO element/equation pipeline; keep object traits explicit.
+- [x] Build all selectable concrete object kinds through one object generator and the same typed HERO element/equation pipeline; derive model traits from the selected object kind.
 - [x] Record Base/Vehicle acquisition separately from construction without inferring purchaser ownership or cost formulas; review the distinction against the local 5th Edition reference.
 - [x] Confirm the concrete object catalog, explicit trait behavior, and rules-neutral acquisition boundary with the user.
 - [x] Make world objects visible in the HERO page and verify create, edit, delete, import, export, and cascading world deletion in an isolated running-UI smoke test; keep pending typed-field validation from blocking object saves.
@@ -24,22 +24,39 @@
 - [x] Present character model entries in identity, characteristics, combat, skills/perks/talents, powers/equipment, disadvantages, and totals sections; identity and campaign notes use existing Description entries.
 - [x] Present base model entries in narrative description, characteristics, abilities/equipment, and costs sections; construction/acquisition remain separate and no new cost formulas are inferred.
 - [x] Derive Agility, Interaction, and Intellect skill base rolls through category-class characteristic references in the shared character element collection; keep Background and Combat skills unbased.
+- [x] Derive immutable object model traits from the selected object kind and display them as read-only traits.
+- [x] Lock character and object generation to 5th Edition; reject unsupported edition identifiers.
+- [x] Provide 5th Edition point-level classification presets that set their modeled point values, with a separate custom classification option.
 
 ## Next
 
-No outstanding HERO todos remain. Display labels use the model's short names; ambiguous sheet headings remain labels only, and calculations remain limited to existing model behavior.
+Calculations remain limited to existing, researched 5th Edition rules; labels do not imply undocumented formulas.
 
-the object model traits should be coming from the object kind not changeable, these might be helpful to derive and display but not typically useful to a player.
-point level classification should have a selection of the types that feeds teh point level value. at this time there is no other edition information, best to lock the edition to 5th.
-we need to develop body shape, as it needs oop definition, that can derive the other information needed for game play based on it, such as hit location, called shots, specific location damage tracking, specific location disabled, extra limbs modifications to body shape, object general shape and potential components of the object, etc.
-in an object, the heirachy adds characterists to the collection of elements at zero point, these have value at 0 points becuase of the base, this need to be visible and able to place points into them.
-there are powers that name back to skills and characteristics, these need to be related properly as they are the same element, these need to be reflected in the OOP model and not removed from it.
-there are powers that belong to more than 1 power category, they are the same power and need to also be treated the same in the OOP model.
-there are skills that have deeper specification in the rule book that needs to be allowed in the object generation(including charcaters). these should ahve the listed items as OOP elements and the ability to add a custom specification.
-the special effects need to be able to add a custom specification as well.
-review the object and character generators and be use that full OOP is being used, not internal helpers or hard coded behavior to the generator should be allowed, these should fing the most appropriate highest level common object and it should be a method of that object used.
-once object generation matched the rulebook 100% then we need to review object interaction and generate the appropriate interaction methods in the OOP model in order to resolve the cases that are defined in the rules, such as combat, breaking things, and non combat actions.
-once the object interaction is 100% compliant to the game rules, need to add the genre specifications and develope out the assistance for those genres for players and game masters. allowing game master to adjust house rules and the players who select that game master use them. the first genre should be the fantasy hero, then western hero, then star hero, then pulp fiction hero, then open up to champions superhero worlds that should be able to lean on the other genres as well.
-once the object interaction and genre models are complete is 100% defined to match the rulebook a review of potential migration of this full OOP object model to C# should be identified, planned and implemented, migrating functionality appropriately.
-once c# is complete review the potential conversion of this OOP model into a object/character/world engine, and its capability to integrate with game engines such as unreal.
-while maintaining the ability to not break from the rules as a heros game management tool add the funcitonality to improve this engine to be used in game implementation of concepts aligned with other tools used in game design.
+### Object and Character Model
+
+- [ ] Object model traits should be read only, only for display of what traits exist on the selected object type.
+- [ ] Object 0 point items need to be visible in the sheet and have editable interfaces to update the value and change the cost and or the points(cost) to change the value. all items in the elements collection should be visible.
+- [ ] Replace the body-shape string specification with an OOP body-shape model. Use it to represent general shape, components, hit locations, called shots, location-specific damage and disabling, and extra-limb changes.
+- [ ] Ensure hierarchy-provided zero-point characteristics are visible on generated objects and can receive point investments.
+- [ ] Model powers that refer to characteristics or skills as relationships to those same element instances rather than detached copies.
+- [ ] Allow one power instance to belong to multiple power categories without duplicating the power.
+- [ ] Model rulebook-defined skill specifications as OOP elements and allow custom skill specifications in characters and other objects.
+- [ ] Allow custom specifications for special effects.
+- [ ] Review both generators for complete OOP ownership: move behavior into the highest appropriate shared object/domain method and remove generator-specific hard-coded domain behavior.
+- [ ] Validate object and character generation against the 5th Edition rulebook before beginning interaction implementation.
+
+### Object Interactions
+
+- [ ] After generation is rulebook-aligned, define and implement OOP interaction methods for rule-defined combat, damaging/breaking objects, and non-combat actions.
+- [ ] Validate object interactions against the 5th Edition rules before beginning genre-specific features.
+
+### Genre Support
+
+- [ ] Add genre models and player/Game Master assistance after object interactions are rulebook-aligned. Let Game Masters configure house rules and players use the selected Game Master's rules.
+- [ ] Implement genres in order: Fantasy Hero, Western Hero, Star Hero, Pulp Fiction Hero, then Champions superheroic worlds that can build on the other genres.
+
+### Engine Evolution
+
+- [ ] After object interactions and genre models are complete and rulebook-aligned, assess, plan, and implement migration of the OOP model and functionality to C#.
+- [ ] After the C# implementation, assess turning the model into an object/character/world engine and integrating it with game engines such as Unreal.
+- [ ] Keep HERO game-management behavior rule-compliant while exploring a separate game-design mode for scientifically grounded, realism-oriented rates and related concepts.

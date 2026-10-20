@@ -6,6 +6,7 @@ import {
   getHerosObjectTypes,
   getHerosCharacterElementTypes,
   HerosEquation,
+  HerosPointLevelClassification,
 } from '../../modules/objects/heroes.mjs';
 import { MixedNumber } from '../../modules/objects/mixed-numbers.mjs';
 
@@ -28,6 +29,7 @@ export function mount(container) {
   const objectTypes = getHerosObjectTypes();
   const objectTypeById = new Map(objectTypes.map((type) => [type.type, type]));
   const objectKindSelect = container.querySelector('#heroes-object-kind');
+  const pointLevelSelect = container.querySelector('#heroes-point-level');
   objectKindSelect.replaceChildren();
   for (const type of objectTypes) {
     const option = document.createElement('option');
@@ -36,6 +38,12 @@ export function mount(container) {
     objectKindSelect.append(option);
   }
   objectKindSelect.value = 'character';
+  for (const preset of HerosPointLevelClassification.Presets) {
+    const option = document.createElement('option');
+    option.value = preset.id;
+    option.textContent = `${preset.name} (${preset.points} points)`;
+    pointLevelSelect.append(option);
+  }
   const characterElementTypeById = new Map(
     characterElementTypes.map((definition) => [definition.type, definition])
   );
@@ -81,6 +89,9 @@ export function mount(container) {
   const typedElementList = element('#heroes-sheet-sections');
   const equationReadout = element('#heroes-equation-readout');
   const pointValueInput = element('#heroes-points-value');
+  const pointLevelCustomField = element('#heroes-point-level-custom-field');
+  const pointLevelCustomInput = element('#heroes-point-level-custom');
+  const pointLevelValueInput = element('#heroes-point-level-value');
   const equationElements = { advantages: [], disadvantages: [] };
   const typedElements = [];
   const nestedElements = [];
@@ -133,6 +144,25 @@ export function mount(container) {
     element('#heroes-typed-trait-fieldset').disabled = !enabled || !activeWorldId;
   }
 
+  function updatePointLevelFields() {
+    const selectedPreset = HerosPointLevelClassification.Presets.find(
+      (preset) => preset.id === pointLevelSelect.value
+    );
+    const isCustom = pointLevelSelect.value === 'custom';
+    pointLevelCustomField.hidden = !isCustom;
+    pointLevelCustomInput.required = isCustom;
+    pointLevelValueInput.required = isCustom;
+    pointLevelValueInput.disabled = !selectedPreset && !isCustom;
+    pointLevelValueInput.readOnly = Boolean(selectedPreset);
+    if (selectedPreset) {
+      pointLevelValueInput.value = String(selectedPreset.points);
+    } else if (!isCustom) {
+      pointLevelValueInput.value = '';
+    }
+  }
+
+  updatePointLevelFields();
+
   function readEquation() {
     return generateHerosCharacter({
       name: element('#heroes-object-name').value,
@@ -151,13 +181,6 @@ export function mount(container) {
     const objectType = element('#heroes-object-kind').value;
     if (objectType === 'player-character') return 'player';
     if (objectType === 'non-player-character') return 'nonPlayer';
-    if (objectType !== 'character') return undefined;
-    const traits = new Set(currentModelTraits());
-    if (traits.has('player-character') && traits.has('non-player-character')) {
-      throw new Error('Select either player character or non-player character, not both.');
-    }
-    if (traits.has('player-character')) return 'player';
-    if (traits.has('non-player-character')) return 'nonPlayer';
     return undefined;
   }
 
@@ -453,6 +476,9 @@ export function mount(container) {
     editingObjectId = null;
     objectForm.reset();
     objectKindSelect.value = 'character';
+    pointLevelSelect.value = '';
+    pointLevelCustomInput.value = '';
+    updatePointLevelFields();
     equationElements.advantages.length = 0;
     equationElements.disadvantages.length = 0;
     typedElements.length = 0;
@@ -478,16 +504,20 @@ export function mount(container) {
       definition.objectType ?? definition.kind ?? object.kind ?? 'object';
     element('#heroes-object-shape').value = (definition.bodyShapes || []).join(', ');
     const pointLevel = definition.pointLevelClassifications?.[0];
-    element('#heroes-point-level').value = pointLevel?.name || '';
-    element('#heroes-point-level-value').value = pointLevel?.points ?? '';
-    element('#heroes-edition').value = definition.edition || pointLevel?.edition || '5e';
+    const pointLevelPreset = HerosPointLevelClassification.Presets.find(
+      (preset) =>
+        preset.name === pointLevel?.name &&
+        pointLevel.points != null &&
+        MixedNumber.from(pointLevel.points).equals(preset.points)
+    );
+    pointLevelSelect.value = pointLevelPreset?.id ?? (pointLevel?.name ? 'custom' : '');
+    pointLevelCustomInput.value = pointLevelPreset ? '' : (pointLevel?.name ?? '');
+    pointLevelValueInput.value = pointLevel?.points ?? '';
+    updatePointLevelFields();
+    element('#heroes-edition').value = '5e';
     element('#heroes-object-description').value = definition.description || '';
     element('#heroes-acquisition-amount').value = definition.acquisition?.amount ?? '';
     element('#heroes-acquisition-notes').value = definition.acquisition?.notes ?? '';
-    const selectedTraits = new Set(definition.objectModelTypes || []);
-    objectForm.querySelectorAll('input[name="trait"]').forEach((input) => {
-      input.checked = selectedTraits.has(input.value);
-    });
     equationElements.advantages.splice(
       0,
       equationElements.advantages.length,
@@ -501,6 +531,7 @@ export function mount(container) {
     const equation = new HerosEquation({ points: definition.equation?.points || [] });
     pointValueInput.value = equation.pointsValue.toString();
     typedElements.splice(0, typedElements.length, ...(definition.typedElements || []));
+    objectKindSelect.dispatchEvent(new Event('change'));
     resetTypedForm();
     renderTypedTraitOptions();
     element('#heroes-editor-title').textContent = `Edit ${object.name}`;
@@ -742,6 +773,7 @@ export function mount(container) {
     for (const item of typedElements) {
       item.modelTypes = (item.modelTypes || []).filter((modelType) => available.has(modelType));
     }
+    renderObjectModelTraits();
     renderTypedTraitOptions();
     renderTypedElements();
     updateEquationReadout();
@@ -749,17 +781,16 @@ export function mount(container) {
   element('#heroes-object-kind').dispatchEvent(new Event('change'));
 
   function currentModelTraits() {
-    return Array.from(
-      objectForm.querySelectorAll('input[name="trait"]:checked'),
-      (input) => input.value
-    );
+    return objectTypeById.get(objectKindSelect.value)?.modelTypes ?? [];
   }
 
-  function selectedTypedModelTypes() {
-    return Array.from(
-      element('#heroes-typed-trait-options').querySelectorAll('input:checked'),
-      (input) => input.value
-    );
+  function renderObjectModelTraits() {
+    const available = new Set(currentModelTraits());
+    for (const checkbox of element('#heroes-model-traits').querySelectorAll(
+      'input[type="checkbox"]'
+    )) {
+      checkbox.checked = available.has(checkbox.value);
+    }
   }
 
   function renderTypedTraitOptions(selected = []) {
@@ -978,17 +1009,6 @@ export function mount(container) {
 
   element('#heroes-cancel-typed-edit').addEventListener('click', resetTypedForm);
 
-  element('#heroes-model-traits').addEventListener('change', () => {
-    const available = new Set(currentModelTraits());
-    const selected = selectedTypedModelTypes().filter((modelType) => available.has(modelType));
-    for (const item of typedElements) {
-      item.modelTypes = (item.modelTypes || []).filter((modelType) => available.has(modelType));
-    }
-    renderTypedTraitOptions(selected);
-    renderTypedElements();
-    updateEquationReadout();
-  });
-
   element('#heroes-remove-extras').addEventListener('click', () => {
     const extras = typedElements.filter((item) => !item.isBase);
     if (!extras.length) {
@@ -1037,6 +1057,8 @@ export function mount(container) {
   element('#heroes-cancel-equation-edit').addEventListener('click', resetEquationForm);
 
   pointValueInput.addEventListener('input', updateEquationReadout);
+  pointLevelSelect.addEventListener('change', updatePointLevelFields);
+  element('#heroes-edition').value = '5e';
   for (const selector of [
     '#heroes-object-name',
     '#heroes-object-description',
@@ -1045,8 +1067,6 @@ export function mount(container) {
   ]) {
     element(selector).addEventListener('input', renderTypedElements);
   }
-  element('#heroes-edition').addEventListener('change', updateEquationReadout);
-
   objectForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!activeWorldId) return;
@@ -1055,17 +1075,34 @@ export function mount(container) {
       const wasEditing = Boolean(editingObjectId);
       const equation = readEquation();
       const bodyShape = values.get('bodyShape').trim();
-      const pointLevel = values.get('pointLevel').trim();
-      const pointLevelValue = values.get('pointLevelValue').trim();
-      const pointLevels = pointLevel
-        ? [
-            {
-              name: pointLevel,
-              ...(pointLevelValue ? { points: MixedNumber.from(pointLevelValue).toString() } : {}),
-              edition: values.get('edition'),
-            },
-          ]
-        : [];
+      const pointLevelId = values.get('pointLevel');
+      const pointLevelPreset = HerosPointLevelClassification.Presets.find(
+        (preset) => preset.id === pointLevelId
+      );
+      const isCustomPointLevel = pointLevelId === 'custom';
+      const pointLevel = isCustomPointLevel ? values.get('customPointLevel').trim() : '';
+      const pointLevelValue = pointLevelValueInput.value.trim();
+      let pointLevels = [];
+      if (pointLevelPreset) {
+        const classification = HerosPointLevelClassification.fromPreset(pointLevelPreset.id);
+        pointLevels = [
+          {
+            name: String(classification),
+            points: classification.points.toString(),
+            edition: '5e',
+          },
+        ];
+      } else if (isCustomPointLevel) {
+        if (!pointLevel) throw new Error('Enter a custom point-level classification name.');
+        if (!pointLevelValue) throw new Error('Enter the custom point-level value.');
+        pointLevels = [
+          {
+            name: pointLevel,
+            ...(pointLevelValue ? { points: MixedNumber.from(pointLevelValue).toString() } : {}),
+            edition: '5e',
+          },
+        ];
+      }
       const definition = {
         name: values.get('name').trim(),
         kind: values.get('kind'),
@@ -1078,10 +1115,7 @@ export function mount(container) {
               .filter(Boolean)
           : [],
         pointLevelClassifications: pointLevels,
-        objectModelTypes: Array.from(
-          objectForm.querySelectorAll('input[name="trait"]:checked'),
-          (input) => input.value
-        ),
+        objectModelTypes: currentModelTraits(),
         description: values.get('description').trim(),
         acquisition:
           values.get('acquisitionAmount').trim() || values.get('acquisitionNotes').trim()
@@ -1090,7 +1124,7 @@ export function mount(container) {
                 notes: values.get('acquisitionNotes').trim(),
               }
             : null,
-        edition: values.get('edition'),
+        edition: '5e',
         equation: {
           advantages: equationElements.advantages.map(({ name, value }) => ({
             name: String(name),
@@ -1104,7 +1138,8 @@ export function mount(container) {
         },
         typedElements: typedElements.map((item) => ({ ...item })),
       };
-      generateHerosObject(definition);
+      const generatedObject = generateHerosObject(definition);
+      definition.objectModelTypes = generatedObject.objectModelTypes.map(String);
       const route = editingObjectId
         ? `/heroes/objects/${encodeURIComponent(editingObjectId)}`
         : `/heroes/worlds/${encodeURIComponent(activeWorldId)}/objects`;

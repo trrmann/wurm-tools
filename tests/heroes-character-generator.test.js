@@ -24,7 +24,7 @@ describe('HERO character generator', () => {
     const character = generateHerosCharacter({
       name: 'Aster',
       characterType: 'player',
-      edition: '6e',
+      edition: '5e',
       equation: {
         advantages: [{ name: 'Manual advantage', value: 1 }],
         points: [1],
@@ -40,7 +40,7 @@ describe('HERO character generator', () => {
 
     expect(character).toBeInstanceOf(HerosCharacter);
     expect(character).toBeInstanceOf(HerosPlayerCharacter);
-    expect(character.edition.id).toBe('6e');
+    expect(character.edition.id).toBe('5e');
     expect(character.primaryCharacteristics.first).toBeInstanceOf(HerosPrimaryCharacteristic);
     expect(character.skills.first).toBeInstanceOf(HerosSkill);
     expect(character.powerFrameworks.first).toBeInstanceOf(HerosMultipower);
@@ -192,19 +192,7 @@ describe('HERO character generator', () => {
     expect(figures.get('Stun').toString()).toBe('23');
     expect(figures.get('Stun').UnroundedValue.toString()).toBe('22 1/2');
 
-    const sixthEdition = generateHerosCharacter({
-      edition: '6e',
-      typedElements: [
-        { type: 'primaryCharacteristic', name: 'Strength', value: '10' },
-        {
-          type: 'figuredCharacteristic',
-          name: 'Physical Defense',
-          formulaId: 'physical-defense',
-          value: '0',
-        },
-      ],
-    });
-    expect(sixthEdition.characteristics.first.calculationPending).toBe(true);
+    expect(() => generateHerosCharacter({ edition: '6e' })).toThrow(/Only HERO System 5th Edition/);
 
     const elementType = (name) =>
       getHerosCharacterElementTypes().find((item) => item.type.endsWith(`#${name}`)).type;
@@ -331,47 +319,35 @@ describe('HERO character generator', () => {
     }
   });
 
-  it('constructs every selectable object kind with shared HERO elements and explicit traits', () => {
-    for (const { type } of getHerosObjectTypes()) {
+  it('constructs every selectable object kind with shared HERO elements and kind-derived traits', () => {
+    for (const { type, modelTypes } of getHerosObjectTypes()) {
       const object = generateHerosObject({
         name: `Test ${type}`,
         objectType: type,
         edition: '5e',
-        objectModelTypes: ['mobile'],
+        objectModelTypes: ['sentient'],
         typedElements: [{ type: 'skill', name: 'Tracking', value: '3' }],
         acquisition: { amount: '12', notes: 'Entered by user' },
       });
 
       expect(object.objectType).toBe(type);
       expect(object.kind).toBe(type);
-      expect(object.objectModelTypes.map(String)).toEqual(['mobile']);
+      expect(object.objectModelTypes.map(String)).toEqual(modelTypes);
       expect(object.generatedElements.get('skill')).toHaveLength(1);
       expect(object.equation.advantagesValue.toString()).toBe('3');
       expect(object.acquisition).toEqual({ amount: '12', notes: 'Entered by user' });
     }
   });
 
-  it('rejects unknown object kinds and contradictory character traits', () => {
+  it('rejects unknown object kinds and ignores serialized model traits', () => {
     expect(() => generateHerosObject({ objectType: 'future-kind' })).toThrow(
       'Unsupported HERO object type'
     );
-    expect(() =>
-      generateHerosObject({
-        objectType: 'character',
-        objectModelTypes: ['player-character', 'non-player-character'],
-      })
-    ).toThrow('cannot be both');
-    expect(() =>
+    expect(
       generateHerosObject({
         objectType: 'vehicle',
-        objectModelTypes: ['player-character'],
-      })
-    ).toThrow('require a character object kind');
-    expect(() =>
-      generateHerosObject({
-        objectType: 'player-character',
-        objectModelTypes: ['non-player-character'],
-      })
-    ).toThrow('conflicts with its character traits');
+        objectModelTypes: ['player-character', 'sentient'],
+      }).objectModelTypes.map(String)
+    ).toEqual(['physical', 'non-sentient', 'mobile']);
   });
 });

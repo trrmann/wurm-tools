@@ -17,32 +17,17 @@ import {
 } from '../things.mjs';
 
 export const HEROS_EDITIONS = Object.freeze({
-  '4e': Object.freeze({ id: '4e', label: '4th Edition', disadvantageLabel: 'Disadvantages' }),
   '5e': Object.freeze({ id: '5e', label: '5th Edition', disadvantageLabel: 'Disadvantages' }),
-  '6e': Object.freeze({ id: '6e', label: '6th Edition', disadvantageLabel: 'Complications' }),
 });
 
 export function normalizeHerosEdition(value = '5e') {
   const key = String(value)
     .toLowerCase()
     .replace(/[\s._-]/g, '');
-  const aliases = {
-    4: '4e',
-    '4e': '4e',
-    '4th': '4e',
-    '4thedition': '4e',
-    5: '5e',
-    '5e': '5e',
-    '5th': '5e',
-    '5thedition': '5e',
-    6: '6e',
-    '6e': '6e',
-    '6th': '6e',
-    '6thedition': '6e',
-  };
-  const edition = aliases[key];
-  if (!edition) throw new RangeError(`Unsupported HERO System edition: ${value}`);
-  return HEROS_EDITIONS[edition];
+  if (!['5', '5e', '5th', '5thedition'].includes(key)) {
+    throw new RangeError(`Only HERO System 5th Edition is currently supported: ${value}`);
+  }
+  return HEROS_EDITIONS['5e'];
 }
 
 function asHerosValue(value = 0) {
@@ -437,11 +422,43 @@ export class HerosBodyShapes extends SpecificationNames {
 }
 
 export class HerosPointLevelClassification extends ClassificationName {
+  static Presets = Object.freeze([
+    Object.freeze({ id: 'normal-incompetent', name: 'Incompetent Normal', points: -25 }),
+    Object.freeze({ id: 'normal-standard', name: 'Standard Normal', points: 0 }),
+    Object.freeze({ id: 'normal-skilled', name: 'Skilled Normal', points: 25 }),
+    Object.freeze({ id: 'normal-competent', name: 'Competent Normal', points: 50 }),
+    Object.freeze({ id: 'heroic-standard', name: 'Standard Heroic', points: 75 }),
+    Object.freeze({ id: 'heroic-powerful', name: 'Powerful Heroic', points: 100 }),
+    Object.freeze({ id: 'heroic-very-powerful', name: 'Very Powerful Heroic', points: 125 }),
+    Object.freeze({ id: 'superheroic-standard', name: 'Standard Superheroic', points: 200 }),
+    Object.freeze({
+      id: 'superheroic-high-powered',
+      name: 'High-Powered Superheroic',
+      points: 300,
+    }),
+    Object.freeze({
+      id: 'superheroic-very-high-powered',
+      name: 'Very High-Powered Superheroic',
+      points: 400,
+    }),
+    Object.freeze({
+      id: 'superheroic-cosmically-powerful',
+      name: 'Cosmically Powerful Superheroic',
+      points: 500,
+    }),
+  ]);
+
   constructor(options = '') {
     const config = typeof options === 'string' ? { name: options } : options;
     super(config.name ?? config.label ?? '');
     this.points = config.points == null ? undefined : MixedNumber.from(config.points);
     this.edition = config.edition == null ? undefined : normalizeHerosEdition(config.edition);
+  }
+
+  static fromPreset(id) {
+    const preset = this.Presets.find((item) => item.id === id);
+    if (!preset) throw new RangeError(`Unsupported HERO point-level classification: ${id}`);
+    return new this({ name: preset.name, points: preset.points, edition: '5e' });
   }
 }
 /** @extends {ClassificationNames<HerosPointLevelClassification>} */
@@ -488,6 +505,7 @@ export const HEROS_TYPED_ELEMENT_GROUPS = Object.freeze({
 /** A non-Wurm world object with its own HERO point equation and child objects. */
 export class HerosGameObject extends ThingName {
   static ObjectType = 'object';
+  static ModelTypes = Object.freeze([]);
 
   constructor(options = {}) {
     const config = typeof options === 'string' ? { name: options } : options;
@@ -497,9 +515,6 @@ export class HerosGameObject extends ThingName {
     this.bodyShapes = new HerosBodyShapes(config.bodyShapes ?? config.bodyShape ?? []);
     this.pointLevelClassifications = new HerosPointLevelClassifications(
       config.pointLevelClassifications ?? config.pointLevelClassification ?? []
-    );
-    this.objectModelTypes = new HerosObjectModelTypes(
-      config.objectModelTypes ?? config.objectModelType ?? []
     );
     this.typedElements = (config.typedElements ?? []).map((element) => ({
       ...element,
@@ -520,6 +535,10 @@ export class HerosGameObject extends ThingName {
 
   get equationElements() {
     return new HerosEquationElements([...this.equation.advantages, ...this.equation.disadvantages]);
+  }
+
+  get objectModelTypes() {
+    return Object.freeze(new HerosObjectModelTypes(this.constructor.ModelTypes));
   }
 
   elementsForModelType(modelType, { baseOnly = false } = {}) {
@@ -601,31 +620,40 @@ export class HerosNonMobileObject extends HerosGameObject {}
 
 export class HerosBase extends HerosGameObject {
   static ObjectType = 'base';
+  static ModelTypes = Object.freeze(['physical', 'non-sentient', 'non-mobile']);
 }
 export class HerosVehicle extends HerosGameObject {
   static ObjectType = 'vehicle';
+  static ModelTypes = Object.freeze(['physical', 'non-sentient', 'mobile']);
 }
 export class HerosEquipment extends HerosGameObject {
   static ObjectType = 'equipment';
+  static ModelTypes = Object.freeze(['physical', 'non-sentient', 'non-mobile']);
 }
 export class HerosAnimal extends HerosGameObject {
   static ObjectType = 'animal';
+  static ModelTypes = Object.freeze(['physical', 'non-sentient', 'mobile']);
 }
 export class HerosPlant extends HerosGameObject {
   static ObjectType = 'plant';
+  static ModelTypes = Object.freeze(['physical', 'non-sentient', 'non-mobile']);
 }
 export class HerosAutomaton extends HerosGameObject {
   static ObjectType = 'automaton';
+  static ModelTypes = Object.freeze(['physical', 'non-sentient', 'mobile']);
 }
 export class HerosComputer extends HerosGameObject {
   static ObjectType = 'computer';
+  static ModelTypes = Object.freeze(['physical', 'non-sentient', 'non-mobile']);
 }
 export class HerosAI extends HerosGameObject {
   static ObjectType = 'ai';
+  static ModelTypes = Object.freeze(['non-physical', 'sentient']);
 }
 
 export class HerosCharacter extends HerosGameObject {
   static ObjectType = 'character';
+  static ModelTypes = Object.freeze(['physical', 'sentient', 'mobile']);
 
   constructor(options = {}) {
     const config = typeof options === 'string' ? { name: options } : options;
@@ -702,6 +730,7 @@ export class HerosCharacter extends HerosGameObject {
 
 export class HerosPlayerCharacter extends HerosCharacter {
   static ObjectType = 'player-character';
+  static ModelTypes = Object.freeze([...HerosCharacter.ModelTypes, 'player-character']);
 
   constructor(options = {}) {
     super(options);
@@ -710,6 +739,7 @@ export class HerosPlayerCharacter extends HerosCharacter {
 
 export class HerosNonPlayerCharacter extends HerosCharacter {
   static ObjectType = 'non-player-character';
+  static ModelTypes = Object.freeze([...HerosCharacter.ModelTypes, 'non-player-character']);
 
   constructor(options = {}) {
     super(options);
