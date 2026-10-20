@@ -213,6 +213,58 @@
   margin: 0;
 }
 
+.heroes-sheet-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.heroes-sheet-section {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.heroes-sheet-section h4 {
+  margin: 0 0 0.5rem;
+  color: var(--text-main);
+}
+
+.heroes-sheet-summary {
+  margin: 0.35rem 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.heroes-sheet-element-list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.heroes-sheet-element-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border-color);
+  padding-top: 0.45rem;
+  font-size: 0.86rem;
+}
+
+.heroes-sheet-element-list li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.heroes-sheet-section > .heroes-empty-list {
+  margin: 0.4rem 0;
+}
+
 .heroes-trait-base-toggle,
 .heroes-trait-options label {
   display: inline-flex;
@@ -327,6 +379,10 @@
 
 @media (max-width: 900px) {
   .heroes-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .heroes-sheet-sections {
     grid-template-columns: 1fr;
   }
 

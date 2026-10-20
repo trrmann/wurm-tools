@@ -1,14 +1,14 @@
-import { Collection } from '../../../../../collection.mjs'
+import { Collection } from '../../../../../collection.mjs';
 import { CharacterElements } from '../../../character-elements.mjs';
 import { Powers } from '../../powers.mjs';
 import { PowerModifiers } from '../power-modifiers.mjs';
 export class PowerFramework extends Powers {
   #modifiers;
   static Filter(characterElements) {
-    if(characterElements instanceof CharacterElements === false) {
+    if (characterElements instanceof CharacterElements === false) {
       throw new Error('Filter expects a CharacterElements object');
     }
-    return characterElements.filter(element => element instanceof PowerFramework);
+    return characterElements.filter((element) => element instanceof PowerFramework);
   }
   constructor({
     Points = 0,
@@ -44,28 +44,26 @@ export class PowerFramework extends Powers {
     return this.#modifiers;
   }
   get ModifierNames() {
-    return this.#modifiers.Names();
+    return this.#modifiers.Names;
   }
   get PowerAdvantages() {
-    return this.#modifiers.PowerAdvantages();
+    return this.#modifiers.PowerAdvantages;
   }
   get PowerAdvantageNames() {
     return this.#modifiers.PowerAdvantageNames();
   }
   get PowerLimitations() {
-    return this.#modifiers.PowerLimitations();
+    return this.#modifiers.PowerLimitations;
   }
   get PowerLimitationNames() {
     return this.#modifiers.PowerLimitationNames();
   }
   AddModifier(modifier) {
-    this.#modifiers.Add(modifier);
+    this.#modifiers.add(modifier);
   }
   RemoveModifier(modifierName) {
     this.#modifiers.Remove(modifierName);
   }
 }
 /** @extends {Collection<PowerFramework>} */
-export class PowerFrameworks extends Collection {
-
-}
+export class PowerFrameworks extends Collection {}

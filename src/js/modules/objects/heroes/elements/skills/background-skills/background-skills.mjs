@@ -1,12 +1,12 @@
-import { Collection }from '../../../../collection.mjs'
+import { Collection } from '../../../../collection.mjs';
 import { Skill } from '../skills.mjs';
 import { CharacterElements } from '../../../character-element.mjs';
 export class BackgroundSkill extends Skill {
   static Filter(characterElements) {
-    if(characterElements instanceof CharacterElements === false) {
+    if (characterElements instanceof CharacterElements === false) {
       throw new Error('Filter expects a CharacterElements object');
     }
-    return characterElements.filter(element => element instanceof BackgroundSkill);
+    return characterElements.filter((element) => element instanceof BackgroundSkill);
   }
 
   constructor({
@@ -40,6 +40,4 @@ export class BackgroundSkill extends Skill {
   }
 }
 /** @extends {Collection<BackgroundSkill>} */
-export class BackgroundSkills extends Collection {
-
-}
+export class BackgroundSkills extends Collection {}

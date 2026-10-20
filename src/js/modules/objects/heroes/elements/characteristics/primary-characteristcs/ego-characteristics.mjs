@@ -1,12 +1,12 @@
 import { PrimaryCharacteristic } from '../../primary-characteristics.mjs';
-import { Collection } from '../../../../collection.mjs'
-import { CharacterElements } from '../../../character-element.mjs'; 
+import { Collection } from '../../../../collection.mjs';
+import { CharacterElements } from '../../../character-element.mjs';
 export class Ego extends PrimaryCharacteristic {
   static Filter(characterElements) {
-    if(characterElements instanceof CharacterElements === false) {
+    if (characterElements instanceof CharacterElements === false) {
       throw new Error('Filter expects a CharacterElements object');
     }
-    return characterElements.filter(element => element instanceof Ego);
+    return characterElements.filter((element) => element instanceof Ego);
   }
   constructor({ Points = 0 } = {}) {
     super({

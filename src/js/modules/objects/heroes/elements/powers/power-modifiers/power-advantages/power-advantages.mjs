@@ -1,12 +1,12 @@
-import { Collection } from '../../../../../collection.mjs'
+import { Collection } from '../../../../../collection.mjs';
 import { PowerModifier } from '../modifiers.mjs';
 import { PowerModifiers } from '../power-modifiers.mjs';
 export class Advantage extends PowerModifier {
   static Filter(characterElements) {
-    if(characterElements instanceof PowerModifiers === false) {
+    if (characterElements instanceof PowerModifiers === false) {
       throw new Error('Filter expects a PowerModifiers object');
     }
-    return characterElements.filter(element => element instanceof Advantage);
+    return characterElements.filter((element) => element instanceof Advantage);
   }
   constructor({
     Points = 0,
@@ -36,9 +36,8 @@ export class Advantage extends PowerModifier {
       OptionFlagCollection: OptionFlagCollection,
       ValueFunction: ValueFunction,
     });
+    this.kind = 'advantage';
   }
 }
 /** @extends {Collection<Advantage>} */
-export class Advantages extends Collection {
-
-}
+export class Advantages extends Collection {}

@@ -3,10 +3,10 @@ import { Collection } from '../../../../collection.mjs';
 import { CharacterElements } from '../../../character-element.mjs';
 export class Strength extends PrimaryCharacteristic {
   static Filter(characterElements) {
-    if(characterElements instanceof CharacterElements === false) {
+    if (characterElements instanceof CharacterElements === false) {
       throw new Error('Filter expects a CharacterElements object');
     }
-    return characterElements.filter(element => element instanceof Strength);
+    return characterElements.filter((element) => element instanceof Strength);
   }
   // lift is in kg
   static strength = {

@@ -2,43 +2,52 @@ import { FiguredCharacteristic } from '../../figured-characteristics.mjs';
 import { PhysicalDefense } from './defense-physical.mjs';
 import { EnergyDefense } from './defense-energy.mjs';
 import { CharacterElements } from '../../character-elements.mjs';
+import { MixedNumber } from '../../../../mixed-numbers.mjs';
 export class Defense extends FiguredCharacteristic {
   static Filter(characterElements) {
-    if(characterElements instanceof CharacterElements === false) {
+    if (characterElements instanceof CharacterElements === false) {
       throw new Error('Filter expects a CharacterElements object');
     }
-    return characterElements.filter(element => element instanceof Defense);
+    return characterElements.filter((element) => element instanceof Defense);
   }
-  constructor({ Points = 0 } = {}) {
+  constructor({ Points = 0, characterElements = null, Composition = null } = {}) {
     super({
       Points: Points,
       AbsoluteMinValue: '0',
-      AbsoluteMaxValue: '-1',
       MinValue: '0',
       UnderMinValueRate: '0',
-      MaxValue: '50',
+      MaxValue: undefined,
       OverMaxValueRate: '2',
       ValueRate: '1',
       BaseValue: '0',
-      BaseValueFunction: ({ Composition = null, characterElements = null}) => {
-        if ((typeof Composition === 'number') || characterElements instanceof CharacterElements) {
-          const PhysicalDefenseCharacteristic = PhysicalDefense.Filter(characterElements)[0] ?? null;
+      BaseValueFunction: ({ Composition = null, characterElements = null }) => {
+        if (typeof Composition === 'number' || characterElements instanceof CharacterElements) {
+          const PhysicalDefenseCharacteristic =
+            PhysicalDefense.Filter(characterElements)[0] ?? null;
           const EnergyDefenseCharacteristic = EnergyDefense.Filter(characterElements)[0] ?? null;
-          if(PhysicalDefenseCharacteristic instanceof PhysicalDefense && EnergyDefenseCharacteristic instanceof EnergyDefense) {
-            return (( PhysicalDefenseCharacteristic.Value() + EnergyDefenseCharacteristic.Value() ) / 2);
+          if (
+            PhysicalDefenseCharacteristic instanceof PhysicalDefense &&
+            EnergyDefenseCharacteristic instanceof EnergyDefense
+          ) {
+            return MixedNumber.from(PhysicalDefenseCharacteristic.Value())
+              .add(EnergyDefenseCharacteristic.Value())
+              .divide(2);
           } else if (PhysicalDefenseCharacteristic instanceof PhysicalDefense) {
             return PhysicalDefenseCharacteristic.Value();
           } else if (EnergyDefenseCharacteristic instanceof EnergyDefense) {
             return EnergyDefenseCharacteristic.Value();
-          }
-          else {
+          } else {
             return Composition;
           }
         }
-        throw new Error('Defense Base Value requires either a valid Physical Defense object, Energy Defense objects, or Composition numeric value');
+        throw new Error(
+          'Defense Base Value requires either a valid Physical Defense object, Energy Defense objects, or Composition numeric value'
+        );
       },
       Name: 'Defense',
       ShortName: 'DEF',
+      characterElements,
+      Composition,
     });
   }
 }

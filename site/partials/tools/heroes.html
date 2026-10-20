@@ -98,10 +98,6 @@
             Object kind
             <select id="heroes-object-kind" name="kind" class="custom-select">
               <option value="character">Character</option>
-              <option value="base">Base</option>
-              <option value="vehicle">Vehicle</option>
-              <option value="equipment">Equipment</option>
-              <option value="object">Other object</option>
             </select>
           </label>
           <label class="heroes-field" for="heroes-object-shape">
@@ -133,7 +129,7 @@
 
         <fieldset id="heroes-model-traits" class="heroes-traits">
           <legend>Object model traits</legend>
-          <label><input type="checkbox" name="trait" value="physical" checked /> Physical</label>
+          <label><input type="checkbox" name="trait" value="physical" /> Physical</label>
           <label><input type="checkbox" name="trait" value="non-physical" /> Non-physical</label>
           <label><input type="checkbox" name="trait" value="sentient" /> Sentient</label>
           <label><input type="checkbox" name="trait" value="non-sentient" /> Non-sentient</label>
@@ -190,10 +186,17 @@
         </fieldset>
 
         <fieldset class="heroes-typed-builder">
-          <legend>Typed HERO elements</legend>
+          <legend>Character or base sheet</legend>
           <p class="heroes-field-hint">
-            Add typed HERO elements and assign the model traits they belong to. Mark base-spec
-            entries; cleanup removes only unmarked extras.
+            Sections below are views over the same typed model entries. Use the model's short names
+            as labels; values and totals come from existing model behavior, with no inferred
+            calculations.
+          </p>
+          <div id="heroes-sheet-sections" class="heroes-sheet-sections" aria-live="polite"></div>
+          <h4 id="heroes-model-entry-title">Add or edit model entries</h4>
+          <p class="heroes-field-hint">
+            Use Description entries for identity or campaign notes not represented by a typed
+            characteristic. Mark base-spec entries; cleanup removes only unmarked extras.
           </p>
           <div class="heroes-form-grid heroes-typed-controls">
             <label class="heroes-field" for="heroes-typed-kind">
@@ -227,8 +230,12 @@
               Name
               <input id="heroes-typed-name" maxlength="120" />
             </label>
+            <label class="heroes-field" for="heroes-typed-short-name">
+              Short name
+              <input id="heroes-typed-short-name" maxlength="40" />
+            </label>
             <label class="heroes-field" for="heroes-typed-value">
-              Point value
+              <span id="heroes-typed-value-label">Point value</span>
               <input id="heroes-typed-value" inputmode="decimal" placeholder="e.g. 3/2" />
             </label>
             <label class="heroes-field" for="heroes-typed-detail">
@@ -292,10 +299,26 @@
             <legend>Applies to model traits</legend>
             <div id="heroes-typed-trait-options" class="heroes-trait-options"></div>
           </fieldset>
-          <ul id="heroes-typed-elements" class="heroes-equation-elements"></ul>
+
           <button id="heroes-remove-extras" class="btn" type="button">
             Remove non-base elements
           </button>
+        </fieldset>
+
+        <fieldset class="heroes-acquisition-fields">
+          <legend>Acquisition record (manual)</legend>
+          <p class="heroes-field-hint">
+            Record an amount and its basis separately from construction. This does not calculate
+            costs or assign purchasers.
+          </p>
+          <label class="heroes-field" for="heroes-acquisition-amount">
+            Acquisition amount
+            <input id="heroes-acquisition-amount" name="acquisitionAmount" maxlength="120" />
+          </label>
+          <label class="heroes-field" for="heroes-acquisition-notes">
+            Basis or purchaser notes
+            <textarea id="heroes-acquisition-notes" name="acquisitionNotes" rows="2"></textarea>
+          </label>
         </fieldset>
 
         <label class="heroes-field" for="heroes-object-description">

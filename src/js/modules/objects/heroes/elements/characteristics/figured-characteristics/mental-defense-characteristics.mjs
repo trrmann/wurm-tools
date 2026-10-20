@@ -9,7 +9,7 @@ export class MentalDefense extends FiguredCharacteristic {
     }
     return characterElements.filter((element) => element instanceof MentalDefense);
   }
-  constructor({ Points = 0 } = {}) {
+  constructor({ Points = 0, characterElements = null } = {}) {
     super({
       Points: Points,
       AbsoluteMinValue: '0',
@@ -31,6 +31,7 @@ export class MentalDefense extends FiguredCharacteristic {
       },
       Name: 'Mental Defense',
       ShortName: 'MD',
+      characterElements,
     });
   }
 }

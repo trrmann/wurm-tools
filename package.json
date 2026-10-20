@@ -1,7 +1,7 @@
 {
   "name": "wurm-tools",
   "private": true,
-  "version": "1.2.1",
+  "version": "1.3.0",
   "type": "module",
   "description": "A modular toolkit and dashboard for Wurm Online and Wurm Unlimited players",
   "scripts": {

@@ -4,6 +4,7 @@ import { Strength } from '../primary-characteristics/strength-characteristics.mj
 import { Constitution } from '../primary-characteristics/constitution-characteristics.mjs';
 import { Collection } from '../../../../collection.mjs';
 import { CharacterElements } from '../../../character-element.mjs';
+import { MixedNumber } from '../../../../mixed-numbers.mjs';
 export class Stun extends FiguredCharacteristic {
   static Filter(characterElements) {
     if (characterElements instanceof CharacterElements === false) {
@@ -12,11 +13,10 @@ export class Stun extends FiguredCharacteristic {
     return characterElements.filter((element) => element instanceof Stun);
   }
 
-  constructor({ Points = 0 } = {}) {
+  constructor({ Points = 0, characterElements = null } = {}) {
     super({
       Points: Points,
       AbsoluteMinValue: '0',
-      AbsoluteMaxValue: '-1',
       MinValue: '0',
       UnderMinValueRate: '0',
       MaxValue: '50',
@@ -33,29 +33,44 @@ export class Stun extends FiguredCharacteristic {
             BodyCharacteristic instanceof Body &&
             ConstitutionCharacteristic instanceof Constitution
           ) {
-            return (
-              BodyCharacteristic.Value() +
-              StrengthCharacteristic.Value() / 2 +
-              ConstitutionCharacteristic.Value() / 2
+            return MixedNumber.from(BodyCharacteristic.Value())
+              .add(StrengthCharacteristic.Value())
+              .add(ConstitutionCharacteristic.Value())
+              .divide(2);
+          } else if (
+            StrengthCharacteristic instanceof Strength &&
+            BodyCharacteristic instanceof Body
+          ) {
+            return MixedNumber.from(BodyCharacteristic.Value()).add(
+              MixedNumber.from(StrengthCharacteristic.Value()).divide(2)
             );
-          } else if (StrengthCharacteristic instanceof Strength && BodyCharacteristic instanceof Body) {
-            return BodyCharacteristic.Value() + StrengthCharacteristic.Value() / 2;
-          } else if (StrengthCharacteristic instanceof Strength && ConstitutionCharacteristic instanceof Constitution) {
-            return StrengthCharacteristic.Value() / 2 + ConstitutionCharacteristic.Value() / 2;
-          } else if (BodyCharacteristic instanceof Body && ConstitutionCharacteristic instanceof Constitution) {
-            return BodyCharacteristic.Value() + ConstitutionCharacteristic.Value() / 2;
+          } else if (
+            StrengthCharacteristic instanceof Strength &&
+            ConstitutionCharacteristic instanceof Constitution
+          ) {
+            return MixedNumber.from(StrengthCharacteristic.Value())
+              .add(ConstitutionCharacteristic.Value())
+              .divide(2);
+          } else if (
+            BodyCharacteristic instanceof Body &&
+            ConstitutionCharacteristic instanceof Constitution
+          ) {
+            return MixedNumber.from(BodyCharacteristic.Value()).add(
+              MixedNumber.from(ConstitutionCharacteristic.Value()).divide(2)
+            );
           } else if (StrengthCharacteristic instanceof Strength) {
-            return StrengthCharacteristic.Value() / 2;
+            return MixedNumber.from(StrengthCharacteristic.Value()).divide(2);
           } else if (BodyCharacteristic instanceof Body) {
             return BodyCharacteristic.Value();
           } else if (ConstitutionCharacteristic instanceof Constitution) {
-            return ConstitutionCharacteristic.Value() / 2;
+            return MixedNumber.from(ConstitutionCharacteristic.Value()).divide(2);
           }
         }
         throw new Error('Stun Base Value requires valid Strength, Body, and Constitution objects');
       },
       Name: 'Stun',
       ShortName: 'STUN',
+      characterElements,
     });
   }
 }

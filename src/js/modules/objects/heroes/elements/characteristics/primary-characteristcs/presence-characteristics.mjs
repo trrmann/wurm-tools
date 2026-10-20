@@ -1,12 +1,12 @@
 import { PrimaryCharacteristic } from '../../primary-characteristics.mjs';
-import { Collection } from '../../../../collection.mjs'
+import { Collection } from '../../../../collection.mjs';
 import { CharacterElements } from '../../../character-element.mjs';
 export class Presence extends PrimaryCharacteristic {
   static Filter(characterElements) {
-    if(characterElements instanceof CharacterElements === false) {
+    if (characterElements instanceof CharacterElements === false) {
       throw new Error('Filter expects a CharacterElements object');
     }
-    return characterElements.filter(element => element instanceof Presence);
+    return characterElements.filter((element) => element instanceof Presence);
   }
   #attackDice(score) {
     if (score < 3) return '0';

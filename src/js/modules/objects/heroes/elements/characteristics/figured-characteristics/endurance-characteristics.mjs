@@ -8,11 +8,10 @@ export class Endurance extends FiguredCharacteristic {
     }
     return characterElements.filter((element) => element instanceof Endurance);
   }
-  constructor({ Points = 0 } = {}) {
+  constructor({ Points = 0, characterElements = null } = {}) {
     super({
       Points: Points,
       AbsoluteMinValue: '0',
-      AbsoluteMaxValue: '-1',
       MinValue: '0',
       UnderMinValueRate: '0',
       MaxValue: '50',
@@ -30,6 +29,7 @@ export class Endurance extends FiguredCharacteristic {
       },
       Name: 'Endurance',
       ShortName: 'END',
+      characterElements,
     });
   }
 }

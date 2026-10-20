@@ -3,6 +3,7 @@ import { Ego } from '../primary-characteristics/ego-characteristics.mjs';
 import { DefensiveEgoCombatValue } from './defensive-ego-combat-values.mjs';
 import { OffensiveEgoCombatValue } from './offensive-ego-combat-values.mjs';
 import { CharacterElements } from '../../character-elements.mjs';
+import { MixedNumber } from '../../../../mixed-numbers.mjs';
 export class EgoCombatValue extends FiguredCharacteristic {
   static Filter(characterElements) {
     if (characterElements instanceof CharacterElements === false) {
@@ -10,16 +11,12 @@ export class EgoCombatValue extends FiguredCharacteristic {
     }
     return characterElements.filter((element) => element instanceof EgoCombatValue);
   }
-  constructor({ Points = 0 } = {}) {
+  constructor({ Points = 0, characterElements = null } = {}) {
     super({
       Points: Points,
       AbsoluteMinValue: '0',
-      AbsoluteMaxValue: '-1',
       MinValue: '0',
       UnderMinValueRate: '0',
-      MaxValue: '-1',
-      OverMaxValueRate: '2',
-      ValueRate: '10',
       BaseValue: '0',
       BaseValueFunction: ({ characterElements = null }) => {
         if (characterElements instanceof CharacterElements) {
@@ -37,23 +34,22 @@ export class EgoCombatValue extends FiguredCharacteristic {
               DefensiveEgoCombatValueCharacteristic instanceof DefensiveEgoCombatValue &&
               OffensiveEgoCombatValueCharacteristic instanceof OffensiveEgoCombatValue
             ) {
-              return (
-                (DefensiveEgoCombatValueCharacteristic.Value() +
-                  OffensiveEgoCombatValueCharacteristic.Value()) /
-                2
-              );
+              return MixedNumber.from(DefensiveEgoCombatValueCharacteristic.Value())
+                .add(OffensiveEgoCombatValueCharacteristic.Value())
+                .divide(2);
             } else if (DefensiveEgoCombatValueCharacteristic instanceof DefensiveEgoCombatValue) {
               return DefensiveEgoCombatValueCharacteristic.Value();
             } else if (OffensiveEgoCombatValueCharacteristic instanceof OffensiveEgoCombatValue) {
               return OffensiveEgoCombatValueCharacteristic.Value();
             }
-            return EgoCharacteristic.Value() / 3;
+            return MixedNumber.from(EgoCharacteristic.Value()).divide(3);
           }
         }
         throw new Error('Ego Combat Value Base Value requires a valid Ego object');
       },
       Name: 'Ego Combat Value',
       ShortName: 'ECV',
+      characterElements,
     });
   }
 }

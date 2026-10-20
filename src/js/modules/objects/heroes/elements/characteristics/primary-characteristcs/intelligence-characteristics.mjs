@@ -1,13 +1,13 @@
 import { PrimaryCharacteristic } from '../../primary-characteristics.mjs';
-import { Collection } from '../../../../collection.mjs'
+import { Collection } from '../../../../collection.mjs';
 import { CharacterElements } from '../../../character-element.mjs';
 // TODO - add perception roll
 export class Intelligence extends PrimaryCharacteristic {
   static Filter(characterElements) {
-    if(characterElements instanceof CharacterElements === false) {
+    if (characterElements instanceof CharacterElements === false) {
       throw new Error('Filter expects a CharacterElements object');
     }
-    return characterElements.filter(element => element instanceof Intelligence);
+    return characterElements.filter((element) => element instanceof Intelligence);
   }
   constructor({ Points = 0 } = {}) {
     super({

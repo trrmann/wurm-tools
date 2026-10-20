@@ -1,12 +1,14 @@
-import { Collection } from '../../../../collection.mjs'
+import { Collection } from '../../../../collection.mjs';
 import { Skill } from '../skills.mjs';
 import { CharacterElements } from '../../../character-element.mjs';
+import { Presence } from '../../characteristics/primary-characteristcs/presence-characteristics.mjs';
 export class InteractionSkill extends Skill {
+  static BaseCharacteristicType = Presence;
   static Filter(characterElements) {
-    if(characterElements instanceof CharacterElements === false) {
+    if (characterElements instanceof CharacterElements === false) {
       throw new Error('Filter expects a CharacterElements object');
     }
-    return characterElements.filter(element => element instanceof InteractionSkill);
+    return characterElements.filter((element) => element instanceof InteractionSkill);
   }
   constructor({
     Points = 0,
@@ -39,6 +41,4 @@ export class InteractionSkill extends Skill {
   }
 }
 /** @extends {Collection<InteractionSkill>} */
-export class InteractionSkills extends Collection {
-
-}
+export class InteractionSkills extends Collection {}

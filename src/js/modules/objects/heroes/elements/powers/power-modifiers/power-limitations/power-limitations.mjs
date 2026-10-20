@@ -1,12 +1,12 @@
-import { Collection } from '../../../../../collection.mjs'
+import { Collection } from '../../../../../collection.mjs';
 import { PowerModifier } from '../modifiers.mjs';
 import { PowerModifiers } from '../power-modifiers.mjs';
 export class Limitation extends PowerModifier {
   static Filter(characterElements) {
-    if(characterElements instanceof PowerModifiers === false) {
+    if (characterElements instanceof PowerModifiers === false) {
       throw new Error('Filter expects a PowerModifiers object');
     }
-    return characterElements.filter(element => element instanceof Limitation);
+    return characterElements.filter((element) => element instanceof Limitation);
   }
   constructor({
     Points = 0,
@@ -36,9 +36,8 @@ export class Limitation extends PowerModifier {
       OptionFlagCollection: OptionFlagCollection,
       ValueFunction: ValueFunction,
     });
+    this.kind = 'limitation';
   }
 }
 /** @extends {Collection<Limitation>} */
-export class Limitations extends Collection {
-
-}
+export class Limitations extends Collection {}

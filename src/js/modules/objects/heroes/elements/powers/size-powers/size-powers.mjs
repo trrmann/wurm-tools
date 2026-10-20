@@ -1,12 +1,12 @@
-import { Collection } from '../../../../collection.mjs'
+import { Collection } from '../../../../collection.mjs';
 import { Power } from '../powers.mjs';
 import { CharacterElements } from '../../../character-element.mjs';
 export class SizePower extends Power {
   static Filter(characterElements) {
-    if(characterElements instanceof CharacterElements === false) {
+    if (characterElements instanceof CharacterElements === false) {
       throw new Error('Filter expects a CharacterElements object');
     }
-    return characterElements.filter(element => element instanceof SizePower);
+    return characterElements.filter((element) => element instanceof SizePower);
   }
 
   constructor({
@@ -40,6 +40,4 @@ export class SizePower extends Power {
   }
 }
 /** @extends {Collection<SizePower>} */
-export class SizePowers extends Collection {
-
-}
+export class SizePowers extends Collection {}

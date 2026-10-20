@@ -241,6 +241,7 @@ describe('Heroes domain model', () => {
     const vehicle = new HerosVehicle({
       name: 'Skimmer',
       bodyShapes: ['hovercraft'],
+      objectModelTypes: ['physical', 'mobile'],
       pointLevelClassifications: [{ name: 'Standard', points: 150, edition: '6e' }],
       advantages: [{ name: 'Flight', value: 20 }],
     });
@@ -311,8 +312,14 @@ describe('Heroes domain model', () => {
   });
 
   it('distinguishes player and non-player sentient mobile characters', () => {
-    const player = new HerosPlayerCharacter('Player');
-    const nonPlayer = new HerosNonPlayerCharacter('Non-player');
+    const player = new HerosPlayerCharacter({
+      name: 'Player',
+      objectModelTypes: ['player-character', 'sentient', 'mobile'],
+    });
+    const nonPlayer = new HerosNonPlayerCharacter({
+      name: 'Non-player',
+      objectModelTypes: ['non-player-character', 'sentient', 'mobile'],
+    });
 
     expect(player.objectModelTypes.map(String)).toContain(HEROS_OBJECT_MODEL_TYPES.playerCharacter);
     expect(nonPlayer.objectModelTypes.map(String)).toContain(
@@ -322,5 +329,13 @@ describe('Heroes domain model', () => {
       expect(character.objectModelTypes.map(String)).toContain(HEROS_OBJECT_MODEL_TYPES.sentient);
       expect(character.objectModelTypes.map(String)).toContain(HEROS_OBJECT_MODEL_TYPES.mobile);
     }
+  });
+
+  it('does not infer model traits from concrete object subclasses', () => {
+    const vehicle = new HerosVehicle('Vehicle');
+    const character = new HerosPlayerCharacter('Player');
+
+    expect(vehicle.objectModelTypes).toHaveLength(0);
+    expect(character.objectModelTypes).toHaveLength(0);
   });
 });

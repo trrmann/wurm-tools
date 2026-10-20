@@ -1,31 +1,16 @@
 import template from '../../../../site/partials/tools/heroes.html?raw';
 import { fill, getShell } from '../../modules/template.js';
-import { HerosEquation } from '../../modules/objects/heroes.mjs';
+import {
+  generateHerosObject,
+  generateHerosCharacter,
+  getHerosObjectTypes,
+  getHerosCharacterElementTypes,
+  HerosEquation,
+} from '../../modules/objects/heroes.mjs';
 import { MixedNumber } from '../../modules/objects/mixed-numbers.mjs';
 
 const HELPER_URL = 'http://127.0.0.1:5180';
 const HELPER_TOKEN_KEY = 'wurm-tools-helper-token-v1';
-const ADVANTAGE_TYPES = new Set([
-  'characteristic',
-  'primaryCharacteristic',
-  'figuredCharacteristic',
-  'skill',
-  'everymanSkill',
-  'talent',
-  'perk',
-  'power',
-  'powerFramework',
-  'multipower',
-  'elementalControl',
-  'variablePowerPool',
-  'packageDeal',
-]);
-const DISADVANTAGE_TYPES = new Set([
-  'physicalDisadvantage',
-  'mentalDisadvantage',
-  'socialDisadvantage',
-]);
-const NON_PRICED_TYPES = new Set(['specialEffect', 'event', 'action', 'description']);
 let controller;
 
 export function unmount() {
@@ -38,6 +23,46 @@ export function mount(container) {
   controller = new AbortController();
   const { signal } = controller;
   container.innerHTML = fill(getShell(template), {});
+
+  const characterElementTypes = getHerosCharacterElementTypes();
+  const objectTypes = getHerosObjectTypes();
+  const objectTypeById = new Map(objectTypes.map((type) => [type.type, type]));
+  const objectKindSelect = container.querySelector('#heroes-object-kind');
+  objectKindSelect.replaceChildren();
+  for (const type of objectTypes) {
+    const option = document.createElement('option');
+    option.value = type.type;
+    option.textContent = type.label;
+    objectKindSelect.append(option);
+  }
+  objectKindSelect.value = 'character';
+  const characterElementTypeById = new Map(
+    characterElementTypes.map((definition) => [definition.type, definition])
+  );
+  const NON_PRICED_TYPES = new Set(
+    characterElementTypes
+      .filter((definition) => !definition.priced)
+      .map((definition) => definition.type)
+  );
+  const typedKindSelect = container.querySelector('#heroes-typed-kind');
+  const nestedKindSelect = container.querySelector('#heroes-nested-kind');
+  for (const definition of characterElementTypes) {
+    if (![...typedKindSelect.options].some((option) => option.value === definition.type)) {
+      const option = document.createElement('option');
+      option.value = definition.type;
+      option.textContent = definition.label;
+      typedKindSelect.append(option);
+    }
+    if (
+      definition.nestedIn.length &&
+      ![...nestedKindSelect.options].some((option) => option.value === definition.type)
+    ) {
+      const option = document.createElement('option');
+      option.value = definition.type;
+      option.textContent = definition.label;
+      nestedKindSelect.append(option);
+    }
+  }
 
   const element = (selector) => container.querySelector(selector);
   const state = element('#heroes-state');
@@ -53,7 +78,7 @@ export function mount(container) {
   const objectList = element('#heroes-object-list');
   const objectCount = element('#heroes-object-count');
   const equationElementList = element('#heroes-equation-elements');
-  const typedElementList = element('#heroes-typed-elements');
+  const typedElementList = element('#heroes-sheet-sections');
   const equationReadout = element('#heroes-equation-readout');
   const pointValueInput = element('#heroes-points-value');
   const equationElements = { advantages: [], disadvantages: [] };
@@ -109,40 +134,31 @@ export function mount(container) {
   }
 
   function readEquation() {
-    const applyModifiers = (item) => {
-      let value = MixedNumber.from(item.value);
-      for (const modifier of typedElements) {
-        if (!['modifier', 'limitation'].includes(modifier.type) || modifier.target !== item.name) {
-          continue;
-        }
-        value = value.multiply(MixedNumber.from(1).add(MixedNumber.from(modifier.detail)));
-      }
-      return { name: item.name, value: value.toString() };
-    };
-    const packageChildren = typedElements
-      .filter((item) => item.type === 'packageDeal')
-      .flatMap((item) => item.children || []);
-    const childAdvantages = packageChildren.filter(
-      (item) => item.type === 'advantage' || ADVANTAGE_TYPES.has(item.type)
-    );
-    const childDisadvantages = packageChildren.filter(
-      (item) => item.type === 'disadvantage' || DISADVANTAGE_TYPES.has(item.type)
-    );
-    const advantages = [
-      ...equationElements.advantages,
-      ...typedElements.filter((item) => ADVANTAGE_TYPES.has(item.type) && item.value),
-      ...childAdvantages,
-    ].map(applyModifiers);
-    const disadvantages = [
-      ...equationElements.disadvantages,
-      ...typedElements.filter((item) => DISADVANTAGE_TYPES.has(item.type) && item.value),
-      ...childDisadvantages,
-    ].map(applyModifiers);
-    return new HerosEquation({
-      advantages,
-      points: [MixedNumber.from(pointValueInput.value)],
-      disadvantages,
-    });
+    return generateHerosCharacter({
+      name: element('#heroes-object-name').value,
+      edition: element('#heroes-edition').value,
+      characterType: currentCharacterType(),
+      equation: {
+        advantages: equationElements.advantages,
+        points: [MixedNumber.from(pointValueInput.value)],
+        disadvantages: equationElements.disadvantages,
+      },
+      typedElements,
+    }).equation;
+  }
+
+  function currentCharacterType() {
+    const objectType = element('#heroes-object-kind').value;
+    if (objectType === 'player-character') return 'player';
+    if (objectType === 'non-player-character') return 'nonPlayer';
+    if (objectType !== 'character') return undefined;
+    const traits = new Set(currentModelTraits());
+    if (traits.has('player-character') && traits.has('non-player-character')) {
+      throw new Error('Select either player character or non-player character, not both.');
+    }
+    if (traits.has('player-character')) return 'player';
+    if (traits.has('non-player-character')) return 'nonPlayer';
+    return undefined;
   }
 
   function updateEquationReadout() {
@@ -150,10 +166,12 @@ export function mount(container) {
       const equation = readEquation();
       equationReadout.textContent = `Advantages ${equation.advantagesValue} + points ${equation.pointsValue} = disadvantages ${equation.disadvantagesValue}${equation.isBalanced ? ' (balanced)' : ` (difference ${equation.difference})`}`;
       element('#heroes-object-form button[type="submit"]').disabled = !activeWorldId;
-    } catch {
-      equationReadout.textContent = 'Enter valid point values to calculate the equation.';
+    } catch (error) {
+      equationReadout.textContent =
+        error instanceof Error ? error.message : 'Unable to generate this character equation.';
       element('#heroes-object-form button[type="submit"]').disabled = true;
     }
+    renderTypedElements();
   }
 
   function renderEquationElements() {
@@ -214,43 +232,171 @@ export function mount(container) {
     element('#heroes-element-name').focus();
   }
 
+  function typedElementSheetSection(item, objectType) {
+    const definition = characterElementTypeById.get(item.type);
+    const typeName = item.type.split('#').at(-1).toLowerCase();
+    const shortName = String(item.shortName ?? item.name ?? '').toUpperCase();
+    const isCharacter = ['character', 'player-character', 'non-player-character'].includes(
+      objectType
+    );
+
+    if (objectType === 'base') {
+      if (item.type === 'description') return 'description';
+      if (definition?.group === 'characteristics') return 'characteristics';
+      if (definition?.group === 'advantages') return 'abilities';
+      return 'other';
+    }
+    if (!isCharacter) {
+      if (definition?.group === 'characteristics') return 'characteristics';
+      if (definition?.group === 'disadvantages') return 'disadvantages';
+      if (definition?.group === 'advantages') return 'abilities';
+      return 'other';
+    }
+    if (['description', 'event', 'action', 'specialEffect'].includes(item.type)) {
+      return 'identity';
+    }
+    if (
+      definition?.group === 'characteristics' &&
+      (['OCV', 'DCV', 'END', 'DEF'].includes(shortName) || /combatvalue/i.test(typeName))
+    ) {
+      return 'combat';
+    }
+    if (definition?.group === 'characteristics') return 'characteristics';
+    if (definition?.group === 'disadvantages') return 'disadvantages';
+    if (/skill|talent|perk/i.test(typeName)) return 'skills';
+    if (definition?.group === 'advantages') return 'powers';
+    return 'other';
+  }
+
   function renderTypedElements() {
     typedElementList.replaceChildren();
+    const objectType = element('#heroes-object-kind').value;
+    const isBase = objectType === 'base';
+    const isCharacter = ['character', 'player-character', 'non-player-character'].includes(
+      objectType
+    );
+    const sections = isBase
+      ? [
+          { id: 'description', title: 'Narrative description' },
+          { id: 'characteristics', title: 'Characteristics' },
+          { id: 'abilities', title: 'Abilities & equipment' },
+          { id: 'costs', title: 'Construction & acquisition costs' },
+          { id: 'other', title: 'Other model entries' },
+        ]
+      : isCharacter
+        ? [
+            { id: 'identity', title: 'Identity & character/campaign information' },
+            { id: 'characteristics', title: 'Characteristics' },
+            { id: 'combat', title: 'Combat information' },
+            { id: 'skills', title: 'Skills, perks & talents' },
+            { id: 'powers', title: 'Powers & equipment' },
+            { id: 'disadvantages', title: 'Disadvantages' },
+            { id: 'other', title: 'Other model entries' },
+            { id: 'totals', title: 'Totals' },
+          ]
+        : [
+            { id: 'characteristics', title: 'Characteristics' },
+            { id: 'abilities', title: 'Advantages & abilities' },
+            { id: 'disadvantages', title: 'Disadvantages' },
+            { id: 'other', title: 'Other model entries' },
+            { id: 'totals', title: 'Totals' },
+          ];
+    element('#heroes-model-entry-title').textContent = isBase
+      ? 'Add or edit base model entries'
+      : isCharacter
+        ? 'Add or edit character model entries'
+        : 'Add or edit model entries';
+    const groupedElements = new Map(sections.map(({ id }) => [id, []]));
     typedElements.forEach((item, index) => {
-      const row = document.createElement('li');
-      const label = document.createElement('span');
-      const price = item.value ? `: ${item.value} points` : '';
-      const nested = item.children?.length ? ` · ${item.children.length} nested` : '';
-      const detail = item.detail ? ` · ${item.detail}` : '';
-      const target = item.target ? ` → ${item.target}` : '';
-      const traits = item.modelTypes?.length ? ` · ${item.modelTypes.join(', ')}` : ' · unassigned';
-      label.textContent = `${item.type} · ${item.name}${price}${detail}${target}${nested}${traits}${item.isBase ? ' · base' : ' · extra'}`;
-      const edit = document.createElement('button');
-      edit.type = 'button';
-      edit.className = 'btn';
-      edit.textContent = 'Edit';
-      edit.setAttribute('aria-label', `Edit ${item.name}`);
-      edit.addEventListener('click', () => beginTypedEdit(index));
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'btn';
-      remove.textContent = 'Remove';
-      remove.setAttribute('aria-label', `Remove ${item.name}`);
-      remove.addEventListener('click', () => {
-        if (editingTypedIndex === index) resetTypedForm();
-        else if (editingTypedIndex > index) editingTypedIndex -= 1;
-        typedElements.splice(index, 1);
-        renderTypedElements();
-        updateEquationReadout();
-      });
-      row.append(label, edit, remove);
-      typedElementList.append(row);
+      const section = typedElementSheetSection(item, objectType);
+      if (!groupedElements.has(section)) groupedElements.set(section, []);
+      groupedElements.get(section).push({ item, index });
     });
-    if (!typedElementList.childElementCount) {
-      const empty = document.createElement('li');
-      empty.className = 'heroes-empty-list';
-      empty.textContent = 'No typed elements added.';
-      typedElementList.append(empty);
+
+    for (const section of sections) {
+      const panel = document.createElement('section');
+      panel.className = 'heroes-sheet-section';
+      const heading = document.createElement('h4');
+      heading.textContent = section.title;
+      panel.append(heading);
+
+      if (section.id === 'identity') {
+        const identity = document.createElement('p');
+        const worldName = worldSelect.selectedOptions[0]?.textContent;
+        identity.className = 'heroes-sheet-summary';
+        identity.textContent = [
+          element('#heroes-object-name').value.trim() || 'Unnamed object',
+          worldName && worldName !== 'Choose a world' ? worldName : '',
+          element('#heroes-edition').selectedOptions[0]?.textContent,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        panel.append(identity);
+      } else if (section.id === 'description') {
+        const description = element('#heroes-object-description').value.trim();
+        if (description) {
+          const summary = document.createElement('p');
+          summary.className = 'heroes-sheet-summary';
+          summary.textContent = description;
+          panel.append(summary);
+        }
+      } else if (section.id === 'costs' || section.id === 'totals') {
+        const summary = document.createElement('p');
+        summary.className = 'heroes-sheet-summary';
+        summary.textContent = equationReadout.textContent;
+        panel.append(summary);
+        if (section.id === 'costs') {
+          const amount = element('#heroes-acquisition-amount').value.trim();
+          const notes = element('#heroes-acquisition-notes').value.trim();
+          if (amount || notes) {
+            const acquisition = document.createElement('p');
+            acquisition.className = 'heroes-sheet-summary';
+            acquisition.textContent = `Acquisition: ${[amount, notes].filter(Boolean).join(' · ')}`;
+            panel.append(acquisition);
+          }
+        }
+      }
+
+      const list = document.createElement('ul');
+      list.className = 'heroes-sheet-element-list';
+      for (const { item, index } of groupedElements.get(section.id) || []) {
+        const row = document.createElement('li');
+        const label = document.createElement('span');
+        const shortName = item.shortName ? `${item.shortName} · ` : '';
+        const price = item.value == null ? '' : ` · ${item.value} points`;
+        const detail = item.detail ? ` · ${item.detail}` : '';
+        const nested = item.children?.length ? ` · ${item.children.length} nested` : '';
+        const labelText = characterElementTypeById.get(item.type)?.label ?? item.type;
+        label.textContent = `${shortName}${item.name} · ${labelText}${price}${detail}${nested}${item.isBase ? ' · base' : ' · extra'}`;
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'btn';
+        edit.textContent = 'Edit';
+        edit.setAttribute('aria-label', `Edit ${item.shortName || item.name}`);
+        edit.addEventListener('click', () => beginTypedEdit(index));
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'btn';
+        remove.textContent = 'Remove';
+        remove.setAttribute('aria-label', `Remove ${item.shortName || item.name}`);
+        remove.addEventListener('click', () => {
+          if (editingTypedIndex === index) resetTypedForm();
+          else if (editingTypedIndex > index) editingTypedIndex -= 1;
+          typedElements.splice(index, 1);
+          renderTypedElements();
+          updateEquationReadout();
+        });
+        row.append(label, edit, remove);
+        list.append(row);
+      }
+      if (!list.childElementCount) {
+        const empty = document.createElement('li');
+        empty.className = 'heroes-empty-list';
+        empty.textContent = 'No model entries in this section yet.';
+        list.append(empty);
+      }
+      panel.append(list);
+      typedElementList.append(panel);
     }
   }
 
@@ -306,6 +452,7 @@ export function mount(container) {
   function resetEditor() {
     editingObjectId = null;
     objectForm.reset();
+    objectKindSelect.value = 'character';
     equationElements.advantages.length = 0;
     equationElements.disadvantages.length = 0;
     typedElements.length = 0;
@@ -327,13 +474,16 @@ export function mount(container) {
     editingObjectId = object.id;
     objectForm.reset();
     element('#heroes-object-name').value = object.name;
-    element('#heroes-object-kind').value = object.kind;
+    element('#heroes-object-kind').value =
+      definition.objectType ?? definition.kind ?? object.kind ?? 'object';
     element('#heroes-object-shape').value = (definition.bodyShapes || []).join(', ');
     const pointLevel = definition.pointLevelClassifications?.[0];
     element('#heroes-point-level').value = pointLevel?.name || '';
     element('#heroes-point-level-value').value = pointLevel?.points ?? '';
     element('#heroes-edition').value = definition.edition || pointLevel?.edition || '5e';
     element('#heroes-object-description').value = definition.description || '';
+    element('#heroes-acquisition-amount').value = definition.acquisition?.amount ?? '';
+    element('#heroes-acquisition-notes').value = definition.acquisition?.notes ?? '';
     const selectedTraits = new Set(definition.objectModelTypes || []);
     objectForm.querySelectorAll('input[name="trait"]').forEach((input) => {
       input.checked = selectedTraits.has(input.value);
@@ -384,42 +534,17 @@ export function mount(container) {
       const detail = document.createElement('small');
       const definition = object.definition;
       const typedElements = definition.typedElements || [];
-      const packageChildren = typedElements
-        .filter((item) => item.type === 'packageDeal')
-        .flatMap((item) => item.children || []);
-      const adjusted = (item) => {
-        let value = MixedNumber.from(item.value);
-        for (const modifier of typedElements) {
-          if (
-            !['modifier', 'limitation'].includes(modifier.type) ||
-            modifier.target !== item.name
-          ) {
-            continue;
-          }
-          value = value.multiply(MixedNumber.from(1).add(MixedNumber.from(modifier.detail)));
-        }
-        return { name: item.name, value: value.toString() };
-      };
-      const equation = new HerosEquation({
-        advantages: [
-          ...(definition.equation?.advantages ?? []),
-          ...typedElements.filter((item) => ADVANTAGE_TYPES.has(item.type) && item.value),
-          ...packageChildren.filter(
-            (item) => item.type === 'advantage' || ADVANTAGE_TYPES.has(item.type)
-          ),
-        ].map(adjusted),
-        points: definition.equation?.points ?? [],
-        disadvantages: [
-          ...(definition.equation?.disadvantages ?? []),
-          ...typedElements.filter((item) => DISADVANTAGE_TYPES.has(item.type) && item.value),
-          ...packageChildren.filter(
-            (item) => item.type === 'disadvantage' || DISADVANTAGE_TYPES.has(item.type)
-          ),
-        ].map(adjusted),
+      const objectType = definition.objectType ?? definition.kind ?? object.kind ?? 'object';
+      const generatedObject = generateHerosObject({
+        ...definition,
+        name: object.name,
+        objectType,
       });
+      const equation = generatedObject.equation;
       name.textContent = object.name;
       const typedCount = typedElements.length;
-      detail.textContent = `${object.kind} · ${equation.leftSideValue} = ${equation.rightSideValue}${equation.isBalanced ? '' : ` · difference ${equation.difference}`}${typedCount ? ` · ${typedCount} typed element(s)` : ''}`;
+      const typeLabel = objectTypeById.get(objectType)?.label ?? objectType;
+      detail.textContent = `${typeLabel} · ${equation.leftSideValue} = ${equation.rightSideValue}${equation.isBalanced ? '' : ` · difference ${equation.difference}`}${typedCount ? ` · ${typedCount} typed element(s)` : ''}`;
       content.append(name, detail);
       const edit = document.createElement('button');
       edit.type = 'button';
@@ -612,19 +737,7 @@ export function mount(container) {
     }
   });
 
-  element('#heroes-object-kind').addEventListener('change', (event) => {
-    const kind = event.target.value;
-    const defaults = {
-      character: ['physical', 'sentient', 'mobile'],
-      vehicle: ['physical', 'mobile'],
-      equipment: ['physical', 'non-sentient', 'non-mobile'],
-      base: ['physical', 'non-mobile'],
-      object: ['physical', 'non-sentient', 'non-mobile'],
-    };
-    const traits = new Set(defaults[kind]);
-    objectForm.querySelectorAll('input[name="trait"]').forEach((input) => {
-      input.checked = traits.has(input.value);
-    });
+  element('#heroes-object-kind').addEventListener('change', () => {
     const available = new Set(currentModelTraits());
     for (const item of typedElements) {
       item.modelTypes = (item.modelTypes || []).filter((modelType) => available.has(modelType));
@@ -677,6 +790,7 @@ export function mount(container) {
     element('#heroes-typed-kind').value = 'characteristic';
     updateTypedFields();
     element('#heroes-typed-name').value = '';
+    element('#heroes-typed-short-name').value = '';
     element('#heroes-typed-value').value = '';
     element('#heroes-typed-detail').value = '';
     element('#heroes-typed-target').value = '';
@@ -696,6 +810,7 @@ export function mount(container) {
     element('#heroes-typed-kind').value = item.type;
     updateTypedFields();
     element('#heroes-typed-name').value = item.name;
+    element('#heroes-typed-short-name').value = item.shortName ?? '';
     element('#heroes-typed-value').value = item.value ?? '';
     element('#heroes-typed-detail').value = item.detail ?? '';
     element('#heroes-typed-target').value = item.target ?? '';
@@ -714,69 +829,46 @@ export function mount(container) {
 
   function updateTypedFields() {
     const type = element('#heroes-typed-kind').value;
+    const definition = characterElementTypeById.get(type);
     const detailInput = element('#heroes-typed-detail');
     const detailLabel = element('#heroes-typed-detail-label');
     const targetInput = element('#heroes-typed-target');
     const valueInput = element('#heroes-typed-value');
-    const labels = {
-      primaryCharacteristic: 'Base value',
-      figuredCharacteristic: 'Edition formula ID',
-      variablePowerPool: 'Pool points',
-      packageDeal: 'Included elements',
-      powerFramework: 'Included powers',
-      multipower: 'Included slots',
-      elementalControl: 'Included powers',
-      modifier: 'Signed price rate',
-      limitation: 'Signed price rate',
-      specialEffect: 'Effect description',
-      event: 'Event description',
-      action: 'Action description',
-      description: 'Description text',
-    };
-    const detailName = labels[type] || 'Description or detail';
-    detailLabel.textContent = detailName;
-    detailInput.placeholder = type === 'modifier' || type === 'limitation' ? '-1/4 or 1/2' : '';
-    detailInput.required =
-      type === 'modifier' || type === 'limitation' || type === 'figuredCharacteristic';
-    targetInput.disabled = !['modifier', 'limitation'].includes(type);
-    targetInput.required = !targetInput.disabled;
-    valueInput.disabled =
-      NON_PRICED_TYPES.has(type) ||
-      type === 'modifier' ||
-      type === 'limitation' ||
-      type === 'packageDeal';
-    valueInput.required =
-      (ADVANTAGE_TYPES.has(type) && type !== 'packageDeal') || DISADVANTAGE_TYPES.has(type);
+    element('#heroes-typed-value-label').textContent = definition?.valueLabel || 'Point value';
+    detailLabel.textContent = definition?.detailLabel || 'Description or detail';
+    detailInput.placeholder = definition?.isModifier ? '-1/4 or 1/2' : '';
+    detailInput.required = false;
+    targetInput.disabled = !definition?.isModifier;
+    targetInput.required = false;
+    valueInput.disabled = definition ? !definition.priced : NON_PRICED_TYPES.has(type);
+    valueInput.required = false;
     updateNestedEditor();
   }
 
   function updateNestedEditor() {
     const parentType = element('#heroes-typed-kind').value;
-    const isFramework = [
-      'powerFramework',
-      'multipower',
-      'elementalControl',
-      'variablePowerPool',
-    ].includes(parentType);
-    const isPackage = parentType === 'packageDeal';
+    const parentDefinition = characterElementTypeById.get(parentType);
+    const isFramework =
+      parentDefinition?.field === 'powerFrameworks' ||
+      parentDefinition?.field === 'variablePowerPools';
+    const isPackage = parentDefinition?.field === 'packageDeals';
     const editor = element('#heroes-nested-editor');
     const select = element('#heroes-nested-kind');
     editor.hidden = !isFramework && !isPackage;
-    const allowed = isFramework
-      ? new Set(['power'])
-      : new Set([
-          'advantage',
-          'disadvantage',
-          'physicalDisadvantage',
-          'mentalDisadvantage',
-          'socialDisadvantage',
-          'skill',
-          'talent',
-          'perk',
-          'power',
-        ]);
+    const context = isFramework ? 'framework' : 'package';
+    const allowed = new Set(
+      characterElementTypes
+        .filter((definition) => definition.nestedIn.includes(context))
+        .map((definition) => definition.type)
+    );
     for (const option of select.options) option.hidden = !allowed.has(option.value);
-    if (!allowed.has(select.value)) select.value = isFramework ? 'power' : 'advantage';
+    if (!allowed.has(select.value)) {
+      select.value = isFramework
+        ? (characterElementTypes.find((definition) => definition.nestedIn.includes('framework'))
+            ?.type ?? '')
+        : (characterElementTypes.find((definition) => definition.nestedIn.includes('package'))
+            ?.type ?? '');
+    }
     element('#heroes-nested-title').textContent = isFramework
       ? 'Framework powers'
       : 'Package elements';
@@ -789,8 +881,9 @@ export function mount(container) {
     const name = element('#heroes-nested-name').value.trim();
     try {
       if (!name) throw new Error('Enter a nested element name.');
+      const type = element('#heroes-nested-kind').value;
       const item = {
-        type: element('#heroes-nested-kind').value,
+        type,
         name,
         value: MixedNumber.from(element('#heroes-nested-value').value).toString(),
       };
@@ -822,19 +915,18 @@ export function mount(container) {
         'elementalControl',
         'variablePowerPool',
       ].includes(parentType);
-      const allowedNestedTypes = frameworkType
-        ? new Set(['power'])
-        : new Set([
-            'advantage',
-            'disadvantage',
-            'physicalDisadvantage',
-            'mentalDisadvantage',
-            'socialDisadvantage',
-            'skill',
-            'talent',
-            'perk',
-            'power',
-          ]);
+      const nestedContext = frameworkType
+        ? 'framework'
+        : parentType === 'packageDeal'
+          ? 'package'
+          : null;
+      const allowedNestedTypes = new Set(
+        nestedContext
+          ? characterElementTypes
+              .filter((definition) => definition.nestedIn.includes(nestedContext))
+              .map((definition) => definition.type)
+          : []
+      );
       if (
         nestedElements.some((child) => !allowedNestedTypes.has(child.type)) &&
         (parentType === 'packageDeal' || frameworkType)
@@ -842,13 +934,22 @@ export function mount(container) {
         throw new Error('Remove or change nested entries that are not valid for this category.');
       }
       const item = { type, name };
-      if (valueInput.required) item.value = MixedNumber.from(valueInput.value).toString();
+      const shortName = element('#heroes-typed-short-name').value.trim();
+      if (shortName) item.shortName = shortName;
+      const definition = characterElementTypeById.get(type);
+      if (!valueInput.disabled) {
+        if (!valueInput.value.trim()) throw new Error('Enter a point value.');
+        item.value = MixedNumber.from(valueInput.value).toString();
+      }
+      if (definition?.detailRequired && !detailInput.value.trim()) {
+        throw new Error(`Enter ${definition.detailLabel.toLowerCase()}.`);
+      }
       if (detailInput.value.trim()) item.detail = detailInput.value.trim();
       if (type === 'figuredCharacteristic') {
         item.formulaId = detailInput.value.trim();
         item.edition = element('#heroes-edition').value;
       }
-      if (targetInput.required) {
+      if (!targetInput.disabled) {
         item.target = targetInput.value.trim();
         if (!item.target) throw new Error('Enter the equation element this modifier affects.');
         MixedNumber.from(item.detail);
@@ -863,7 +964,9 @@ export function mount(container) {
         (input) => input.value
       );
       if (editingTypedIndex === null) typedElements.push(item);
-      else typedElements[editingTypedIndex] = item;
+      else {
+        typedElements[editingTypedIndex] = item;
+      }
       resetTypedForm();
       renderTypedElements();
       updateEquationReadout();
@@ -934,6 +1037,15 @@ export function mount(container) {
   element('#heroes-cancel-equation-edit').addEventListener('click', resetEquationForm);
 
   pointValueInput.addEventListener('input', updateEquationReadout);
+  for (const selector of [
+    '#heroes-object-name',
+    '#heroes-object-description',
+    '#heroes-acquisition-amount',
+    '#heroes-acquisition-notes',
+  ]) {
+    element(selector).addEventListener('input', renderTypedElements);
+  }
+  element('#heroes-edition').addEventListener('change', updateEquationReadout);
 
   objectForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -957,6 +1069,8 @@ export function mount(container) {
       const definition = {
         name: values.get('name').trim(),
         kind: values.get('kind'),
+        objectType: values.get('kind'),
+        characterType: currentCharacterType(),
         bodyShapes: bodyShape
           ? bodyShape
               .split(',')
@@ -969,6 +1083,13 @@ export function mount(container) {
           (input) => input.value
         ),
         description: values.get('description').trim(),
+        acquisition:
+          values.get('acquisitionAmount').trim() || values.get('acquisitionNotes').trim()
+            ? {
+                amount: values.get('acquisitionAmount').trim(),
+                notes: values.get('acquisitionNotes').trim(),
+              }
+            : null,
         edition: values.get('edition'),
         equation: {
           advantages: equationElements.advantages.map(({ name, value }) => ({
@@ -983,6 +1104,7 @@ export function mount(container) {
         },
         typedElements: typedElements.map((item) => ({ ...item })),
       };
+      generateHerosObject(definition);
       const route = editingObjectId
         ? `/heroes/objects/${encodeURIComponent(editingObjectId)}`
         : `/heroes/worlds/${encodeURIComponent(activeWorldId)}/objects`;

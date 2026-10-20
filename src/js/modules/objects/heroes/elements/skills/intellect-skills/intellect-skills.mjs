@@ -1,12 +1,14 @@
-import { Collection } from '../../../../collection.mjs'
+import { Collection } from '../../../../collection.mjs';
 import { Skill } from '../skills.mjs';
 import { CharacterElements } from '../../../character-element.mjs';
+import { Intelligence } from '../../characteristics/primary-characteristcs/intelligence-characteristics.mjs';
 export class IntellectSkill extends Skill {
+  static BaseCharacteristicType = Intelligence;
   static Filter(characterElements) {
-    if(characterElements instanceof CharacterElements === false) {
+    if (characterElements instanceof CharacterElements === false) {
       throw new Error('Filter expects a CharacterElements object');
     }
-    return characterElements.filter(element => element instanceof IntellectSkill);
+    return characterElements.filter((element) => element instanceof IntellectSkill);
   }
 
   constructor({
@@ -40,6 +42,4 @@ export class IntellectSkill extends Skill {
   }
 }
 /** @extends {Collection<IntellectSkill>} */
-export class IntellectSkills extends Collection {
-
-}
+export class IntellectSkills extends Collection {}

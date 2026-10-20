@@ -1,6 +1,6 @@
 import { MixedNumber } from '../mixed-numbers.mjs';
 import { Points } from '../points.mjs';
-import { HerosValues } from './heros-values.mjs';
+import { HerosValue } from './heros-values.mjs';
 import {
   ActionNames,
   CategorizationName,
@@ -46,9 +46,9 @@ export function normalizeHerosEdition(value = '5e') {
 }
 
 function asHerosValue(value = 0) {
-  if (value instanceof HerosValues) return value;
+  if (value instanceof HerosValue) return value;
   const mixed = MixedNumber.from(value);
-  return new HerosValues({
+  return new HerosValue({
     BaseValue: mixed,
     ValueFunction: ({ BaseValue }) => BaseValue,
   });
@@ -216,6 +216,13 @@ export function registerHerosFiguredCharacteristicFormula(formulaId, edition, de
   return () => figuredCharacteristicFormulas.delete(key);
 }
 
+export function hasHerosFiguredCharacteristicFormula(formulaId, edition) {
+  if (formulaId == null) return false;
+  return figuredCharacteristicFormulas.has(
+    `${normalizeHerosEdition(edition).id}:${String(formulaId)}`
+  );
+}
+
 export class HerosFiguredCharacteristic extends HerosCharacteristic {
   constructor(options = {}) {
     const config = typeof options === 'string' ? { name: options } : options;
@@ -350,9 +357,18 @@ export class HerosPackageDeal extends ThingName {
     this.disadvantages = new HerosDisadvantages([
       ...(config.disadvantages ?? []),
       ...this.children.filter((child) => child.type === 'disadvantage'),
-      ...this.children.filter((child) =>
-        ['physicalDisadvantage', 'mentalDisadvantage', 'socialDisadvantage'].includes(child.type)
-      ),
+    ]);
+    this.physicalDisadvantages = new HerosPhysicalDisadvantages([
+      ...(config.physicalDisadvantages ?? []),
+      ...this.children.filter((child) => child.type === 'physicalDisadvantage'),
+    ]);
+    this.mentalDisadvantages = new HerosMentalDisadvantages([
+      ...(config.mentalDisadvantages ?? []),
+      ...this.children.filter((child) => child.type === 'mentalDisadvantage'),
+    ]);
+    this.socialDisadvantages = new HerosSocialDisadvantages([
+      ...(config.socialDisadvantages ?? []),
+      ...this.children.filter((child) => child.type === 'socialDisadvantage'),
     ]);
     this.skills = new HerosSkills([
       ...(config.skills ?? []),
@@ -471,9 +487,13 @@ export const HEROS_TYPED_ELEMENT_GROUPS = Object.freeze({
 
 /** A non-Wurm world object with its own HERO point equation and child objects. */
 export class HerosGameObject extends ThingName {
+  static ObjectType = 'object';
+
   constructor(options = {}) {
     const config = typeof options === 'string' ? { name: options } : options;
     super(config.name ?? config.label ?? '', config);
+    this.objectType = config.objectType ?? config.kind ?? this.constructor.ObjectType;
+    this.kind = this.objectType;
     this.bodyShapes = new HerosBodyShapes(config.bodyShapes ?? config.bodyShape ?? []);
     this.pointLevelClassifications = new HerosPointLevelClassifications(
       config.pointLevelClassifications ?? config.pointLevelClassification ?? []
@@ -487,6 +507,7 @@ export class HerosGameObject extends ThingName {
       modelTypes: new HerosObjectModelTypes(element.modelTypes ?? []),
     }));
     this.objects = new HerosGameObjects(config.objects ?? []);
+    this.acquisition = config.acquisition == null ? null : { ...config.acquisition };
     this.equation =
       config.equation instanceof HerosEquation
         ? config.equation
@@ -568,55 +589,47 @@ export class HerosWorlds extends ThingNames {
   static NameType = HerosWorld;
 }
 
-export class HerosPhysicalObject extends HerosGameObject {
-  constructor(options = {}) {
-    super(options);
-    this.objectModelTypes.add(HEROS_OBJECT_MODEL_TYPES.physical);
-  }
-}
+export class HerosPhysicalObject extends HerosGameObject {}
 
-export class HerosNonSentientObject extends HerosPhysicalObject {
-  constructor(options = {}) {
-    super(options);
-    this.objectModelTypes.add(HEROS_OBJECT_MODEL_TYPES.nonSentient);
-  }
-}
+export class HerosNonSentientObject extends HerosPhysicalObject {}
 
-export class HerosSentientObject extends HerosPhysicalObject {
-  constructor(options = {}) {
-    super(options);
-    this.objectModelTypes.add(HEROS_OBJECT_MODEL_TYPES.sentient);
-  }
-}
+export class HerosSentientObject extends HerosPhysicalObject {}
 
-export class HerosMobileObject extends HerosGameObject {
-  constructor(options = {}) {
-    super(options);
-    this.objectModelTypes.add(HEROS_OBJECT_MODEL_TYPES.mobile);
-  }
-}
+export class HerosMobileObject extends HerosGameObject {}
 
-export class HerosNonMobileObject extends HerosGameObject {
-  constructor(options = {}) {
-    super(options);
-    this.objectModelTypes.add(HEROS_OBJECT_MODEL_TYPES.nonMobile);
-  }
-}
+export class HerosNonMobileObject extends HerosGameObject {}
 
-export class HerosBase extends HerosGameObject {}
-export class HerosVehicle extends HerosPhysicalObject {
-  constructor(options = {}) {
-    super(options);
-    this.objectModelTypes.add(HEROS_OBJECT_MODEL_TYPES.mobile);
-  }
+export class HerosBase extends HerosGameObject {
+  static ObjectType = 'base';
 }
-export class HerosEquipment extends HerosPhysicalObject {}
+export class HerosVehicle extends HerosGameObject {
+  static ObjectType = 'vehicle';
+}
+export class HerosEquipment extends HerosGameObject {
+  static ObjectType = 'equipment';
+}
+export class HerosAnimal extends HerosGameObject {
+  static ObjectType = 'animal';
+}
+export class HerosPlant extends HerosGameObject {
+  static ObjectType = 'plant';
+}
+export class HerosAutomaton extends HerosGameObject {
+  static ObjectType = 'automaton';
+}
+export class HerosComputer extends HerosGameObject {
+  static ObjectType = 'computer';
+}
+export class HerosAI extends HerosGameObject {
+  static ObjectType = 'ai';
+}
 
 export class HerosCharacter extends HerosGameObject {
+  static ObjectType = 'character';
+
   constructor(options = {}) {
     const config = typeof options === 'string' ? { name: options } : options;
     super(config);
-    this.objectModelTypes.add(HEROS_OBJECT_MODEL_TYPES.sentient, HEROS_OBJECT_MODEL_TYPES.mobile);
     this.edition = normalizeHerosEdition(config.edition);
     this.personName = config.personName;
     this.placeNames = config.placeNames;
@@ -677,22 +690,29 @@ export class HerosCharacter extends HerosGameObject {
               ...this.mentalDisadvantages,
               ...this.socialDisadvantages,
               ...Array.from(this.packageDeals).flatMap((deal) => [...deal.disadvantages]),
+              ...Array.from(this.packageDeals).flatMap((deal) => [
+                ...deal.physicalDisadvantages,
+                ...deal.mentalDisadvantages,
+                ...deal.socialDisadvantages,
+              ]),
             ]),
           });
   }
 }
 
 export class HerosPlayerCharacter extends HerosCharacter {
+  static ObjectType = 'player-character';
+
   constructor(options = {}) {
     super(options);
-    this.objectModelTypes.add(HEROS_OBJECT_MODEL_TYPES.playerCharacter);
   }
 }
 
 export class HerosNonPlayerCharacter extends HerosCharacter {
+  static ObjectType = 'non-player-character';
+
   constructor(options = {}) {
     super(options);
-    this.objectModelTypes.add(HEROS_OBJECT_MODEL_TYPES.nonPlayerCharacter);
   }
 }
 

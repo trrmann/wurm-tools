@@ -1,11 +1,11 @@
-import { Collection } from '../../../../collection.mjs'
+import { Collection } from '../../../../collection.mjs';
 import { CharacterElement, CharacterElements } from '../../character-element.mjs';
 export class Talent extends CharacterElement {
   static Filter(characterElements) {
-    if(characterElements instanceof CharacterElements === false) {
+    if (characterElements instanceof CharacterElements === false) {
       throw new Error('Filter expects a CharacterElements object');
     }
-    return characterElements.filter(element => element instanceof Talent);
+    return characterElements.filter((element) => element instanceof Talent);
   }
   constructor({
     Points = 0,
@@ -38,5 +38,4 @@ export class Talent extends CharacterElement {
   }
 }
 /** @extends {Collection<Talent>} */
-export class Talents extends Collection {
-}
+export class Talents extends Collection {}

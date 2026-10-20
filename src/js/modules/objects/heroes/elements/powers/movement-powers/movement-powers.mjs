@@ -1,12 +1,12 @@
-import { Collection } from '../../../../collection.mjs'
+import { Collection } from '../../../../collection.mjs';
 import { Power } from '../powers.mjs';
 import { CharacterElements } from '../../../character-element.mjs';
 export class MovementPower extends Power {
   static Filter(characterElements) {
-    if(characterElements instanceof CharacterElements === false) {
+    if (characterElements instanceof CharacterElements === false) {
       throw new Error('Filter expects a CharacterElements object');
     }
-    return characterElements.filter(element => element instanceof MovementPower);
+    return characterElements.filter((element) => element instanceof MovementPower);
   }
   constructor({
     Points = 0,
@@ -39,6 +39,4 @@ export class MovementPower extends Power {
   }
 }
 /** @extends {Collection<MovementPower>} */
-export class MovementPowers extends Collection {
-
-}
+export class MovementPowers extends Collection {}

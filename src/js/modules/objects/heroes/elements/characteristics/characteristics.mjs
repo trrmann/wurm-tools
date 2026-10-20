@@ -1,16 +1,17 @@
-import { Collection } from '../../../collection.mjs'
+import { Collection } from '../../../collection.mjs';
 import { CharacterElement, CharacterElements } from '../../character-element.mjs';
 // TODO - add characteristic rolls based on the rules
 export class Characteristic extends CharacterElement {
   static Filter(characterElements) {
-    if(characterElements instanceof CharacterElements === false) {
+    if (characterElements instanceof CharacterElements === false) {
       throw new Error('Filter expects a CharacterElements object');
     }
-    return characterElements.filter(element => element instanceof Characteristic);
+    return characterElements.filter((element) => element instanceof Characteristic);
   }
-  #adjustment;
+  #adjustment = 0;
   constructor({
     Points = 0,
+    RoundingMode = 'nearest',
     AbsoluteMinValue,
     AbsoluteMaxValue,
     MinValue,
@@ -22,9 +23,14 @@ export class Characteristic extends CharacterElement {
     BaseValueFunction,
     OptionFlagCollection,
     ValueFunction,
+    characterElements,
+    Composition,
+    Name,
+    ShortName,
   } = {}) {
     super({
       Points: Points,
+      RoundingMode: RoundingMode,
       AbsoluteMinValue: AbsoluteMinValue,
       AbsoluteMaxValue: AbsoluteMaxValue,
       MinValue: MinValue,
@@ -36,10 +42,14 @@ export class Characteristic extends CharacterElement {
       BaseValueFunction: BaseValueFunction,
       OptionFlagCollection: OptionFlagCollection,
       ValueFunction: ValueFunction,
+      characterElements,
+      Composition,
+      Name,
+      ShortName,
     });
   }
   get Effective() {
-    return (this.Value() + this.#adjustment);
+    return this.toNumber() + this.#adjustment;
   }
   get Adjustment() {
     return this.#adjustment;
@@ -55,6 +65,4 @@ export class Characteristic extends CharacterElement {
   }
 }
 /** @extends {Collection<Characteristic>} */
-export class Characteristics extends Collection {
-
-}
+export class Characteristics extends Collection {}

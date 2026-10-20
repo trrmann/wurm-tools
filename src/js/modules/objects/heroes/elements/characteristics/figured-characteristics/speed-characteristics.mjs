@@ -2,6 +2,7 @@ import { FiguredCharacteristic } from '../../figured-characteristics.mjs';
 import { Dexterity } from '../primary-characteristics/dexterity-characteristics.mjs';
 import { Collection } from '../../../../collection.mjs';
 import { CharacterElements } from '../../../character-element.mjs';
+import { MixedNumber } from '../../../../mixed-numbers.mjs';
 export class Speed extends FiguredCharacteristic {
   static Filter(characterElements) {
     if (characterElements instanceof CharacterElements === false) {
@@ -9,28 +10,31 @@ export class Speed extends FiguredCharacteristic {
     }
     return characterElements.filter((element) => element instanceof Speed);
   }
-  constructor({ Points = 0 } = {}) {
+  constructor({ Points = 0, characterElements = null } = {}) {
     super({
       Points: Points,
       AbsoluteMinValue: '0',
-      AbsoluteMaxValue: '12',
       MinValue: '0',
       UnderMinValueRate: '0',
-      MaxValue: '12',
+      MaxValue: '4',
       OverMaxValueRate: '2',
       ValueRate: '10',
+      RoundingMode: 'down',
       BaseValue: '0',
       BaseValueFunction: ({ characterElements = null }) => {
         if (characterElements instanceof CharacterElements) {
           const DexterityCharacteristic = Dexterity.Filter(characterElements)[0] || null;
           if (DexterityCharacteristic instanceof Dexterity) {
-            return 1 + DexterityCharacteristic.Value() / 10;
+            return MixedNumber.from(1).add(
+              MixedNumber.from(DexterityCharacteristic.Value()).divide(10)
+            );
           }
         }
         throw new Error('Speed Base Value requires a valid Dexterity object');
       },
       Name: 'Speed',
       ShortName: 'SPD',
+      characterElements,
     });
   }
   phases() {

@@ -1,11 +1,13 @@
-import { HerosValue } from '../heros-value.mjs';
+import { HerosValue } from '../heros-values.mjs';
 import { Collection } from '../../../../collection.mjs';
+import { MixedNumber } from '../../mixed-numbers.mjs';
 export class CharacterElement extends HerosValue {
   #points;
   #name;
   #shortName;
   constructor({
     Points = 0,
+    RoundingMode,
     AbsoluteMinValue,
     AbsoluteMaxValue,
     MinValue,
@@ -17,10 +19,13 @@ export class CharacterElement extends HerosValue {
     BaseValueFunction,
     OptionFlagCollection,
     ValueFunction,
-    Name='Character Element',
-    ShortName='CELE',
+    characterElements,
+    Composition,
+    Name = 'Character Element',
+    ShortName = 'CELE',
   } = {}) {
     super({
+      Points: Points,
       AbsoluteMinValue: AbsoluteMinValue,
       AbsoluteMaxValue: AbsoluteMaxValue,
       MinValue: MinValue,
@@ -32,8 +37,11 @@ export class CharacterElement extends HerosValue {
       BaseValueFunction: BaseValueFunction,
       OptionFlagCollection: OptionFlagCollection,
       ValueFunction: ValueFunction,
+      RoundingMode: RoundingMode,
+      characterElements,
+      Composition,
     });
-    this.#points = Points;
+    this.#points = MixedNumber.from(Points);
     this.#name = Name;
     this.#shortName = ShortName;
   }
@@ -46,10 +54,15 @@ export class CharacterElement extends HerosValue {
   get shortName() {
     return this.#shortName;
   }
+  Value() {
+    return this.toNumber();
+  }
 }
 /** @extends {Collection<CharacterElement>} */
 export class CharacterElements extends Collection {
   Get(elementName) {
-      return this.filter(element => (element.name === elementName)||(element.shortName === elementName));
+    return this.filter(
+      (element) => element.name === elementName || element.shortName === elementName
+    );
   }
 }
