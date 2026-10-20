@@ -1,5 +1,7 @@
 import { registerHerosCharacterElementType } from './character-generator.mjs';
 import { CharacterElement } from './elements/character-elements.mjs';
+import { BodyShape } from './elements/body-shapes/body-shapes.mjs';
+import { BodyPart } from './elements/body-shapes/body-parts.mjs/body-parts.mjs';
 import { Characteristic } from './elements/characteristics/characteristics.mjs';
 import { FiguredCharacteristic } from './elements/characteristics/figured-characteristics/figured-characteristics.mjs';
 import { PrimaryCharacteristic } from './elements/characteristics/primary-characteristcs/primary-characteristics.mjs';
@@ -12,11 +14,12 @@ import { Skill } from './elements/skills/skills.mjs';
 import { Talent } from './elements/talents/talents.mjs';
 
 const moduleCatalog =
-  typeof import.meta.glob === 'function'
-    ? import.meta.glob('./elements/**/*.mjs', { eager: true })
+  typeof import.meta.env === 'object'
+    ? import.meta.glob(['./elements/**/*.mjs', '!./elements/**/* copy*.mjs'], { eager: true })
     : {};
 const baseClasses = new Set([
   CharacterElement,
+  BodyPart,
   Characteristic,
   FiguredCharacteristic,
   PrimaryCharacteristic,
@@ -39,6 +42,7 @@ function labelFor(Type) {
 }
 
 function groupFor(Type) {
+  if (inheritsFrom(Type, BodyShape)) return 'body-shapes';
   if (inheritsFrom(Type, Disadvantage)) return 'disadvantages';
   if (inheritsFrom(Type, Characteristic)) return 'characteristics';
   if (
@@ -59,6 +63,7 @@ function makeTypeId(modulePath, exportName) {
 }
 
 function createElementFactory(Type) {
+  if (inheritsFrom(Type, BodyShape)) return (item) => new Type(item.baseBodyShape ?? item);
   return (item, context) => {
     const composition = item.composition ?? item.detail;
     const numericComposition =
@@ -90,6 +95,7 @@ for (const [modulePath, exports] of Object.entries(moduleCatalog)) {
       Type === CharacterElement ||
       !(Type.prototype instanceof CharacterElement) ||
       baseClasses.has(Type) ||
+      Type.prototype instanceof BodyPart ||
       registeredClasses.has(Type)
     ) {
       continue;
@@ -101,12 +107,16 @@ for (const [modulePath, exports] of Object.entries(moduleCatalog)) {
     registerHerosCharacterElementType(type, {
       label: labelFor(Type),
       group,
-      priced: group !== null,
+      field: inheritsFrom(Type, BodyShape) ? 'bodyShapes' : null,
+      priced: group !== null && group !== 'body-shapes',
       nestedIn: [...(group === 'advantages' ? ['package'] : []), ...(isPower ? ['framework'] : [])],
       detailLabel: 'Base value or rule detail',
       valueLabel: 'Point value',
       create: createElementFactory(Type),
       isCharacterElement: true,
+      defaultName: Type.defaultDefinition?.name,
+      defaultDefinition: Type.defaultDefinition,
+      elementClass: Type,
       isPrimaryCharacteristic: inheritsFrom(Type, PrimaryCharacteristic),
       constructionPriority: ['PhysicalDefense', 'EnergyDefense'].includes(Type.name) ? 1 : 0,
     });

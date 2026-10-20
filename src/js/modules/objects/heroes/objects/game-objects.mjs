@@ -1,18 +1,23 @@
 import { Collection } from '../../../collection.mjs';
 import { Characteristics } from '../elements/characteristics/characteristics.mjs';
-import { PrimaryCharacteristics } from '../elements/characteristics/primary-characteristics/primary-characteristics.mjs';
+import { Ellipsoid } from '../elements/body-shapes/ellipsoid-shapes.mjs';
+import { PrimaryCharacteristics } from '../elements/characteristics/primary-characteristcs/primary-characteristics.mjs';
 import { FiguredCharacteristics } from '../elements/characteristics/figured-characteristics/figured-characteristics.mjs';
-import { Comeliness } from '../elements/characteristics/primary-characteristics/comeliness-characteristics.mjs';
-import { Presence } from '../elements/characteristics/primary-characteristics/presence-characteristics.mjs';
+import { Comeliness } from '../elements/characteristics/primary-characteristcs/comeliness-characteristics.mjs';
+import { Presence } from '../elements/characteristics/primary-characteristcs/presence-characteristics.mjs';
 import { PackageDeals } from '../elements/package-deals/package-deals.mjs';
 import { Skills } from '../elements/skills/skills.mjs';
 import { Perks } from '../elements/perks/perks.mjs';
 import { Powers } from '../elements/powers/powers.mjs';
 import { Talents } from '../elements/talents/talents.mjs';
 import { Disadvantages } from '../elements/disadvantages/disadvantages.mjs';
-import { CharacterElement } from '../elements/character-elements.mjs';
+import { CharacterElement, CharacterElements } from '../elements/character-elements.mjs';
+import { BodyShape } from '../elements/body-shapes/body-shapes.mjs';
 // TODO - need to add special effects - (this should be defined as a heros object called special effect with a collection of them called special effects)
 export class GameObject {
+  static createDefaultBodyShape() {
+    return new Ellipsoid();
+  }
   #id;
   #characterElements;
   #unallocatedPoints;
@@ -30,9 +35,10 @@ export class GameObject {
     this.#basePoints = basePoints;
     this.#maxDisadvantagePoints = maxDisadvantagePoints;
     this.#maxPointsFromAnyOneTypeOfDisadvantage = maxPointsFromAnyOneTypeOfDisadvantage;
-    this.#characterElements = new CharacterElement();
+    this.#characterElements = new CharacterElements();
     this.Add(new Comeliness({ points: 0 }));
     this.Add(new Presence({ points: 0 }));
+    this.Add(GameObject.createDefaultBodyShape());
     //this.Add(new Size({points: 0}));
     this.position = { x: 0, y: 0, z: 0 };
   }
@@ -56,6 +62,9 @@ export class GameObject {
   }
   get characterElements() {
     return this.#characterElements;
+  }
+  get bodyShape() {
+    return this.#characterElements.find((element) => element instanceof BodyShape);
   }
   get characteristics() {
     return Characteristics.Filter(this.characterElements);
@@ -89,13 +98,22 @@ export class GameObject {
   }
   Add(element) {
     if (element instanceof CharacterElement) {
-      this.#characterElements.Add(element);
+      if (element instanceof BodyShape) {
+        for (const shape of this.GetBodyShapes()) this.Remove(shape);
+      }
+      this.#characterElements.add(element);
     } else {
       throw new Error('Element must be an instance of CharacterElement');
     }
   }
   Get(elementName) {
     return this.#characterElements.Get(elementName);
+  }
+  GetBodyShapes() {
+    return this.#characterElements.filter((element) => element instanceof BodyShape);
+  }
+  Remove(element) {
+    return this.#characterElements.remove(element);
   }
 }
 

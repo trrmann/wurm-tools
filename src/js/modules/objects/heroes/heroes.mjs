@@ -1,3 +1,17 @@
+import { GameObject } from './objects/game-objects.mjs';
+import { PhysicalObject } from './objects/physical-objects.mjs';
+import { MobileObject } from './objects/mobile-objects.mjs';
+import { Base } from './objects/bases.mjs';
+import { Vehicle } from './objects/vehicles.mjs';
+import { EquipmentItem } from './objects/equipment.mjs';
+import { Animal } from './objects/animals.mjs';
+import { Plant } from './objects/plants.mjs';
+import { Automaton } from './objects/automatons.mjs';
+import { Computer } from './objects/computers.mjs';
+import { AI } from './objects/ais.mjs';
+import { Character } from './objects/characters.mjs';
+import { BodyShape } from './elements/body-shapes/body-shapes.mjs';
+import { CharacterElements } from './elements/character-elements.mjs';
 import { MixedNumber } from '../mixed-numbers.mjs';
 import { Points } from '../points.mjs';
 import { HerosValue } from './heros-values.mjs';
@@ -9,8 +23,6 @@ import {
   ClassificationNames,
   DescriptionName,
   DescriptionNames,
-  SpecificationName,
-  SpecificationNames,
   EventNames,
   ThingName,
   ThingNames,
@@ -415,11 +427,7 @@ export class HerosEquation extends ThingName {
   }
 }
 
-export class HerosBodyShape extends SpecificationName {}
-/** @extends {SpecificationNames<HerosBodyShape>} */
-export class HerosBodyShapes extends SpecificationNames {
-  static NameType = HerosBodyShape;
-}
+export * from './body-shape-structure.mjs';
 
 export class HerosPointLevelClassification extends ClassificationName {
   static Presets = Object.freeze([
@@ -504,6 +512,7 @@ export const HEROS_TYPED_ELEMENT_GROUPS = Object.freeze({
 
 /** A non-Wurm world object with its own HERO point equation and child objects. */
 export class HerosGameObject extends ThingName {
+  static ObjectClass = GameObject;
   static ObjectType = 'object';
   static ModelTypes = Object.freeze([]);
 
@@ -512,7 +521,15 @@ export class HerosGameObject extends ThingName {
     super(config.name ?? config.label ?? '', config);
     this.objectType = config.objectType ?? config.kind ?? this.constructor.ObjectType;
     this.kind = this.objectType;
-    this.bodyShapes = new HerosBodyShapes(config.bodyShapes ?? config.bodyShape ?? []);
+    if ('bodyShapes' in config || 'bodyShape' in config) {
+      throw new TypeError('Body shape belongs in the object element list');
+    }
+    this.elementObjects = new CharacterElements(
+      config.elementObjects ?? [this.constructor.ObjectClass.createDefaultBodyShape()]
+    );
+    if (this.elementObjects.filter((element) => element instanceof BodyShape).length !== 1) {
+      throw new RangeError('An object must have exactly one body-shape element');
+    }
     this.pointLevelClassifications = new HerosPointLevelClassifications(
       config.pointLevelClassifications ?? config.pointLevelClassification ?? []
     );
@@ -531,6 +548,10 @@ export class HerosGameObject extends ThingName {
             advantages: config.advantages,
             disadvantages: config.disadvantages,
           });
+  }
+
+  get bodyShape() {
+    return this.elementObjects.find((element) => element instanceof BodyShape);
   }
 
   get equationElements() {
@@ -608,50 +629,63 @@ export class HerosWorlds extends ThingNames {
   static NameType = HerosWorld;
 }
 
-export class HerosPhysicalObject extends HerosGameObject {}
+export class HerosPhysicalObject extends HerosGameObject {
+  static ObjectClass = PhysicalObject;
+}
 
 export class HerosNonSentientObject extends HerosPhysicalObject {}
 
 export class HerosSentientObject extends HerosPhysicalObject {}
 
-export class HerosMobileObject extends HerosGameObject {}
+export class HerosMobileObject extends HerosGameObject {
+  static ObjectClass = MobileObject;
+}
 
 export class HerosNonMobileObject extends HerosGameObject {}
 
 export class HerosBase extends HerosGameObject {
+  static ObjectClass = Base;
   static ObjectType = 'base';
   static ModelTypes = Object.freeze(['physical', 'non-sentient', 'non-mobile']);
 }
 export class HerosVehicle extends HerosGameObject {
+  static ObjectClass = Vehicle;
   static ObjectType = 'vehicle';
   static ModelTypes = Object.freeze(['physical', 'non-sentient', 'mobile']);
 }
 export class HerosEquipment extends HerosGameObject {
+  static ObjectClass = EquipmentItem;
   static ObjectType = 'equipment';
   static ModelTypes = Object.freeze(['physical', 'non-sentient', 'non-mobile']);
 }
 export class HerosAnimal extends HerosGameObject {
+  static ObjectClass = Animal;
   static ObjectType = 'animal';
   static ModelTypes = Object.freeze(['physical', 'non-sentient', 'mobile']);
 }
 export class HerosPlant extends HerosGameObject {
+  static ObjectClass = Plant;
   static ObjectType = 'plant';
   static ModelTypes = Object.freeze(['physical', 'non-sentient', 'non-mobile']);
 }
 export class HerosAutomaton extends HerosGameObject {
+  static ObjectClass = Automaton;
   static ObjectType = 'automaton';
   static ModelTypes = Object.freeze(['physical', 'non-sentient', 'mobile']);
 }
 export class HerosComputer extends HerosGameObject {
+  static ObjectClass = Computer;
   static ObjectType = 'computer';
   static ModelTypes = Object.freeze(['physical', 'non-sentient', 'non-mobile']);
 }
 export class HerosAI extends HerosGameObject {
+  static ObjectClass = AI;
   static ObjectType = 'ai';
   static ModelTypes = Object.freeze(['non-physical', 'sentient']);
 }
 
 export class HerosCharacter extends HerosGameObject {
+  static ObjectClass = Character;
   static ObjectType = 'character';
   static ModelTypes = Object.freeze(['physical', 'sentient', 'mobile']);
 

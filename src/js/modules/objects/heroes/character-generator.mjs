@@ -34,7 +34,7 @@ import { CharacterElements } from './elements/character-elements.mjs';
 import { HerosValue } from './heros-values.mjs';
 
 const elementTypes = new Map();
-const groups = new Set(['characteristics', 'advantages', 'disadvantages']);
+const groups = new Set(['characteristics', 'advantages', 'disadvantages', 'body-shapes']);
 
 function registerBuiltin(type, definition) {
   elementTypes.set(
@@ -53,6 +53,9 @@ function registerBuiltin(type, definition) {
       isModifier: Boolean(definition.isModifier),
       isCharacterElement: Boolean(definition.isCharacterElement),
       isPrimaryCharacteristic: Boolean(definition.isPrimaryCharacteristic),
+      defaultName: definition.defaultName,
+      defaultDefinition: definition.defaultDefinition,
+      elementClass: definition.elementClass,
       constructionPriority: definition.constructionPriority ?? 0,
     })
   );
@@ -96,6 +99,9 @@ export function registerHerosCharacterElementType(type, definition) {
     isModifier: Boolean(definition.isModifier),
     isCharacterElement: Boolean(definition.isCharacterElement),
     isPrimaryCharacteristic: Boolean(definition.isPrimaryCharacteristic),
+    defaultName: definition.defaultName,
+    defaultDefinition: definition.defaultDefinition,
+    elementClass: definition.elementClass,
     constructionPriority: definition.constructionPriority ?? 0,
   });
   elementTypes.set(key, entry);
@@ -470,6 +476,9 @@ function createRegisteredItem(item, context) {
   if (instance == null || (typeof instance !== 'object' && typeof instance !== 'function')) {
     throw new TypeError(`Factory for character element "${item.type}" must return an object`);
   }
+  if (item.bodyShapeChange) {
+    instance.bodyShapeChange = Object.freeze({ ...item.bodyShapeChange });
+  }
   return instance;
 }
 
@@ -505,6 +514,25 @@ function toDefinitionList(value, label) {
   return items;
 }
 
+export function withHerosObjectBodyShape(elements, ObjectClass) {
+  const typedElements = toDefinitionList(elements, 'typedElements');
+  if (!typedElements.some((item) => elementTypes.get(item.type)?.group === 'body-shapes')) {
+    const shape = ObjectClass.createDefaultBodyShape();
+    const entry = [...elementTypes.values()].find(
+      (entry) => entry.elementClass === shape.constructor
+    );
+    if (!entry) throw new RangeError(`Unregistered body-shape class: ${shape.constructor.name}`);
+    typedElements.push({
+      ...shape.toJSON(),
+      type: entry.type,
+      value: '0',
+      isBase: true,
+      isHierarchyDefault: true,
+    });
+  }
+  return typedElements;
+}
+
 /** Build a class-backed HERO character while retaining its serialized typed-element definitions. */
 export function generateHerosCharacter(definition = {}) {
   if (definition == null || typeof definition !== 'object' || Array.isArray(definition)) {
@@ -514,7 +542,27 @@ export function generateHerosCharacter(definition = {}) {
   const edition = normalizeHerosEdition(definition.edition);
   const characterElements = new CharacterElements();
   const context = { edition, characterElements };
-  const typedElements = toDefinitionList(definition.typedElements, 'typedElements');
+  const typedElements = withHerosObjectBodyShape(
+    definition.typedElements,
+    HerosCharacter.ObjectClass
+  );
+  if (
+    typedElements.filter((item) => elementTypes.get(item.type)?.group === 'body-shapes').length > 1
+  ) {
+    throw new RangeError('An object must have exactly one body-shape element');
+  }
+  function validateNestedShapes(items) {
+    for (const item of items) {
+      const children = toDefinitionList(item.children, `Children for "${item.name}"`);
+      if (children.some((child) => elementTypes.get(child.type)?.group === 'body-shapes')) {
+        throw new TypeError(
+          'Body-shape elements must belong directly to the object, not a package or framework'
+        );
+      }
+      validateNestedShapes(children);
+    }
+  }
+  validateNestedShapes(typedElements);
   const packageChildren = typedElements
     .filter((item) => item.type === 'packageDeal')
     .flatMap((item) => toDefinitionList(item.children, `Children for "${item.name}"`));
@@ -593,10 +641,38 @@ export function generateHerosCharacter(definition = {}) {
 
   for (const { entry, instance } of rootGeneratedItems) {
     if (!entry.field || entry.isModifier) continue;
+    if (entry.field === 'bodyShapes') continue;
     const field =
       instance instanceof HerosFiguredCharacteristic ? 'figuredCharacteristics' : entry.field;
     (config[field] ??= []).push(instance);
   }
+  const bodyShapeElements = rootGeneratedItems
+    .filter(({ entry }) => entry.field === 'bodyShapes')
+    .map(({ instance }) => instance);
+  for (const shape of bodyShapeElements) {
+    shape.bodyShapeBaseline = JSON.parse(JSON.stringify(shape));
+  }
+  for (const { entry, instance } of rootGeneratedItems) {
+    const change = instance.bodyShapeChange;
+    if (!change?.action || !change.shapeName) continue;
+    if (
+      (change.action === 'add' && (!change.componentId || !change.componentName)) ||
+      (change.action !== 'add' && !change.componentId)
+    ) {
+      continue;
+    }
+    if (entry.group !== 'disadvantages' && !entry.nestedIn.includes('framework')) {
+      throw new TypeError('Only powers and disadvantages can change body shapes');
+    }
+    const shape = bodyShapeElements.find(
+      (bodyShape) => String(bodyShape.name) === change.shapeName
+    );
+    if (!shape) {
+      throw new RangeError(`Unknown body shape for linked change: ${change.shapeName}`);
+    }
+    shape.applyChange(change);
+  }
+  config.elementObjects = characterElements;
 
   const characterType =
     definition.characterType === 'player'

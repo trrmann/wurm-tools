@@ -1,7 +1,11 @@
-import { Collection } from '../../collection.mjs';
+import { Collection } from '../../../collection.mjs';
 import { PhysicalLivingMobileSentientObject } from './physical-living-mobile-sentient-objects.mjs';
+import { Humanoid } from '../elements/body-shapes/humanoid-shapes.mjs';
 
 export class Character extends PhysicalLivingMobileSentientObject {
+  static createDefaultBodyShape() {
+    return new Humanoid();
+  }
   constructor({
     points = 0,
     basePoints = 0,
@@ -14,6 +18,7 @@ export class Character extends PhysicalLivingMobileSentientObject {
       maxDisadvantagePoints: maxDisadvantagePoints,
       maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage,
     });
+    this.Add(Character.createDefaultBodyShape());
   }
 }
 /** @extends {Collection<Character>} */

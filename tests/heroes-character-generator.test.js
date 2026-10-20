@@ -13,8 +13,23 @@ import {
   generateHerosObject,
   getHerosObjectTypes,
   registerHerosCharacterElementType,
+  replaceHerosObjectBodyShape,
+  BodyShape,
 } from '../src/js/modules/objects/heroes.mjs';
+import { Avian } from '../src/js/modules/objects/heroes/elements/body-shapes/avian-shapes.mjs';
+import { Humanoid } from '../src/js/modules/objects/heroes/elements/body-shapes/humanoid-shapes.mjs';
+import { Head } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/head-parts.mjs';
+import { Wings } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/wings-parts.mjs';
+import { BodyChestRibs } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/body-chest-ribs-parts.mjs';
+import { Stomach } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/stomach-parts.mjs';
+import { Vitals } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/vitals-parts.mjs';
+import { Legs } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/legs-parts.mjs';
+import { Tail } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/tail-parts.mjs';
+import { GameObject } from '../src/js/modules/objects/heroes/objects/game-objects.mjs';
 import { herosElementCatalogSize } from '../src/js/modules/objects/heroes/element-catalog.mjs';
+import { Cone } from '../src/js/modules/objects/heroes/elements/body-shapes/cone-shapes.mjs';
+import { Arachnid } from '../src/js/modules/objects/heroes/elements/body-shapes/arachnid-shapes.mjs';
+import { Insectoid } from '../src/js/modules/objects/heroes/elements/body-shapes/insectoid-shapes.mjs';
 import { Power } from '../src/js/modules/objects/heroes/elements/powers/powers.mjs';
 import { Advantage } from '../src/js/modules/objects/heroes/elements/powers/power-modifiers/power-advantages/power-advantages.mjs';
 import { Multipower } from '../src/js/modules/objects/heroes/elements/powers/power-modifiers/power-frameworks/multipower-frameworks.mjs';
@@ -48,6 +63,346 @@ describe('HERO character generator', () => {
     expect(character.equation.advantagesValue.toString()).toBe('19');
     expect(character.equation.pointsValue.toString()).toBe('1');
     expect(character.equation.disadvantagesValue.toString()).toBe('3');
+  });
+
+  it('uses object-type body-shape defaults without injecting character elements', () => {
+    const characteristicTypes = getHerosCharacterElementTypes().filter(
+      (definition) => definition.isCharacterElement && definition.group === 'characteristics'
+    );
+    const strengthType = characteristicTypes.find((definition) =>
+      definition.type.endsWith('#Strength')
+    );
+
+    expect(characteristicTypes.length).toBeGreaterThan(8);
+    expect(strengthType).toBeDefined();
+    const expectedShapes = {
+      object: 'Ellipsoid',
+      character: 'Humanoid',
+      'player-character': 'Humanoid',
+      'non-player-character': 'Humanoid',
+      base: 'RectangularParallelepiped',
+      vehicle: 'RectangularParallelepiped',
+      equipment: 'RectangularParallelepiped',
+      animal: 'Quadruped',
+      plant: 'RectangularParallelepiped',
+      automaton: 'RectangularParallelepiped',
+      computer: 'RectangularParallelepiped',
+      ai: 'Ellipsoid',
+    };
+    for (const { type: objectType } of getHerosObjectTypes()) {
+      const object = generateHerosObject({ objectType });
+      expect(
+        object.typedElements.filter((item) =>
+          characteristicTypes.some((definition) => definition.type === item.type)
+        )
+      ).toHaveLength(0);
+      expect(object.generatedElements.has(strengthType.type)).toBe(false);
+      const shapes = object.elementObjects.filter((element) => element instanceof BodyShape);
+      expect(shapes).toHaveLength(1);
+      expect(object.bodyShape).toBe(shapes[0]);
+      expect(object.bodyShape.constructor.name).toBe(expectedShapes[objectType]);
+      const bodyShapeDefinitions = object.typedElements.filter((item) =>
+        getHerosCharacterElementTypes().some(
+          (entry) => entry.type === item.type && entry.group === 'body-shapes'
+        )
+      );
+      expect(bodyShapeDefinitions).toHaveLength(1);
+      expect(object.generatedElements.get(bodyShapeDefinitions[0].type)[0]).toBe(object.bodyShape);
+      expect(bodyShapeDefinitions[0]).toMatchObject({
+        isBase: true,
+        isHierarchyDefault: true,
+      });
+      expect(object.bodyShape.parts.length).toBeGreaterThan(0);
+      const restored = generateHerosObject({
+        objectType,
+        typedElements: JSON.parse(JSON.stringify(object.typedElements)),
+      });
+      expect(restored.bodyShape.constructor).toBe(object.bodyShape.constructor);
+      expect(restored.bodyShape.toJSON()).toEqual(object.bodyShape.toJSON());
+      expect(
+        restored.elementObjects.filter((element) => element instanceof BodyShape)
+      ).toHaveLength(1);
+    }
+  });
+
+  it('replaces the inherited body-shape instance in the actual object element list', () => {
+    const object = new GameObject();
+    const inherited = object.bodyShape;
+    const replacement = new Humanoid();
+    object.Add(replacement);
+    object.Add(replacement);
+
+    expect(object.bodyShape).toBe(replacement);
+    expect(object.GetBodyShapes()).toHaveLength(1);
+    expect(object.characterElements).not.toContain(inherited);
+    expect(object.characterElements).toContain(replacement);
+  });
+
+  it('uses object class factories rather than a competing default-shape table', () => {
+    const original = HerosCharacter.ObjectClass.createDefaultBodyShape;
+    HerosCharacter.ObjectClass.createDefaultBodyShape = () => new Avian();
+    try {
+      expect(generateHerosObject({ objectType: 'character' }).bodyShape).toBeInstanceOf(Avian);
+    } finally {
+      HerosCharacter.ObjectClass.createDefaultBodyShape = original;
+    }
+  });
+
+  it('replaces concrete shapes without retaining or resurrecting the previous shape', () => {
+    const original = generateHerosObject({ objectType: 'character' });
+    const replacement = replaceHerosObjectBodyShape(
+      { objectType: 'character', typedElements: original.typedElements },
+      { type: 'element:body-shapes/avian-shapes#Avian', name: 'Avian' }
+    );
+    for (const objectType of ['character', 'vehicle']) {
+      const restored = generateHerosObject({
+        objectType,
+        typedElements: JSON.parse(JSON.stringify(replacement.typedElements)),
+      });
+      expect(restored.bodyShape).toBeInstanceOf(Avian);
+      expect(restored.elementObjects.filter((element) => element instanceof BodyShape)).toEqual([
+        restored.bodyShape,
+      ]);
+      expect(restored.generatedElements.has('element:body-shapes/humanoid-shapes#Humanoid')).toBe(
+        false
+      );
+      expect(
+        restored.typedElements.filter((item) => item.type.includes('body-shapes/'))
+      ).toHaveLength(1);
+      expect(restored.bodyShape.parts.map((part) => part.name)).toEqual(
+        replacement.bodyShape.parts.map((part) => part.name)
+      );
+    }
+  });
+
+  it('rejects duplicate shapes and obsolete parallel body-shape inputs', () => {
+    const typedElements = ['Humanoid', 'Avian'].map((name) => ({
+      type: `element:body-shapes/${name.toLowerCase()}-shapes#${name}`,
+      name,
+    }));
+    expect(() => generateHerosObject({ typedElements })).toThrow(/exactly one/);
+    expect(() => generateHerosCharacter({ typedElements })).toThrow(/exactly one/);
+    for (const obsolete of [{ bodyShape: 'Humanoid' }, { bodyShapes: ['Humanoid'] }]) {
+      expect(() => generateHerosObject(obsolete)).toThrow(/typedElements/);
+    }
+    expect(() => replaceHerosObjectBodyShape({}, { type: 'skill' })).toThrow(/body-shape/);
+    for (const type of ['packageDeal', 'multipower']) {
+      expect(() =>
+        generateHerosObject({
+          typedElements: [{ type, name: 'Nested shape', children: [typedElements[0]] }],
+        })
+      ).toThrow(/directly to the object/);
+    }
+  });
+
+  it('gives standalone generated characters one class-owned body-shape element', () => {
+    const character = generateHerosCharacter();
+    expect(character.bodyShape).toBeInstanceOf(Humanoid);
+    expect(character.elementObjects.filter((element) => element instanceof BodyShape)).toEqual([
+      character.bodyShape,
+    ]);
+    expect(character.generatedElements.get(character.typedElements[0].type)).toEqual([
+      character.bodyShape,
+    ]);
+    expect(() => new HerosCharacter({ elementObjects: [] })).toThrow(/exactly one/);
+  });
+
+  it('preserves concrete avian anatomy and replays part changes from an unchanged baseline', () => {
+    const shapeType = 'element:body-shapes/avian-shapes#Avian';
+    const disadvantageType = getHerosCharacterElementTypes().find((entry) =>
+      entry.type.endsWith('#PhysicalLimitation')
+    ).type;
+    const parts = [Head, Wings, BodyChestRibs, Stomach, Vitals, Legs, Tail];
+    const baseline = generateHerosObject({ typedElements: [{ type: shapeType, name: 'Avian' }] });
+    expect(baseline.bodyShape.parts.map((part) => part.constructor)).toEqual(parts);
+
+    for (const action of ['set-present', 'remove']) {
+      const changed = generateHerosObject({
+        typedElements: [
+          ...baseline.typedElements,
+          {
+            type: disadvantageType,
+            name: 'Wing injury',
+            value: '0',
+            bodyShapeChange: {
+              shapeName: 'Avian',
+              action,
+              componentId: 'body-part-Wings',
+              isPresent: false,
+            },
+          },
+        ],
+      });
+      const restored = generateHerosObject({
+        typedElements: JSON.parse(JSON.stringify(changed.typedElements)),
+      });
+      if (action === 'remove') {
+        expect(restored.bodyShape.getComponent('body-part-Wings')).toBeUndefined();
+      } else {
+        expect(restored.bodyShape.getComponent('body-part-Wings')).toBeInstanceOf(Wings);
+        expect(restored.bodyShape.isComponentPresent('body-part-Wings')).toBe(false);
+      }
+      expect(restored.bodyShape.parts.every((part) => parts.includes(part.constructor))).toBe(true);
+      const healed = generateHerosObject({
+        typedElements: restored.typedElements.filter((item) => item.type === shapeType),
+      });
+      expect(healed.bodyShape.parts.map((part) => part.constructor)).toEqual(parts);
+      expect(healed.bodyShape.isComponentPresent('body-part-Wings')).toBe(true);
+    }
+  });
+
+  it('generates character elements only from each object typed-element list', () => {
+    const strengthType = getHerosCharacterElementTypes().find((definition) =>
+      definition.type.endsWith('#Strength')
+    );
+    expect(strengthType).toBeDefined();
+
+    for (const { type } of getHerosObjectTypes()) {
+      const object = generateHerosObject({
+        objectType: type,
+        typedElements: [{ type: strengthType.type, name: 'Strength', value: '0' }],
+      });
+      const element = object.typedElements.find((item) => item.type === strengthType.type);
+
+      expect(element).toMatchObject({
+        name: 'Strength',
+        value: '0',
+      });
+      expect(element.isHierarchyDefault).toBeUndefined();
+      expect(object.generatedElements.get(strengthType.type)).toHaveLength(1);
+      expect(() => object.generatedElements.get(strengthType.type)[0].Value()).not.toThrow();
+    }
+  });
+
+  it('preserves body-shape inheritance in the element catalog and object definitions', () => {
+    const bodyShapeTypes = getHerosCharacterElementTypes().filter((definition) =>
+      definition.type.startsWith('element:body-shapes/')
+    );
+    const coneType = bodyShapeTypes.find(
+      (definition) => definition.type === 'element:body-shapes/cone-shapes#Cone'
+    );
+    const arachnidType = bodyShapeTypes.find((definition) => definition.type.endsWith('#Arachnid'));
+    const bodyShapeType = bodyShapeTypes.find((definition) =>
+      definition.type.endsWith('#BodyShape')
+    );
+
+    expect(bodyShapeTypes.length).toBeGreaterThan(5);
+    expect(
+      bodyShapeTypes.every(
+        (definition) =>
+          definition.group === 'body-shapes' &&
+          definition.field === 'bodyShapes' &&
+          !definition.priced &&
+          !definition.type.includes(' copy')
+      )
+    ).toBe(true);
+    expect(coneType).toMatchObject({
+      group: 'body-shapes',
+      field: 'bodyShapes',
+      priced: false,
+    });
+    expect(arachnidType).toMatchObject({
+      group: 'body-shapes',
+      field: 'bodyShapes',
+      priced: false,
+    });
+    expect(bodyShapeType).toBeDefined();
+    const object = generateHerosObject({
+      objectType: 'character',
+      typedElements: [
+        {
+          type: coneType.type,
+          name: 'Conical shell',
+          generalShape: 'Cone',
+          shapeTypes: ['cone'],
+          components: [{ id: 'tip', name: 'Tip' }],
+        },
+      ],
+    });
+
+    const generatedCone = object.generatedElements.get(coneType.type)[0];
+    const serializedCone = object.typedElements.find((item) => item.type === coneType.type);
+
+    expect(generatedCone).toBeInstanceOf(Cone);
+    expect(generatedCone.generalShape).toBe('Cone');
+    expect(String(generatedCone.components.first)).toBe('Tip');
+    expect(serializedCone).toMatchObject({
+      name: 'Conical shell',
+      generalShape: 'Cone',
+      shapeTypes: ['cone'],
+      components: [{ id: 'tip' }],
+    });
+    expect(object.typedElements.filter((item) => item.type === bodyShapeType.type)).toHaveLength(0);
+    expect(object.bodyShape).toBe(generatedCone);
+    expect(object.elementObjects.filter((item) => item instanceof BodyShape)).toHaveLength(1);
+
+    const generatedArachnid = generateHerosObject({
+      objectType: 'character',
+      typedElements: [{ type: arachnidType.type, name: 'Arachnid' }],
+    }).generatedElements.get(arachnidType.type)[0];
+    expect(generatedArachnid).toBeInstanceOf(Arachnid);
+    expect(generatedArachnid).toBeInstanceOf(Insectoid);
+  });
+
+  it('applies power and disadvantage body-shape changes to the object body-shape element', () => {
+    const types = getHerosCharacterElementTypes();
+    const bodyShapeType = types.find((definition) => definition.type.endsWith('#Humanoid'));
+    const powerType = types.find((definition) => definition.type.endsWith('#BodyAffectingPower'));
+    const disadvantageType = types.find((definition) =>
+      definition.type.endsWith('#PhysicalLimitation')
+    );
+    const componentId = 'cybernetic-arm';
+
+    const object = generateHerosObject({
+      objectType: 'character',
+      typedElements: [
+        {
+          type: powerType.type,
+          name: 'Cybernetic replacement',
+          value: '10',
+          bodyShapeChange: {
+            shapeName: 'Humanoid',
+            action: 'add',
+            componentType: 'component',
+            componentId,
+            componentName: 'Cybernetic arm',
+          },
+        },
+        {
+          type: disadvantageType.type,
+          name: 'Damaged replacement',
+          value: '5',
+          bodyShapeChange: {
+            shapeName: 'Humanoid',
+            action: 'set-present',
+            componentId,
+            isPresent: false,
+          },
+        },
+      ],
+    });
+    const bodyShapeDefinition = object.typedElements.find(
+      (item) => item.type === bodyShapeType.type
+    );
+    const bodyShape = object.bodyShape;
+
+    expect(bodyShapeDefinition.components[0].id).toBe(componentId);
+    expect(String(bodyShapeDefinition.components[0])).toBe('Cybernetic arm');
+    expect(bodyShape.getComponent(componentId)).toBeDefined();
+    expect(bodyShape.isComponentPresent(componentId)).toBe(false);
+    expect(bodyShapeDefinition.baseBodyShape.components).toEqual([]);
+
+    const restored = generateHerosObject({
+      objectType: 'character',
+      typedElements: object.typedElements,
+    });
+    expect(restored.bodyShape.getComponent(componentId)).toBeDefined();
+    expect(restored.bodyShape.isComponentPresent(componentId)).toBe(false);
+    const noChanges = generateHerosObject({
+      objectType: 'character',
+      typedElements: restored.typedElements.filter((item) => item.type === bodyShapeType.type),
+    });
+    expect(noChanges.bodyShape.getComponent(componentId)).toBeUndefined();
   });
 
   it('includes package deal child classes and values in the generated character', () => {
@@ -263,7 +618,8 @@ describe('HERO character generator', () => {
       '20'
     );
     expect(character.generatedElements.get(stunType.type)[0].Value()).toBe(10);
-    expect(character.elementObjects).toHaveLength(2);
+    expect(character.elementObjects).toHaveLength(3);
+    expect(character.bodyShape).toBeInstanceOf(Humanoid);
     expect(character.equation.advantagesValue.toString()).toBe('10');
   });
 
@@ -295,8 +651,9 @@ describe('HERO character generator', () => {
     const types = getHerosCharacterElementTypes().filter((definition) =>
       definition.type.startsWith('element:')
     );
+    const nonShapes = types.filter((definition) => definition.group !== 'body-shapes');
     const character = generateHerosCharacter({
-      typedElements: types.map((definition) => ({
+      typedElements: nonShapes.map((definition) => ({
         type: definition.type,
         name: definition.label,
         value: '0',
@@ -305,8 +662,15 @@ describe('HERO character generator', () => {
     });
     const generated = [...character.generatedElements.values()].flat();
 
-    expect(generated).toHaveLength(herosElementCatalogSize);
-    expect(character.elementObjects).toHaveLength(herosElementCatalogSize);
+    expect(generated).toHaveLength(nonShapes.length + 1);
+    expect(character.elementObjects).toHaveLength(nonShapes.length + 1);
+    for (const entry of types.filter((definition) => definition.group === 'body-shapes')) {
+      const object = generateHerosObject({
+        typedElements: [{ type: entry.type, name: entry.defaultName }],
+      });
+      expect(object.bodyShape).toBeInstanceOf(entry.elementClass);
+      expect(object.elementObjects).toHaveLength(1);
+    }
   });
 
   it('exposes modifier collections consistently on powers and frameworks', () => {

@@ -1,6 +1,6 @@
 import { PhysicalObject } from './physical-objects.mjs';
 import { MobileObject } from './mobile-objects.mjs';
-import { Collection } from '../../../../collection.mjs';
+import { Collection } from '../../../collection.mjs';
 
 export class PhysicalMobileObject extends PhysicalObject {
   constructor({
@@ -21,12 +21,9 @@ export class PhysicalMobileObject extends PhysicalObject {
       maxDisadvantagePoints: maxDisadvantagePoints,
       maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage,
     });
-    mobileObj
-      .characteristics()
-      .GetAll()
-      .forEach((characteristic) => {
-        this.characteristics().Add(characteristic);
-      });
+    mobileObj.characteristics.forEach((characteristic) => {
+      this.Add(characteristic);
+    });
     this.pilot = null;
   }
 }

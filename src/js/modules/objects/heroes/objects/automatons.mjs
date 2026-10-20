@@ -1,4 +1,4 @@
-import { Collection } from '../../collection.mjs';
+import { Collection } from '../../../collection.mjs';
 import { PhysicalMobileObject } from './physical-mobile-objects.mjs';
 export class Automaton extends PhysicalMobileObject {
   constructor({

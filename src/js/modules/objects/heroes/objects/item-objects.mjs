@@ -1,5 +1,5 @@
 import { PhysicalObject } from './physical-objects.mjs';
-import { Collection } from '../../../../collection.mjs';
+import { Collection } from '../../../collection.mjs';
 export class ItemObject extends PhysicalObject {
   constructor({
     points = 0,

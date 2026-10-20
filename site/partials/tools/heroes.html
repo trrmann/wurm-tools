@@ -17,7 +17,21 @@
     hidden
   >
     <h3 id="heroes-pair-title">Connect local database</h3>
-    <p>Enter the pairing code shown by the local helper.</p>
+    <p>
+      This page stores worlds in the project's local database helper; the pairing code comes from
+      Wurm Tools, not from SQLite. SQLite is included as a project dependency, so you do not need to
+      install or run a separate SQLite server.
+    </p>
+    <ol>
+      <li>Open a terminal in your Wurm Tools project folder.</li>
+      <li>If dependencies are not installed yet, run <code>npm install</code>.</li>
+      <li>Start the local helper and development site with <code>npm run dev</code>.</li>
+      <li>
+        In another terminal in the project folder, run <code>npm run helper:pair-code</code>. The
+        code expires after 10 minutes.
+      </li>
+      <li>Enter that code below to connect this browser to the local database.</li>
+    </ol>
     <form id="heroes-pair-form">
       <label for="heroes-pair-code">Pairing code</label>
       <input id="heroes-pair-code" name="code" autocomplete="one-time-code" required />
@@ -100,9 +114,16 @@
               <option value="character">Character</option>
             </select>
           </label>
-          <label class="heroes-field" for="heroes-object-shape">
+          <label class="heroes-field" for="heroes-object-body-shape">
             Body shape
-            <input id="heroes-object-shape" name="bodyShape" placeholder="Humanoid, vehicle, ..." />
+            <select
+              id="heroes-object-body-shape"
+              class="custom-select"
+              aria-describedby="heroes-object-body-shape-help"
+            ></select>
+            <span id="heroes-object-body-shape-help" class="heroes-field-hint">
+              Replaces the object's shape. Define component changes through powers or disadvantages.
+            </span>
           </label>
           <label class="heroes-field" for="heroes-point-level">
             Point-level classification
@@ -137,23 +158,15 @@
           </label>
         </div>
 
-        <fieldset id="heroes-model-traits" class="heroes-traits">
-          <legend>Object model traits</legend>
+        <section
+          id="heroes-model-traits"
+          class="heroes-traits"
+          aria-labelledby="heroes-traits-title"
+        >
+          <h3 id="heroes-traits-title">Object model traits</h3>
           <p class="heroes-field-hint">Traits are derived from the selected object kind.</p>
-          <label><input type="checkbox" value="physical" disabled /> Physical</label>
-          <label><input type="checkbox" value="non-physical" disabled /> Non-physical</label>
-          <label><input type="checkbox" value="sentient" disabled /> Sentient</label>
-          <label><input type="checkbox" value="non-sentient" disabled /> Non-sentient</label>
-          <label><input type="checkbox" value="mobile" disabled /> Mobile</label>
-          <label><input type="checkbox" value="non-mobile" disabled /> Non-mobile</label>
-          <label
-            ><input type="checkbox" value="player-character" disabled /> Player character</label
-          >
-          <label
-            ><input type="checkbox" value="non-player-character" disabled /> Non-player
-            character</label
-          >
-        </fieldset>
+          <ul id="heroes-model-trait-list" class="heroes-model-trait-list" aria-live="polite"></ul>
+        </section>
 
         <fieldset class="heroes-equation-builder">
           <legend>Point equation</legend>
@@ -199,15 +212,14 @@
         <fieldset class="heroes-typed-builder">
           <legend>Character or base sheet</legend>
           <p class="heroes-field-hint">
-            Sections below are views over the same typed model entries. Use the model's short names
-            as labels; values and totals come from existing model behavior, with no inferred
-            calculations.
+            Edit model entries directly in the sheet rows. Add new characteristics, skills, powers,
+            and other entries using the form below. Values and totals use existing model behavior.
           </p>
           <div id="heroes-sheet-sections" class="heroes-sheet-sections" aria-live="polite"></div>
-          <h4 id="heroes-model-entry-title">Add or edit model entries</h4>
+          <h4 id="heroes-model-entry-title">Add model entries</h4>
           <p class="heroes-field-hint">
             Use Description entries for identity or campaign notes not represented by a typed
-            characteristic. Mark base-spec entries; cleanup removes only unmarked extras.
+            characteristic. Existing entries are edited in the sheet above.
           </p>
           <div class="heroes-form-grid heroes-typed-controls">
             <label class="heroes-field" for="heroes-typed-kind">
@@ -270,10 +282,60 @@
             >
               Add typed element
             </button>
-            <button id="heroes-cancel-typed-edit" class="btn" type="button" hidden>
-              Cancel typed edit
-            </button>
           </div>
+          <fieldset id="heroes-body-change-editor" class="heroes-body-change-editor" hidden>
+            <legend>Linked body-shape change</legend>
+            <p class="heroes-field-hint">
+              Apply body-shape changes through this power or disadvantage. The linked body-shape
+              element is updated automatically.
+            </p>
+            <div class="heroes-form-grid heroes-body-change-controls">
+              <label class="heroes-field" for="heroes-body-change-shape">
+                Body shape
+                <select id="heroes-body-change-shape" class="custom-select"></select>
+              </label>
+              <label class="heroes-field" for="heroes-body-change-action">
+                Change
+                <select id="heroes-body-change-action" class="custom-select">
+                  <option value="">Select change</option>
+                  <option value="add">Add component</option>
+                  <option value="remove">Remove component</option>
+                  <option value="set-present">Set component presence</option>
+                </select>
+              </label>
+              <label class="heroes-field" for="heroes-body-change-type">
+                Component type
+                <select id="heroes-body-change-type" class="custom-select">
+                  <option value="component">Component</option>
+                  <option value="hit-location">Hit location</option>
+                  <option value="extra-limb">Extra limb</option>
+                </select>
+              </label>
+              <label class="heroes-field" for="heroes-body-change-target">
+                Target component
+                <select id="heroes-body-change-target" class="custom-select"></select>
+              </label>
+              <label class="heroes-field" for="heroes-body-change-parent">
+                Parent component (optional)
+                <select id="heroes-body-change-parent" class="custom-select"></select>
+              </label>
+              <label class="heroes-field" for="heroes-body-change-name">
+                Component name
+                <input id="heroes-body-change-name" maxlength="120" />
+              </label>
+              <label class="heroes-field" for="heroes-body-change-presence">
+                Component presence
+                <select id="heroes-body-change-presence" class="custom-select">
+                  <option value="true">Present</option>
+                  <option value="false">Absent</option>
+                </select>
+              </label>
+              <label class="heroes-field" for="heroes-body-change-description">
+                Change notes
+                <input id="heroes-body-change-description" maxlength="240" />
+              </label>
+            </div>
+          </fieldset>
           <div id="heroes-nested-editor" class="heroes-nested-editor" hidden>
             <h4 id="heroes-nested-title">Nested elements</h4>
             <div class="heroes-form-grid heroes-nested-controls">
@@ -306,11 +368,6 @@
             </div>
             <ul id="heroes-nested-elements" class="heroes-equation-elements"></ul>
           </div>
-          <fieldset id="heroes-typed-trait-fieldset" class="heroes-typed-trait-fieldset">
-            <legend>Applies to model traits</legend>
-            <div id="heroes-typed-trait-options" class="heroes-trait-options"></div>
-          </fieldset>
-
           <button id="heroes-remove-extras" class="btn" type="button">
             Remove non-base elements
           </button>

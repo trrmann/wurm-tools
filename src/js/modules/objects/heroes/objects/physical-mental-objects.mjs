@@ -1,6 +1,6 @@
 import { PhysicalObject } from './physical-objects.mjs';
 import { MentalObject } from './mental-objects.mjs';
-import { Collection } from '../../../../collection.mjs';
+import { Collection } from '../../../collection.mjs';
 export class PhysicalMentalObject extends PhysicalObject {
   constructor({
     points = 0,
@@ -20,12 +20,9 @@ export class PhysicalMentalObject extends PhysicalObject {
       maxDisadvantagePoints: maxDisadvantagePoints,
       maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage,
     });
-    mentalObj
-      .characteristics()
-      .GetAll()
-      .forEach((characteristic) => {
-        this.characteristics().Add(characteristic);
-      });
+    mentalObj.characteristics.forEach((characteristic) => {
+      this.Add(characteristic);
+    });
   }
 }
 /** @extends {Collection<PhysicalMentalObject>} */

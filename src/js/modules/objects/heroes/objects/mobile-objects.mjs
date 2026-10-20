@@ -1,21 +1,25 @@
 import { GameObject } from './game-objects.mjs';
-import { Strength } from '../elements/characteristics/primary-characteristics/strength-characteristics.mjs';
-import { Dexterity } from '../elements/characteristics/primary-characteristics/dexterity-characteristics.mjs';
-import { Presence } from '../elements/characteristics/primary-characteristics/presence-characteristics.mjs';
-import { Speed } from '../elements/characteristics/primary-characteristics/speed-characteristics.mjs';
-import { Endurance } from '../elements/characteristics/primary-characteristics/endurance-characteristics.mjs';
+import { Strength } from '../elements/characteristics/primary-characteristcs/strength-characteristics.mjs';
+import { Dexterity } from '../elements/characteristics/primary-characteristcs/dexterity-characteristics.mjs';
+import { Presence } from '../elements/characteristics/primary-characteristcs/presence-characteristics.mjs';
+import { Speed } from '../elements/characteristics/figured-characteristics/speed-characteristics.mjs';
+import { Endurance } from '../elements/characteristics/figured-characteristics/endurance-characteristics.mjs';
 import { OffensiveCombatValue } from '../elements/characteristics/figured-characteristics/offensive-combat-values.mjs';
 import { DefensiveCombatValue } from '../elements/characteristics/figured-characteristics/defensive-combat-values.mjs';
 import { PhysicalDefense } from '../elements/characteristics/figured-characteristics/physical-defense-characteristics.mjs';
+import { RectangularParallelepiped } from '../elements/body-shapes/rectangular-parallelepiped-shapes.mjs';
 // TODO - movement is not a characteristic, instead they are covered in movement powers
 // TODO - need to track effective current Endurance and allow actions to spend it, need a refuel ability, that if alive can use recovery otherwise needs a fuel to refill - verify the rules on this
 // TODO - need to track effective current Strength, Dexterity, and Speed.
 // TODO - Presense does not belong here - non-mobile, non-living, non-mental, and non-scentient objects also have presense.  the question is what doesn't - does this belong with comeliness in the game-object?
 import { Swimming } from '../elements/powers/movement-powers/swimming-powers.mjs';
-import { Collection } from '../../../../collection.mjs';
+import { Collection } from '../../../collection.mjs';
 import { Running } from '../elements/powers/movement-powers/running-powers.mjs';
 import { Leaping } from '../elements/powers/movement-powers/leaping-powers.mjs';
 export class MobileObject extends GameObject {
+  static createDefaultBodyShape() {
+    return new RectangularParallelepiped();
+  }
   constructor({
     points = 0,
     basePoints = 0,
@@ -28,17 +32,18 @@ export class MobileObject extends GameObject {
       maxDisadvantagePoints: maxDisadvantagePoints,
       maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage,
     });
-    this.characteristics().Add(new Strength({ points: 0 }));
-    this.characteristics().Add(new Dexterity({ points: 0 }));
-    this.characteristics().Add(new Presence({ points: 0 }));
-    this.characteristics().Add(new Speed({ points: 0 }));
-    this.characteristics().Add(new Endurance({ points: 0 }));
-    this.characteristics().Add(new OffensiveCombatValue({ points: 0 }));
-    this.characteristics().Add(new DefensiveCombatValue({ points: 0 }));
-    this.characteristics().Add(new PhysicalDefense({ points: 0 }));
-    this.characteristics().Add(new Running({ points: 0 }));
-    this.characteristics().Add(new Swimming({ points: 0 }));
-    this.characteristics().Add(new Leaping({ points: 0 }));
+    this.Add(new Strength({ points: 0 }));
+    this.Add(new Dexterity({ points: 0 }));
+    this.Add(new Presence({ points: 0 }));
+    this.Add(new Speed({ points: 0 }));
+    this.Add(new Endurance({ points: 0 }));
+    this.Add(new OffensiveCombatValue({ points: 0 }));
+    this.Add(new DefensiveCombatValue({ points: 0 }));
+    this.Add(new PhysicalDefense({ points: 0 }));
+    this.Add(new Running({ points: 0 }));
+    this.Add(new Swimming({ points: 0 }));
+    this.Add(new Leaping({ points: 0 }));
+    this.Add(MobileObject.createDefaultBodyShape());
     this.velocity = { x: 0, y: 0, z: 0 };
   }
   get maxLiftingCapacity() {

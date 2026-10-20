@@ -210,6 +210,13 @@ connections. Both Windows and Fedora `deploy -dev` / `deploy -preview` flows use
 commands, so no separate helper setup is required. If a browser asks for local network access,
 allow it for the Render site.
 
+- **HERO Worlds pairing:** the HERO Worlds page also stores data through this local helper. In a
+  cloned Wurm Tools project, run `npm install` once to install the project dependencies, including
+  the bundled `sql.js` SQLite module. There is no separate SQLite server or PIN. Start `npm run dev`
+  (which starts/reuses the helper), then run `npm run helper:pair-code` in another terminal opened
+  in the project folder and enter the displayed 8-digit code in the HERO Worlds page. The code
+  expires after 10 minutes. A static site deployed to Render cannot reach the local database unless
+  the user has the project and local helper installed and running on their own computer.
 - `GET /status` and `POST /start/server|client` (JSON). Starting uses Steam (`steam://rungameid/402370` server, `366220` client).
 - Installs are found in Steam libraries, or set `WURM_SERVER_DIR` / `WURM_CLIENT_DIR`.
 - `WURM_HELPER_PORT` changes the port; CORS allows `localhost:3000`/`4173` plus `WURM_ALLOWED_ORIGINS` (comma-separated).

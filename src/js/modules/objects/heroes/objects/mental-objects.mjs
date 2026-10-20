@@ -1,6 +1,6 @@
 import { GameObject } from './game-objects.mjs';
-import { Intelligence } from '../characteristics/primary-characteristics/intelligence-characteristics.mjs';
-import { Collection } from '../../../../collection.mjs';
+import { Intelligence } from '../elements/characteristics/primary-characteristcs/intelligence-characteristics.mjs';
+import { Collection } from '../../../collection.mjs';
 
 export class MentalObject extends GameObject {
   constructor({
@@ -15,7 +15,7 @@ export class MentalObject extends GameObject {
       maxDisadvantagePoints: maxDisadvantagePoints,
       maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage,
     });
-    this.characteristics().Add(new Intelligence({ points: 0 }));
+    this.Add(new Intelligence({ points: 0 }));
   }
 }
 

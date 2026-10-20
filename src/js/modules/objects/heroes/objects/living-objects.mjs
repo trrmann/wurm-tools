@@ -1,8 +1,8 @@
-import { GameObject } from '../game-objects.mjs';
-import { Constitution } from '../characteristics/primary-characteristics/constitution-characteristics.mjs';
-import { EnergyDefense } from '../characteristics/figured-characteristics/energy-defense-characteristics.mjs';
-import { Recovery } from '../characteristics/figured-characteristics/recovery-characteristics.mjs';
-import { Collection } from '../../../../collection.mjs';
+import { GameObject } from './game-objects.mjs';
+import { Constitution } from '../elements/characteristics/primary-characteristcs/constitution-characteristics.mjs';
+import { EnergyDefense } from '../elements/characteristics/figured-characteristics/energy-defense-characteristics.mjs';
+import { Recovery } from '../elements/characteristics/figured-characteristics/recovery-characteristics.mjs';
+import { Collection } from '../../../collection.mjs';
 // TODO - review the rules on alive as tied to constitution and if physical then also body
 // TODO - track effective current Constitution (allowing push, etc.)
 export class LivingObject extends GameObject {
@@ -18,9 +18,9 @@ export class LivingObject extends GameObject {
       maxDisadvantagePoints: maxDisadvantagePoints,
       maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage,
     });
-    this.characteristics().Add(new Constitution({ points: 0 }));
-    this.characteristics().Add(new EnergyDefense({ points: 0 }));
-    this.characteristics().Add(new Recovery({ points: 0 }));
+    this.Add(new Constitution({ points: 0 }));
+    this.Add(new EnergyDefense({ points: 0 }));
+    this.Add(new Recovery({ points: 0 }));
   }
 }
 

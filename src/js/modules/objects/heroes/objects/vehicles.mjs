@@ -1,5 +1,5 @@
-import { PhysicalMobileObject } from '../physical-mobile-objects.mjs';
-import { Collection } from '../../../../collection.mjs';
+import { PhysicalMobileObject } from './physical-mobile-objects.mjs';
+import { Collection } from '../../../collection.mjs';
 // TODO - review the rules, are vehicles really mobile bases?
 export class Vehicle extends PhysicalMobileObject {
   constructor({

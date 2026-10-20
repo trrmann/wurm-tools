@@ -1,5 +1,5 @@
 import { PhysicalMentalObject } from './physical-mental-objects.mjs';
-import { Collection } from '../../../../collection.mjs';
+import { Collection } from '../../../collection.mjs';
 export class Computer extends PhysicalMentalObject {
   constructor({
     points = 0,

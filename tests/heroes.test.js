@@ -9,10 +9,17 @@ import {
   HEROS_EDITIONS,
   HerosAdvantages,
   HerosCharacter,
+  HerosBodyShape,
+  BodyShape,
+  HerosBodyShapeComponent,
+  HerosBodyShapeLimitation,
+  HerosCalledShot,
   HerosEquation,
   HerosEverymanSkills,
+  HerosExtraLimb,
   HerosGameObject,
   HerosGameObjects,
+  HerosHitLocation,
   HerosWorld,
   HerosWorlds,
   HerosVehicle,
@@ -33,6 +40,7 @@ import {
   HerosSocialDisadvantage,
   HerosSpecialEffect,
   HerosVariablePowerPools,
+  HEROS_BODY_SHAPE_TYPES,
   HEROS_OBJECT_MODEL_TYPES,
   HEROS_TYPED_ELEMENT_GROUPS,
   registerHerosFiguredCharacteristicFormula,
@@ -229,7 +237,7 @@ describe('Heroes domain model', () => {
   it('models non-character objects, object traits, point levels, and worlds', () => {
     const vehicle = new HerosVehicle({
       name: 'Skimmer',
-      bodyShapes: ['hovercraft'],
+      elementObjects: [new BodyShape({ name: 'hovercraft' })],
       objectModelTypes: ['physical', 'mobile'],
       pointLevelClassifications: [{ name: 'Standard', points: 150, edition: '5e' }],
       advantages: [{ name: 'Flight', value: 20 }],
@@ -238,7 +246,8 @@ describe('Heroes domain model', () => {
     const world = new HerosWorld({ name: 'Asterion', objects: [vehicle] });
 
     expect(vehicle).toBeInstanceOf(HerosGameObject);
-    expect(vehicle.bodyShapes.first.toString()).toBe('hovercraft');
+    expect(vehicle.bodyShape.name).toBe('hovercraft');
+    expect(vehicle.elementObjects.first).toBe(vehicle.bodyShape);
     expect(vehicle.pointLevelClassifications.first).toBeInstanceOf(HerosPointLevelClassification);
     expect(vehicle.pointLevelClassifications.first.points.toString()).toBe('150');
     expect(vehicle.objectModelTypes.map(String)).toContain(HEROS_OBJECT_MODEL_TYPES.mobile);
@@ -249,6 +258,83 @@ describe('Heroes domain model', () => {
     expect(world.addObject(equipment)).toBe(world);
     expect(world.objects.last).toBe(equipment);
     expect(new HerosWorlds([world]).first).toBe(world);
+  });
+
+  it('models body-shape components, hit locations, called shots, damage, and extra limbs', () => {
+    const vehicle = new HerosVehicle({
+      name: 'Adaptive form',
+      elementObjects: [
+        new BodyShape({
+          name: 'Humanoid',
+          generalShape: 'Bipedal',
+          shapeTypes: [HEROS_BODY_SHAPE_TYPES.humanoid, HEROS_BODY_SHAPE_TYPES.bipedal],
+          components: [
+            {
+              id: 'left-arm',
+              name: 'Left arm',
+              components: [{ id: 'left-hand', name: 'Left hand' }],
+            },
+            { name: 'Torso', components: ['Heart'] },
+          ],
+          hitLocations: [{ name: 'Head', damage: '1/2' }],
+          calledShots: [{ name: 'Target the head', targetLocation: 'Head' }],
+          extraLimbs: [{ name: 'Tail', count: 1 }],
+          physicalLimitations: [
+            {
+              name: 'Missing left arm',
+              detail: 'The limb is absent',
+              removedComponentIds: ['left-arm'],
+            },
+          ],
+        }),
+      ],
+    });
+    const shape = vehicle.bodyShape;
+    const head = shape.getHitLocation('Head');
+    const leftArm = shape.getComponent('left-arm');
+    const leftHand = shape.getComponent('left-hand');
+
+    expect(shape).toBeInstanceOf(BodyShape);
+    expect(shape.shape).toBeInstanceOf(HerosBodyShape);
+    expect(shape.generalShape).toBe('Bipedal');
+    expect(shape.shapeTypes.map(String)).toEqual(['humanoid', 'bipedal']);
+    expect(shape.components.first).toBeInstanceOf(HerosBodyShapeComponent);
+    expect(shape.isComponentPresent(leftArm)).toBe(false);
+    expect(shape.isComponentPresent(leftHand)).toBe(false);
+    expect(shape.isComponentPresent('Torso')).toBe(true);
+    expect(shape.getComponent('Heart').toString()).toBe('Heart');
+    expect(head).toBeInstanceOf(HerosHitLocation);
+    expect(shape.calledShots.first).toBeInstanceOf(HerosCalledShot);
+    expect(shape.calledShots.first.target).toBe(head);
+    expect(shape.physicalLimitations.first).toBeInstanceOf(HerosBodyShapeLimitation);
+    expect(shape.extraLimbs.first).toBeInstanceOf(HerosExtraLimb);
+    expect(shape.recordLocationDamage('Head', '1/3').damage.toString()).toBe('5/6');
+    expect(head.disable('Temporarily disabled').disabled).toBe(true);
+    expect(head.enable().disabilityDescription).toBe('');
+
+    const restored = new HerosVehicle({
+      elementObjects: [new BodyShape(JSON.parse(JSON.stringify(vehicle.bodyShape)))],
+    });
+    const restoredShape = restored.bodyShape;
+    expect(restoredShape.getHitLocation('Head').damage.toString()).toBe('5/6');
+    expect(restoredShape.calledShots.first.target).toBe(restoredShape.getHitLocation('Head'));
+    expect(restoredShape.physicalLimitations.first.removedComponents.first).toBe(
+      restoredShape.getComponent('left-arm')
+    );
+    expect(restoredShape.isComponentPresent('left-hand')).toBe(false);
+    const addedComponent = restoredShape.addComponent({ name: 'Tail fin' }, 'Tail');
+    expect(restoredShape.getComponent(addedComponent.id)).toBe(addedComponent);
+    expect(restoredShape.removeExtraLimb('Tail')).toBe(true);
+    expect(restoredShape.getComponent('Tail')).toBeUndefined();
+    expect(restoredShape.removeHitLocation('Head')).toBe(true);
+    expect(restoredShape.calledShots.isEmpty).toBe(true);
+    expect(
+      () =>
+        new HerosBodyShape({
+          name: 'Invalid',
+          calledShots: [{ name: 'Invalid shot', targetLocation: 'Missing' }],
+        })
+    ).toThrow(/not a hit location/);
   });
 
   it('groups base characteristics, advantages, and disadvantages by model trait', () => {

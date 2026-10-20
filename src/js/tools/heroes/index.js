@@ -6,12 +6,24 @@ import {
   getHerosObjectTypes,
   getHerosCharacterElementTypes,
   HerosEquation,
+  replaceHerosObjectBodyShape,
   HerosPointLevelClassification,
 } from '../../modules/objects/heroes.mjs';
 import { MixedNumber } from '../../modules/objects/mixed-numbers.mjs';
 
 const HELPER_URL = 'http://127.0.0.1:5180';
 const HELPER_TOKEN_KEY = 'wurm-tools-helper-token-v1';
+const SHEET_CHARACTERISTIC_ORDER = ['STR', 'DEX', 'CON', 'BODY', 'INT', 'EGO', 'PRE', 'COM'];
+const CHARACTERISTIC_SHORT_NAMES = new Map([
+  ['strength', 'STR'],
+  ['dexterity', 'DEX'],
+  ['constitution', 'CON'],
+  ['body', 'BODY'],
+  ['intelligence', 'INT'],
+  ['ego', 'EGO'],
+  ['presence', 'PRE'],
+  ['comeliness', 'COM'],
+]);
 let controller;
 
 export function unmount() {
@@ -47,6 +59,10 @@ export function mount(container) {
   const characterElementTypeById = new Map(
     characterElementTypes.map((definition) => [definition.type, definition])
   );
+  const objectBodyShapeSelect = container.querySelector('#heroes-object-body-shape');
+  for (const definition of characterElementTypes.filter((entry) => entry.group === 'body-shapes')) {
+    objectBodyShapeSelect.add(new Option(definition.label, definition.type));
+  }
   const NON_PRICED_TYPES = new Set(
     characterElementTypes
       .filter((definition) => !definition.priced)
@@ -55,6 +71,7 @@ export function mount(container) {
   const typedKindSelect = container.querySelector('#heroes-typed-kind');
   const nestedKindSelect = container.querySelector('#heroes-nested-kind');
   for (const definition of characterElementTypes) {
+    if (definition.group === 'body-shapes') continue;
     if (![...typedKindSelect.options].some((option) => option.value === definition.type)) {
       const option = document.createElement('option');
       option.value = definition.type;
@@ -94,12 +111,17 @@ export function mount(container) {
   const pointLevelValueInput = element('#heroes-point-level-value');
   const equationElements = { advantages: [], disadvantages: [] };
   const typedElements = [];
+  const observedElementNameLabels = new Set();
   const nestedElements = [];
+  let generatedCharacter = null;
   let activeWorldId = null;
   let editingObjectId = null;
-  let editingTypedIndex = null;
   let editingNestedIndex = null;
   let editingEquationElement = null;
+
+  function newBodyComponentId() {
+    return `body-change-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+  }
 
   function setState(message, isError = false) {
     state.textContent = message;
@@ -141,7 +163,6 @@ export function mount(container) {
     objectForm.querySelectorAll('input, select, textarea, button').forEach((control) => {
       control.disabled = !enabled || !activeWorldId;
     });
-    element('#heroes-typed-trait-fieldset').disabled = !enabled || !activeWorldId;
   }
 
   function updatePointLevelFields() {
@@ -186,10 +207,32 @@ export function mount(container) {
 
   function updateEquationReadout() {
     try {
-      const equation = readEquation();
+      generatedCharacter = generateHerosObject({
+        objectType: objectKindSelect.value,
+        name: element('#heroes-object-name').value,
+        edition: '5e',
+        characterType: currentCharacterType(),
+        equation: {
+          advantages: equationElements.advantages,
+          points: [MixedNumber.from(pointValueInput.value)],
+          disadvantages: equationElements.disadvantages,
+        },
+        typedElements,
+      });
+      typedElements.splice(
+        0,
+        typedElements.length,
+        ...generatedCharacter.typedElements.map((item) => ({
+          ...item,
+          modelTypes: [...item.modelTypes].map(String),
+        }))
+      );
+      objectBodyShapeSelect.value = bodyShapeDefinitions()[0].type;
+      const equation = generatedCharacter.equation;
       equationReadout.textContent = `Advantages ${equation.advantagesValue} + points ${equation.pointsValue} = disadvantages ${equation.disadvantagesValue}${equation.isBalanced ? ' (balanced)' : ` (difference ${equation.difference})`}`;
       element('#heroes-object-form button[type="submit"]').disabled = !activeWorldId;
     } catch (error) {
+      generatedCharacter = null;
       equationReadout.textContent =
         error instanceof Error ? error.message : 'Unable to generate this character equation.';
       element('#heroes-object-form button[type="submit"]').disabled = true;
@@ -255,10 +298,12 @@ export function mount(container) {
     element('#heroes-element-name').focus();
   }
 
-  function typedElementSheetSection(item, objectType) {
+  function typedElementSheetSection(item, objectType, generatedElement) {
     const definition = characterElementTypeById.get(item.type);
     const typeName = item.type.split('#').at(-1).toLowerCase();
-    const shortName = String(item.shortName ?? item.name ?? '').toUpperCase();
+    const shortName = String(
+      item.shortName ?? generatedElement?.ShortName ?? item.name ?? ''
+    ).toUpperCase();
     const isCharacter = ['character', 'player-character', 'non-player-character'].includes(
       objectType
     );
@@ -275,9 +320,10 @@ export function mount(container) {
       if (definition?.group === 'advantages') return 'abilities';
       return 'other';
     }
-    if (['description', 'event', 'action', 'specialEffect'].includes(item.type)) {
+    if (['description', 'event', 'specialEffect'].includes(item.type)) {
       return 'identity';
     }
+    if (item.type === 'action' || /maneuver/i.test(typeName)) return 'combat-maneuvers';
     if (
       definition?.group === 'characteristics' &&
       (['OCV', 'DCV', 'END', 'DEF'].includes(shortName) || /combatvalue/i.test(typeName))
@@ -291,8 +337,311 @@ export function mount(container) {
     return 'other';
   }
 
+  function characteristicShortName(item, generatedElement) {
+    const provided = item.shortName ?? generatedElement?.ShortName;
+    if (provided) return String(provided).toUpperCase();
+    const className = item.type.split('#').at(-1);
+    const canonicalName = CHARACTERISTIC_SHORT_NAMES.get(
+      String(className ?? item.name).toLowerCase()
+    );
+    return canonicalName ?? String(item.name);
+  }
+
+  function characteristicOrderKey(item, generatedElement) {
+    return characteristicShortName(item, generatedElement).toUpperCase();
+  }
+
+  function bodyShapeDefinitions() {
+    return typedElements.filter(
+      (item) => characterElementTypeById.get(item.type)?.group === 'body-shapes'
+    );
+  }
+
+  function bodyShapeComponentOptions(shape) {
+    const options = [];
+    const seen = new Set();
+    const visit = (component, componentType, depth = 0) => {
+      if (!seen.has(component.id)) {
+        seen.add(component.id);
+        options.push({
+          id: component.id,
+          name: component.name,
+          componentType,
+          isPresent: component.isPresent,
+          depth,
+        });
+      }
+      (component.components ?? []).forEach((child) => visit(child, componentType, depth + 1));
+    };
+    for (const source of [shape.baseBodyShape, shape].filter(Boolean)) {
+      for (const [componentType, components] of [
+        ['component', source.components ?? []],
+        ['body-part', source.parts ?? []],
+        ['hit-location', source.hitLocations ?? []],
+        ['extra-limb', source.extraLimbs ?? []],
+      ]) {
+        components.forEach((component) => visit(component, componentType));
+      }
+    }
+    return options;
+  }
+
+  function supportsBodyShapeChanges(item) {
+    const definition = characterElementTypeById.get(item.type);
+    return definition?.group === 'disadvantages' || definition?.nestedIn.includes('framework');
+  }
+
+  function buildBodyShapeChangeEditor(item, onChange) {
+    const change = item.bodyShapeChange ?? {};
+    const shapeDefinitions = bodyShapeDefinitions();
+    const shapeSelect = document.createElement('select');
+    shapeSelect.className = 'custom-select';
+    shapeSelect.setAttribute('aria-label', `Body shape for ${item.name}`);
+    shapeSelect.add(new Option('Select body shape', ''));
+    for (const shape of shapeDefinitions) {
+      shapeSelect.add(
+        new Option(`${shape.name} · ${shape.generalShape ?? 'unspecified'}`, shape.name)
+      );
+    }
+    shapeSelect.value = change.shapeName ?? '';
+
+    const actionSelect = document.createElement('select');
+    actionSelect.className = 'custom-select';
+    actionSelect.setAttribute('aria-label', `Body-shape operation for ${item.name}`);
+    for (const [value, label] of [
+      ['', 'Select change'],
+      ['add', 'Add component'],
+      ['remove', 'Remove component'],
+      ['set-present', 'Set component presence'],
+    ]) {
+      actionSelect.add(new Option(label, value));
+    }
+    actionSelect.value = change.action ?? '';
+
+    const componentTypeSelect = document.createElement('select');
+    componentTypeSelect.className = 'custom-select';
+    componentTypeSelect.setAttribute('aria-label', `Body component type for ${item.name}`);
+    for (const [value, label] of [
+      ['component', 'Component'],
+      ['hit-location', 'Hit location'],
+      ['extra-limb', 'Extra limb'],
+    ]) {
+      componentTypeSelect.add(new Option(label, value));
+    }
+    componentTypeSelect.value = change.componentType ?? 'component';
+
+    const targetSelect = document.createElement('select');
+    targetSelect.className = 'custom-select';
+    targetSelect.setAttribute('aria-label', `Target body component for ${item.name}`);
+    const parentSelect = document.createElement('select');
+    parentSelect.className = 'custom-select';
+    parentSelect.setAttribute('aria-label', `Parent body component for ${item.name}`);
+    const populateComponents = (select, emptyLabel) => {
+      select.replaceChildren(new Option(emptyLabel, ''));
+      const shape = shapeDefinitions.find((candidate) => candidate.name === shapeSelect.value);
+      for (const component of shape ? bodyShapeComponentOptions(shape) : []) {
+        select.add(
+          new Option(
+            `${'  '.repeat(component.depth)}${component.name} (${component.componentType})`,
+            component.id
+          )
+        );
+      }
+      select.disabled = !shape;
+    };
+    populateComponents(targetSelect, 'Select target component');
+    populateComponents(parentSelect, 'Add at body-shape root');
+    targetSelect.value = change.componentId ?? '';
+    parentSelect.value = change.parentComponentId ?? '';
+
+    const componentNameInput = document.createElement('input');
+    componentNameInput.type = 'text';
+    componentNameInput.maxLength = 120;
+    componentNameInput.placeholder = 'Name for added component';
+    componentNameInput.setAttribute('aria-label', `Body component name for ${item.name}`);
+    componentNameInput.value = change.componentName ?? '';
+
+    const presenceSelect = document.createElement('select');
+    presenceSelect.className = 'custom-select';
+    presenceSelect.setAttribute('aria-label', `Component presence for ${item.name}`);
+    presenceSelect.add(new Option('Present', 'true'));
+    presenceSelect.add(new Option('Absent', 'false'));
+    presenceSelect.value = String(change.isPresent ?? true);
+
+    const descriptionInput = document.createElement('input');
+    descriptionInput.type = 'text';
+    descriptionInput.maxLength = 240;
+    descriptionInput.placeholder = 'Change notes (optional)';
+    descriptionInput.setAttribute('aria-label', `Body-shape change notes for ${item.name}`);
+    descriptionInput.value = change.description ?? '';
+
+    const update = () => {
+      const next = {
+        ...change,
+        shapeName: shapeSelect.value,
+        action: actionSelect.value,
+        componentType: componentTypeSelect.value,
+        componentId: targetSelect.value || null,
+        parentComponentId: parentSelect.value || null,
+        componentName: componentNameInput.value.trim(),
+        isPresent: presenceSelect.value === 'true',
+        description: descriptionInput.value.trim(),
+      };
+      if (next.action === 'add' && next.componentName && !next.componentId) {
+        next.componentId = newBodyComponentId();
+      }
+      if (next.shapeName || next.action || next.componentId || next.componentName) {
+        item.bodyShapeChange = next;
+      } else {
+        delete item.bodyShapeChange;
+      }
+      onChange();
+    };
+    shapeSelect.addEventListener('change', () => {
+      populateComponents(targetSelect, 'Select target component');
+      populateComponents(parentSelect, 'Add at body-shape root');
+      update();
+    });
+    for (const control of [
+      actionSelect,
+      componentTypeSelect,
+      targetSelect,
+      parentSelect,
+      componentNameInput,
+      presenceSelect,
+      descriptionInput,
+    ]) {
+      control.addEventListener('change', update);
+    }
+
+    const editor = document.createElement('div');
+    editor.className = 'heroes-sheet-body-change';
+    editor.append(
+      shapeSelect,
+      actionSelect,
+      componentTypeSelect,
+      targetSelect,
+      parentSelect,
+      componentNameInput,
+      presenceSelect,
+      descriptionInput
+    );
+    return editor;
+  }
+
+  function populateBodyChangeSelects() {
+    const shapeSelect = element('#heroes-body-change-shape');
+    const targetSelect = element('#heroes-body-change-target');
+    const parentSelect = element('#heroes-body-change-parent');
+    const previousShape = shapeSelect.value;
+    const previousTarget = targetSelect.value;
+    const previousParent = parentSelect.value;
+    shapeSelect.replaceChildren(new Option('Select body shape', ''));
+    for (const shape of bodyShapeDefinitions()) {
+      shapeSelect.add(
+        new Option(`${shape.name} · ${shape.generalShape ?? 'unspecified'}`, shape.name)
+      );
+    }
+    if (bodyShapeDefinitions().some((shape) => shape.name === previousShape)) {
+      shapeSelect.value = previousShape;
+    }
+    const shape = bodyShapeDefinitions().find((candidate) => candidate.name === shapeSelect.value);
+    for (const [select, emptyLabel] of [
+      [targetSelect, 'Select target component'],
+      [parentSelect, 'Add at body-shape root'],
+    ]) {
+      select.replaceChildren(new Option(emptyLabel, ''));
+      for (const component of shape ? bodyShapeComponentOptions(shape) : []) {
+        select.add(
+          new Option(
+            `${'  '.repeat(component.depth)}${component.name} (${component.componentType})`,
+            component.id
+          )
+        );
+      }
+      select.disabled = !shape;
+    }
+    targetSelect.value = previousTarget;
+    parentSelect.value = previousParent;
+  }
+
+  function updateBodyChangeFields() {
+    const type = typedKindSelect.value;
+    const editor = element('#heroes-body-change-editor');
+    editor.hidden = !supportsBodyShapeChanges({ type });
+    populateBodyChangeSelects();
+  }
+
+  function validateBodyShapeChanges() {
+    for (const item of typedElements) {
+      const change = item.bodyShapeChange;
+      if (!change) continue;
+      const shape = bodyShapeDefinitions().find((candidate) => candidate.name === change.shapeName);
+      if (!shape || !change.action) {
+        throw new Error(`Complete the linked body-shape change for ${item.name}.`);
+      }
+      if (change.action === 'add') {
+        if (!change.componentName || !change.componentId) {
+          throw new Error(`Enter the component name for the body-shape change on ${item.name}.`);
+        }
+        if (
+          change.parentComponentId &&
+          !bodyShapeComponentOptions(shape).some(
+            (component) => component.id === change.parentComponentId
+          )
+        ) {
+          throw new Error(`The parent component for ${item.name} no longer exists.`);
+        }
+      } else if (
+        !change.componentId ||
+        !bodyShapeComponentOptions(shape).some((component) => component.id === change.componentId)
+      ) {
+        throw new Error(`Select an existing body-shape component for ${item.name}.`);
+      }
+    }
+  }
+
+  function renderBodyShapeSummary() {
+    const summary = document.createElement('section');
+    summary.className = 'heroes-sheet-section heroes-sheet-body-summary';
+    const heading = document.createElement('h4');
+    heading.textContent = 'Body shape';
+    summary.append(heading);
+    const shapes = bodyShapeDefinitions();
+    if (!shapes.length) {
+      const empty = document.createElement('p');
+      empty.className = 'heroes-sheet-summary';
+      empty.textContent = 'No physical body shape applies to this object.';
+      summary.append(empty);
+      return summary;
+    }
+    for (const shape of shapes) {
+      const overview = document.createElement('p');
+      overview.className = 'heroes-sheet-summary';
+      overview.textContent = `${shape.name}: ${shape.generalShape} · ${(shape.shapeTypes ?? []).join(', ') || 'type unspecified'}`;
+      summary.append(overview);
+      const components = bodyShapeComponentOptions(shape);
+      const parts = document.createElement('p');
+      parts.className = 'heroes-sheet-summary';
+      parts.textContent = `Parts: ${(shape.parts ?? []).map((part) => part.name).join(', ') || 'None defined'}`;
+      summary.append(parts);
+      if (components.length) {
+        const list = document.createElement('ul');
+        list.className = 'heroes-sheet-body-parts';
+        for (const component of components) {
+          const row = document.createElement('li');
+          row.textContent = `${'  '.repeat(component.depth)}${component.name} (${component.componentType})${component.isPresent === false ? ' · absent' : ''}`;
+          list.append(row);
+        }
+        summary.append(list);
+      }
+    }
+    return summary;
+  }
+
   function renderTypedElements() {
     typedElementList.replaceChildren();
+    typedElementList.append(renderBodyShapeSummary());
     const objectType = element('#heroes-object-kind').value;
     const isBase = objectType === 'base';
     const isCharacter = ['character', 'player-character', 'non-player-character'].includes(
@@ -311,6 +660,7 @@ export function mount(container) {
             { id: 'identity', title: 'Identity & character/campaign information' },
             { id: 'characteristics', title: 'Characteristics' },
             { id: 'combat', title: 'Combat information' },
+            { id: 'combat-maneuvers', title: 'Combat maneuvers' },
             { id: 'skills', title: 'Skills, perks & talents' },
             { id: 'powers', title: 'Powers & equipment' },
             { id: 'disadvantages', title: 'Disadvantages' },
@@ -325,16 +675,35 @@ export function mount(container) {
             { id: 'totals', title: 'Totals' },
           ];
     element('#heroes-model-entry-title').textContent = isBase
-      ? 'Add or edit base model entries'
+      ? 'Add base model entries'
       : isCharacter
-        ? 'Add or edit character model entries'
-        : 'Add or edit model entries';
+        ? 'Add character model entries'
+        : 'Add model entries';
     const groupedElements = new Map(sections.map(({ id }) => [id, []]));
+    const generatedIndexes = new Map();
     typedElements.forEach((item, index) => {
-      const section = typedElementSheetSection(item, objectType);
+      const generatedIndex = generatedIndexes.get(item.type) ?? 0;
+      generatedIndexes.set(item.type, generatedIndex + 1);
+      const generatedElement = generatedCharacter?.generatedElements.get(item.type)?.[
+        generatedIndex
+      ];
+      if (characterElementTypeById.get(item.type)?.group === 'body-shapes') return;
+      const section = typedElementSheetSection(item, objectType, generatedElement);
       if (!groupedElements.has(section)) groupedElements.set(section, []);
-      groupedElements.get(section).push({ item, index });
+      groupedElements.get(section).push({ item, index, generatedIndex, generatedElement });
     });
+    const characteristicOrder = new Map(
+      SHEET_CHARACTERISTIC_ORDER.map((shortName, index) => [shortName, index])
+    );
+    if (isCharacter) {
+      groupedElements.get('characteristics')?.sort((left, right) => {
+        const leftName = characteristicOrderKey(left.item, left.generatedElement);
+        const rightName = characteristicOrderKey(right.item, right.generatedElement);
+        const leftOrder = characteristicOrder.get(leftName) ?? Number.MAX_SAFE_INTEGER;
+        const rightOrder = characteristicOrder.get(rightName) ?? Number.MAX_SAFE_INTEGER;
+        return leftOrder - rightOrder || left.index - right.index;
+      });
+    }
 
     for (const section of sections) {
       const panel = document.createElement('section');
@@ -380,45 +749,219 @@ export function mount(container) {
         }
       }
 
-      const list = document.createElement('ul');
-      list.className = 'heroes-sheet-element-list';
-      for (const { item, index } of groupedElements.get(section.id) || []) {
-        const row = document.createElement('li');
-        const label = document.createElement('span');
-        const shortName = item.shortName ? `${item.shortName} · ` : '';
-        const price = item.value == null ? '' : ` · ${item.value} points`;
-        const detail = item.detail ? ` · ${item.detail}` : '';
-        const nested = item.children?.length ? ` · ${item.children.length} nested` : '';
-        const labelText = characterElementTypeById.get(item.type)?.label ?? item.type;
-        label.textContent = `${shortName}${item.name} · ${labelText}${price}${detail}${nested}${item.isBase ? ' · base' : ' · extra'}`;
-        const edit = document.createElement('button');
-        edit.type = 'button';
-        edit.className = 'btn';
-        edit.textContent = 'Edit';
-        edit.setAttribute('aria-label', `Edit ${item.shortName || item.name}`);
-        edit.addEventListener('click', () => beginTypedEdit(index));
+      const entries = groupedElements.get(section.id) || [];
+      const hasBodyShapeChanges = entries.some(({ item }) => supportsBodyShapeChanges(item));
+      const table = document.createElement('table');
+      table.className = 'heroes-sheet-table';
+      const head = document.createElement('thead');
+      const headerRow = document.createElement('tr');
+      for (const column of [
+        'Element',
+        'Value',
+        'Points / cost',
+        'Notes',
+        ...(hasBodyShapeChanges ? ['Linked body-shape change'] : []),
+        'Base entry',
+        'Actions',
+      ]) {
+        const header = document.createElement('th');
+        header.scope = 'col';
+        header.textContent = column;
+        headerRow.append(header);
+      }
+      head.append(headerRow);
+      table.append(head);
+      const body = document.createElement('tbody');
+      for (const { item, index, generatedIndex } of entries) {
+        const generatedElement = generatedCharacter?.generatedElements.get(item.type)?.[
+          generatedIndex
+        ];
+        const shortNameValue = characteristicShortName(item, generatedElement);
+        const row = document.createElement('tr');
+        const elementCell = document.createElement('td');
+        elementCell.dataset.label = 'Element';
+        const nameLabel = document.createElement('span');
+        nameLabel.className = 'heroes-sheet-element-label';
+        nameLabel.textContent = shortNameValue;
+        nameLabel.title = String(item.name);
+        nameLabel.setAttribute('aria-label', `${shortNameValue}: ${item.name}`);
+        nameLabel.tabIndex = 0;
+        const nameLabelKey = `${item.type}\u0000${item.name}`;
+        const stopNameLabelHint = () => {
+          observedElementNameLabels.add(nameLabelKey);
+          nameLabel.classList.add('heroes-sheet-element-label--seen');
+        };
+        if (observedElementNameLabels.has(nameLabelKey)) {
+          nameLabel.classList.add('heroes-sheet-element-label--seen');
+        } else {
+          nameLabel.addEventListener('mouseenter', stopNameLabelHint, { once: true });
+          nameLabel.addEventListener('focus', stopNameLabelHint, { once: true });
+        }
+        elementCell.append(nameLabel);
+
+        const valueCell = document.createElement('td');
+        valueCell.dataset.label = 'Value';
+        const elementDefinition = characterElementTypeById.get(item.type);
+        const supportsDesiredValue =
+          elementDefinition?.isPrimaryCharacteristic &&
+          generatedElement?.ValueRate != null &&
+          !MixedNumber.from(generatedElement.ValueRate).equals(0);
+        if (supportsDesiredValue) {
+          const desiredValueInput = document.createElement('input');
+          desiredValueInput.type = 'text';
+          desiredValueInput.inputMode = 'decimal';
+          desiredValueInput.value =
+            generatedElement.UnroundedValue?.toString?.() ??
+            generatedElement.Value?.() ??
+            generatedElement.toString();
+          desiredValueInput.setAttribute('aria-label', `Desired value for ${item.name}`);
+          desiredValueInput.title = `Set the desired ${item.name} value; points are derived from its base value and cost rate.`;
+          desiredValueInput.addEventListener('change', () => {
+            try {
+              const desiredValue = MixedNumber.from(desiredValueInput.value);
+              const baseValue = MixedNumber.from(generatedElement.BaseValue ?? 0);
+              const valueRate = MixedNumber.from(generatedElement.ValueRate);
+              typedElements[index].value = desiredValue
+                .subtract(baseValue)
+                .multiply(valueRate)
+                .toString();
+              updateEquationReadout();
+            } catch (error) {
+              setState(error.message, true);
+              desiredValueInput.value = generatedElement.UnroundedValue?.toString?.() ?? '0';
+            }
+          });
+          valueCell.append(desiredValueInput);
+        } else {
+          valueCell.textContent =
+            generatedElement == null
+              ? '—'
+              : (generatedElement.UnroundedValue?.toString?.() ??
+                generatedElement.Value?.() ??
+                generatedElement.toString());
+        }
+
+        const pointsCell = document.createElement('td');
+        pointsCell.dataset.label = 'Points / cost';
+        if (elementDefinition?.priced) {
+          const pointsInput = document.createElement('input');
+          pointsInput.type = 'text';
+          pointsInput.inputMode = 'decimal';
+          pointsInput.value = item.value ?? '0';
+          pointsInput.setAttribute(
+            'aria-label',
+            `${elementDefinition.isPrimaryCharacteristic ? 'Points to spend on' : 'Points or cost for'} ${item.name}`
+          );
+          pointsInput.addEventListener('change', () => {
+            try {
+              typedElements[index].value = MixedNumber.from(pointsInput.value).toString();
+              updateEquationReadout();
+            } catch (error) {
+              setState(error.message, true);
+              pointsInput.value = item.value ?? '0';
+            }
+          });
+          pointsCell.append(pointsInput);
+        } else {
+          pointsCell.textContent = '—';
+        }
+
+        const detailCell = document.createElement('td');
+        detailCell.dataset.label = 'Notes';
+        const detailInput = document.createElement('input');
+        detailInput.type = 'text';
+        detailInput.maxLength = 500;
+        detailInput.value = item.detail ?? '';
+        detailInput.setAttribute('aria-label', `Notes for ${item.name}`);
+        detailInput.addEventListener('change', () => {
+          const updated = typedElements[index];
+          updated.detail = detailInput.value.trim();
+          if (updated.type === 'figuredCharacteristic') {
+            updated.formulaId = updated.detail;
+          }
+          if (elementDefinition?.isModifier) {
+            try {
+              MixedNumber.from(updated.detail);
+            } catch (error) {
+              setState(error.message, true);
+              detailInput.value = item.detail ?? '';
+              return;
+            }
+          }
+          updateEquationReadout();
+        });
+        detailCell.append(detailInput);
+        if (elementDefinition?.isModifier) {
+          const targetInput = document.createElement('input');
+          targetInput.type = 'text';
+          targetInput.maxLength = 120;
+          targetInput.value = item.target ?? '';
+          targetInput.placeholder = 'Target element';
+          targetInput.setAttribute('aria-label', `Modifier target for ${item.name}`);
+          targetInput.addEventListener('change', () => {
+            typedElements[index].target = targetInput.value.trim();
+            updateEquationReadout();
+          });
+          detailCell.append(targetInput);
+        }
+
+        const bodyChangeCell = document.createElement('td');
+        bodyChangeCell.dataset.label = 'Linked body-shape change';
+        if (hasBodyShapeChanges) {
+          if (supportsBodyShapeChanges(item)) {
+            bodyChangeCell.append(buildBodyShapeChangeEditor(item, () => updateEquationReadout()));
+          } else {
+            bodyChangeCell.textContent = '—';
+          }
+        }
+
+        const baseCell = document.createElement('td');
+        baseCell.dataset.label = 'Base entry';
+        const baseLabel = document.createElement('label');
+        baseLabel.className = 'heroes-sheet-base-entry';
+        const baseInput = document.createElement('input');
+        baseInput.type = 'checkbox';
+        baseInput.checked = Boolean(item.isBase);
+        baseInput.disabled = Boolean(item.isHierarchyDefault);
+        baseInput.setAttribute('aria-label', `Include ${item.name} in base trait specification`);
+        baseInput.addEventListener('change', () => {
+          typedElements[index].isBase = baseInput.checked;
+          updateEquationReadout();
+        });
+        baseLabel.append(baseInput, document.createTextNode(item.isBase ? 'Base' : 'Extra'));
+        baseCell.append(baseLabel);
+
+        const actionsCell = document.createElement('td');
+        actionsCell.dataset.label = 'Actions';
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'btn';
         remove.textContent = 'Remove';
-        remove.setAttribute('aria-label', `Remove ${item.shortName || item.name}`);
+        remove.setAttribute('aria-label', `Remove ${shortNameValue || item.name}`);
+        remove.hidden = Boolean(item.isHierarchyDefault);
         remove.addEventListener('click', () => {
-          if (editingTypedIndex === index) resetTypedForm();
-          else if (editingTypedIndex > index) editingTypedIndex -= 1;
           typedElements.splice(index, 1);
           renderTypedElements();
           updateEquationReadout();
         });
-        row.append(label, edit, remove);
-        list.append(row);
+        remove.hidden = Boolean(item.isHierarchyDefault);
+        actionsCell.append(remove);
+        row.append(elementCell, valueCell, pointsCell, detailCell);
+        if (hasBodyShapeChanges) row.append(bodyChangeCell);
+        row.append(baseCell, actionsCell);
+        body.append(row);
       }
-      if (!list.childElementCount) {
-        const empty = document.createElement('li');
+      if (!entries.length) {
+        const row = document.createElement('tr');
+        const empty = document.createElement('td');
+        empty.colSpan = hasBodyShapeChanges ? 7 : 6;
         empty.className = 'heroes-empty-list';
         empty.textContent = 'No model entries in this section yet.';
-        list.append(empty);
+        row.append(empty);
+        body.append(row);
       }
-      panel.append(list);
+      table.append(body);
+      panel.append(table);
       typedElementList.append(panel);
     }
   }
@@ -494,6 +1037,30 @@ export function mount(container) {
     updateEquationReadout();
   }
 
+  objectBodyShapeSelect.addEventListener('change', () => {
+    try {
+      const selected = characterElementTypeById.get(objectBodyShapeSelect.value);
+      const object = replaceHerosObjectBodyShape(
+        { objectType: objectKindSelect.value, typedElements },
+        { type: selected.type, name: selected.defaultName ?? selected.label }
+      );
+      typedElements.splice(
+        0,
+        typedElements.length,
+        ...object.typedElements.map((item) => ({
+          ...item,
+          modelTypes: [...item.modelTypes].map(String),
+        }))
+      );
+      updateEquationReadout();
+      populateBodyChangeSelects();
+      setState(`Body shape replaced with ${object.bodyShape.name}.`);
+    } catch (error) {
+      objectBodyShapeSelect.value = bodyShapeDefinitions()[0].type;
+      setState(error.message, true);
+    }
+  });
+
   function beginEditing(object) {
     const definition = object.definition || {};
     resetEquationForm();
@@ -502,7 +1069,6 @@ export function mount(container) {
     element('#heroes-object-name').value = object.name;
     element('#heroes-object-kind').value =
       definition.objectType ?? definition.kind ?? object.kind ?? 'object';
-    element('#heroes-object-shape').value = (definition.bodyShapes || []).join(', ');
     const pointLevel = definition.pointLevelClassifications?.[0];
     const pointLevelPreset = HerosPointLevelClassification.Presets.find(
       (preset) =>
@@ -533,7 +1099,6 @@ export function mount(container) {
     typedElements.splice(0, typedElements.length, ...(definition.typedElements || []));
     objectKindSelect.dispatchEvent(new Event('change'));
     resetTypedForm();
-    renderTypedTraitOptions();
     element('#heroes-editor-title').textContent = `Edit ${object.name}`;
     element('.heroes-save-object').textContent = 'Update object';
     element('#heroes-cancel-edit').hidden = false;
@@ -769,12 +1334,29 @@ export function mount(container) {
   });
 
   element('#heroes-object-kind').addEventListener('change', () => {
-    const available = new Set(currentModelTraits());
-    for (const item of typedElements) {
-      item.modelTypes = (item.modelTypes || []).filter((modelType) => available.has(modelType));
-    }
+    const objectType = objectKindSelect.value;
+    const availableDefaults = generateHerosObject({ objectType, edition: '5e' }).typedElements;
+    const availableDefaultKeys = new Set(
+      availableDefaults.map((item) => `${item.type}\u0000${item.name}`)
+    );
+    const retainedElements = typedElements.filter(
+      (item) =>
+        !item.isHierarchyDefault || availableDefaultKeys.has(`${item.type}\u0000${item.name}`)
+    );
+    const object = generateHerosObject({
+      objectType,
+      edition: '5e',
+      typedElements: retainedElements,
+    });
+    typedElements.splice(
+      0,
+      typedElements.length,
+      ...object.typedElements.map((item) => ({
+        ...item,
+        modelTypes: [...item.modelTypes].map(String),
+      }))
+    );
     renderObjectModelTraits();
-    renderTypedTraitOptions();
     renderTypedElements();
     updateEquationReadout();
   });
@@ -786,76 +1368,50 @@ export function mount(container) {
 
   function renderObjectModelTraits() {
     const available = new Set(currentModelTraits());
-    for (const checkbox of element('#heroes-model-traits').querySelectorAll(
-      'input[type="checkbox"]'
-    )) {
-      checkbox.checked = available.has(checkbox.value);
-    }
-  }
-
-  function renderTypedTraitOptions(selected = []) {
-    const container = element('#heroes-typed-trait-options');
-    container.replaceChildren();
-    const available = currentModelTraits();
-    if (!available.length) {
-      const empty = document.createElement('span');
-      empty.className = 'heroes-empty-list';
-      empty.textContent = 'Select an object model trait to associate elements.';
-      container.append(empty);
-      return;
-    }
-    for (const modelType of available) {
-      const label = document.createElement('label');
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.name = 'typed-model-type';
-      checkbox.value = modelType;
-      checkbox.checked = selected.includes(modelType);
-      label.append(checkbox, document.createTextNode(modelType));
-      container.append(label);
+    const labels = new Map([
+      ['physical', 'Physical'],
+      ['non-physical', 'Non-physical'],
+      ['sentient', 'Sentient'],
+      ['non-sentient', 'Non-sentient'],
+      ['mobile', 'Mobile'],
+      ['non-mobile', 'Non-mobile'],
+      ['player-character', 'Player character'],
+      ['non-player-character', 'Non-player character'],
+    ]);
+    const list = element('#heroes-model-trait-list');
+    list.replaceChildren();
+    for (const [trait, label] of labels) {
+      const item = document.createElement('li');
+      item.className = available.has(trait) ? 'is-active' : 'is-inactive';
+      item.textContent = label;
+      list.append(item);
     }
   }
 
   function resetTypedForm() {
-    editingTypedIndex = null;
     element('#heroes-typed-kind').value = 'characteristic';
     updateTypedFields();
     element('#heroes-typed-name').value = '';
+    element('#heroes-typed-name').readOnly = false;
+    element('#heroes-typed-base').disabled = false;
     element('#heroes-typed-short-name').value = '';
     element('#heroes-typed-value').value = '';
     element('#heroes-typed-detail').value = '';
     element('#heroes-typed-target').value = '';
     element('#heroes-typed-base').checked = false;
+    element('#heroes-body-change-shape').value = '';
+    element('#heroes-body-change-action').value = '';
+    element('#heroes-body-change-type').value = 'component';
+    element('#heroes-body-change-target').value = '';
+    element('#heroes-body-change-parent').value = '';
+    element('#heroes-body-change-name').value = '';
+    element('#heroes-body-change-presence').value = 'true';
+    element('#heroes-body-change-description').value = '';
+    populateBodyChangeSelects();
     nestedElements.length = 0;
     resetNestedForm();
     renderNestedElements();
     element('#heroes-add-typed').textContent = 'Add typed element';
-    element('#heroes-cancel-typed-edit').hidden = true;
-    renderTypedTraitOptions();
-  }
-
-  function beginTypedEdit(index) {
-    const item = typedElements[index];
-    if (!item) return;
-    editingTypedIndex = index;
-    element('#heroes-typed-kind').value = item.type;
-    updateTypedFields();
-    element('#heroes-typed-name').value = item.name;
-    element('#heroes-typed-short-name').value = item.shortName ?? '';
-    element('#heroes-typed-value').value = item.value ?? '';
-    element('#heroes-typed-detail').value = item.detail ?? '';
-    element('#heroes-typed-target').value = item.target ?? '';
-    element('#heroes-typed-base').checked = Boolean(item.isBase);
-    nestedElements.splice(
-      0,
-      nestedElements.length,
-      ...(item.children || []).map((child) => ({ ...child }))
-    );
-    renderNestedElements();
-    renderTypedTraitOptions(item.modelTypes || []);
-    element('#heroes-add-typed').textContent = 'Update typed element';
-    element('#heroes-cancel-typed-edit').hidden = false;
-    element('#heroes-typed-name').focus();
   }
 
   function updateTypedFields() {
@@ -865,7 +1421,12 @@ export function mount(container) {
     const detailLabel = element('#heroes-typed-detail-label');
     const targetInput = element('#heroes-typed-target');
     const valueInput = element('#heroes-typed-value');
-    element('#heroes-typed-value-label').textContent = definition?.valueLabel || 'Point value';
+    element('#heroes-typed-value-label').textContent =
+      definition?.group === 'characteristics'
+        ? 'Points invested'
+        : definition?.group
+          ? 'Point cost'
+          : (definition?.valueLabel ?? 'Point value');
     detailLabel.textContent = definition?.detailLabel || 'Description or detail';
     detailInput.placeholder = definition?.isModifier ? '-1/4 or 1/2' : '';
     detailInput.required = false;
@@ -874,6 +1435,7 @@ export function mount(container) {
     valueInput.disabled = definition ? !definition.priced : NON_PRICED_TYPES.has(type);
     valueInput.required = false;
     updateNestedEditor();
+    updateBodyChangeFields();
   }
 
   function updateNestedEditor() {
@@ -906,6 +1468,7 @@ export function mount(container) {
   }
 
   element('#heroes-typed-kind').addEventListener('change', updateTypedFields);
+  element('#heroes-body-change-shape').addEventListener('change', populateBodyChangeSelects);
   updateTypedFields();
 
   element('#heroes-add-nested').addEventListener('click', () => {
@@ -989,15 +1552,41 @@ export function mount(container) {
         throw new Error('Nested elements can only be saved inside a package or power framework.');
       }
       if (nestedElements.length) item.children = nestedElements.map((child) => ({ ...child }));
-      item.isBase = element('#heroes-typed-base').checked;
-      item.modelTypes = Array.from(
-        element('#heroes-typed-trait-options').querySelectorAll('input:checked'),
-        (input) => input.value
-      );
-      if (editingTypedIndex === null) typedElements.push(item);
-      else {
-        typedElements[editingTypedIndex] = item;
+      if (!element('#heroes-body-change-editor').hidden) {
+        const bodyShapeChange = {
+          shapeName: element('#heroes-body-change-shape').value,
+          action: element('#heroes-body-change-action').value,
+          componentType: element('#heroes-body-change-type').value,
+          componentId: element('#heroes-body-change-target').value || null,
+          parentComponentId: element('#heroes-body-change-parent').value || null,
+          componentName: element('#heroes-body-change-name').value.trim(),
+          isPresent: element('#heroes-body-change-presence').value === 'true',
+          description: element('#heroes-body-change-description').value.trim(),
+        };
+        const hasBodyChange = Boolean(
+          bodyShapeChange.shapeName ||
+          bodyShapeChange.action ||
+          bodyShapeChange.componentId ||
+          bodyShapeChange.componentName ||
+          bodyShapeChange.description
+        );
+        if (hasBodyChange) {
+          if (!bodyShapeChange.shapeName || !bodyShapeChange.action) {
+            throw new Error('Select a body shape and a body-shape change operation.');
+          }
+          if (bodyShapeChange.action === 'add') {
+            if (!bodyShapeChange.componentName) {
+              throw new Error('Enter the name of the component to add.');
+            }
+            bodyShapeChange.componentId = newBodyComponentId();
+          } else if (!bodyShapeChange.componentId) {
+            throw new Error('Select the body-shape component to change.');
+          }
+          item.bodyShapeChange = bodyShapeChange;
+        }
       }
+      item.isBase = element('#heroes-typed-base').checked;
+      typedElements.push(item);
       resetTypedForm();
       renderTypedElements();
       updateEquationReadout();
@@ -1006,8 +1595,6 @@ export function mount(container) {
       setState(error.message, true);
     }
   });
-
-  element('#heroes-cancel-typed-edit').addEventListener('click', resetTypedForm);
 
   element('#heroes-remove-extras').addEventListener('click', () => {
     const extras = typedElements.filter((item) => !item.isBase);
@@ -1072,9 +1659,9 @@ export function mount(container) {
     if (!activeWorldId) return;
     const values = new FormData(objectForm);
     try {
+      validateBodyShapeChanges();
       const wasEditing = Boolean(editingObjectId);
       const equation = readEquation();
-      const bodyShape = values.get('bodyShape').trim();
       const pointLevelId = values.get('pointLevel');
       const pointLevelPreset = HerosPointLevelClassification.Presets.find(
         (preset) => preset.id === pointLevelId
@@ -1108,12 +1695,6 @@ export function mount(container) {
         kind: values.get('kind'),
         objectType: values.get('kind'),
         characterType: currentCharacterType(),
-        bodyShapes: bodyShape
-          ? bodyShape
-              .split(',')
-              .map((shape) => shape.trim())
-              .filter(Boolean)
-          : [],
         pointLevelClassifications: pointLevels,
         objectModelTypes: currentModelTraits(),
         description: values.get('description').trim(),
@@ -1140,6 +1721,10 @@ export function mount(container) {
       };
       const generatedObject = generateHerosObject(definition);
       definition.objectModelTypes = generatedObject.objectModelTypes.map(String);
+      definition.typedElements = generatedObject.typedElements.map((item) => ({
+        ...item,
+        modelTypes: [...item.modelTypes].map(String),
+      }));
       const route = editingObjectId
         ? `/heroes/objects/${encodeURIComponent(editingObjectId)}`
         : `/heroes/worlds/${encodeURIComponent(activeWorldId)}/objects`;

@@ -1,6 +1,6 @@
 import { PhysicalLivingMobileObject } from './physical-living-mobile-objects.mjs';
 import { SentientObject } from './sentient-objects.mjs';
-import { Collection } from '../../../../collection.mjs';
+import { Collection } from '../../../collection.mjs';
 export class PhysicalLivingMobileSentientObject extends PhysicalLivingMobileObject {
   constructor({
     points = 0,
@@ -20,12 +20,9 @@ export class PhysicalLivingMobileSentientObject extends PhysicalLivingMobileObje
       maxDisadvantagePoints: maxDisadvantagePoints,
       maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage,
     });
-    sentientObj
-      .characteristics()
-      .GetAll()
-      .forEach((characteristic) => {
-        this.characteristics().Add(characteristic);
-      });
+    sentientObj.characteristics.forEach((characteristic) => {
+      this.Add(characteristic);
+    });
   }
 }
 /** @extends {Collection<PhysicalLivingMobileSentientObject>} */

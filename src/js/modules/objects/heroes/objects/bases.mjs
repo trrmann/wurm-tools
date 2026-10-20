@@ -1,5 +1,5 @@
-import { PhysicalObject } from '../physical-objects.mjs';
-import { Collection } from '../../../../collection.mjs';
+import { PhysicalObject } from './physical-objects.mjs';
+import { Collection } from '../../../collection.mjs';
 // TODO need to flush this out better from the rules
 export class Base extends PhysicalObject {
   constructor({

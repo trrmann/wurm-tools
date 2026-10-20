@@ -13,7 +13,11 @@ import {
   HerosVehicle,
   normalizeHerosEdition,
 } from './heroes.mjs';
-import { generateHerosCharacter } from './character-generator.mjs';
+import {
+  generateHerosCharacter,
+  getHerosCharacterElementTypes,
+  withHerosObjectBodyShape,
+} from './character-generator.mjs';
 
 const objectTypes = new Map([
   ['object', { label: 'Generic object', Type: HerosGameObject }],
@@ -44,42 +48,75 @@ function inferCharacterType(objectType) {
   return undefined;
 }
 
-/** Build any supported HERO world-object kind through the shared character element generator. */
+function isBodyShape(item) {
+  return getHerosCharacterElementTypes().some(
+    (entry) => entry.type === item.type && entry.group === 'body-shapes'
+  );
+}
+
+/** Replace the shape definition, never append a second shape or keep a displaced default. */
+export function replaceHerosObjectBodyShape(definition, replacement) {
+  if (!replacement || !isBodyShape(replacement)) {
+    throw new TypeError('Replacement must be a registered body-shape element');
+  }
+  return generateHerosObject({
+    ...definition,
+    typedElements: [
+      ...(definition.typedElements ?? []).filter((item) => !isBodyShape(item)),
+      { ...replacement, isBase: true },
+    ],
+  });
+}
+
+/** Build any supported HERO world-object kind through the shared element generator. */
 export function generateHerosObject(definition = {}) {
   if (definition == null || typeof definition !== 'object' || Array.isArray(definition)) {
     throw new TypeError('Object definition must be an object');
   }
-
+  if ('bodyShapes' in definition || 'bodyShape' in definition) {
+    throw new TypeError('Define body shape only as a typedElements body-shape element');
+  }
   const objectType = definition.objectType ?? definition.kind ?? 'object';
   const objectTypeDefinition = objectTypes.get(objectType);
-  if (!objectTypeDefinition) {
-    throw new RangeError(`Unsupported HERO object type: ${objectType}`);
-  }
-
+  if (!objectTypeDefinition) throw new RangeError(`Unsupported HERO object type: ${objectType}`);
   const edition = normalizeHerosEdition(definition.edition);
+  const typedElements = withHerosObjectBodyShape(
+    definition.typedElements,
+    objectTypeDefinition.Type.ObjectClass
+  );
   const character = generateHerosCharacter({
     ...definition,
     edition: edition.id,
     characterType: inferCharacterType(objectType),
+    typedElements,
   });
+  const shape = character.bodyShape;
+  const finalTypedElements = character.typedElements.map((item) =>
+    isBodyShape(item)
+      ? {
+          ...item,
+          ...shape.toJSON(),
+          baseBodyShape: shape.bodyShapeBaseline,
+        }
+      : item
+  );
   const options = {
     ...definition,
+    typedElements: finalTypedElements,
+    elementObjects: character.elementObjects,
     objectType,
-    kind: objectType,
     edition: edition.id,
     equation: character.equation,
   };
   const object =
-    objectType === 'character' ||
-    objectType === 'player-character' ||
-    objectType === 'non-player-character'
+    objectTypeDefinition.Type.prototype instanceof HerosCharacter ||
+    objectTypeDefinition.Type === HerosCharacter
       ? character
       : new objectTypeDefinition.Type(options);
-
+  object.typedElements = finalTypedElements;
   object.objectType = objectType;
   object.kind = objectType;
   object.edition = edition;
   object.generatedElements = character.generatedElements;
-  object.elementObjects = character.elementObjects;
   return object;
 }

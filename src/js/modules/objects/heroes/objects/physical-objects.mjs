@@ -1,9 +1,12 @@
-import { GameObject } from './game-object.mjs';
-import { Body } from '../characteristics/primary/body.mjs';
-import { Defense } from '../characteristics/figured/defense.mjs';
-import { Collection } from '../../../../collection.mjs';
-// TODO - needs a body shape - possibly as a separate element, as there are powers that modifies it
+import { GameObject } from './game-objects.mjs';
+import { Body } from '../elements/characteristics/primary-characteristcs/body-characteristics.mjs';
+import { Defense } from '../elements/characteristics/figured-characteristics/defense-characteristics.mjs';
+import { Collection } from '../../../collection.mjs';
+import { RectangularParallelepiped } from '../elements/body-shapes/rectangular-parallelepiped-shapes.mjs';
 export class PhysicalObject extends GameObject {
+  static createDefaultBodyShape() {
+    return new RectangularParallelepiped();
+  }
   #structuralState() {
     const ratio = this.Get('Body').EffectiveValue() / this.Get('Body').Value();
     if (ratio <= -1) {
@@ -34,6 +37,7 @@ export class PhysicalObject extends GameObject {
     });
     this.Add(new Body({ points: 0 }));
     this.Add(new Defense({ points: 0 }));
+    this.Add(PhysicalObject.createDefaultBodyShape());
     this.sizePower = 0; // Scale and volume metric
   }
   takeDamage({ damage } = {}) {

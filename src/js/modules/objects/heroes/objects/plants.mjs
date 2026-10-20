@@ -1,5 +1,5 @@
 import { PhysicalLivingObject } from './physical-living-objects.mjs';
-import { Collection } from '../../../../collection.mjs';
+import { Collection } from '../../../collection.mjs';
 export class Plant extends PhysicalLivingObject {
   constructor({
     points = 0,

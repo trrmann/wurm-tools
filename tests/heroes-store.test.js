@@ -26,6 +26,10 @@ function tempDatabase() {
   return { root, file: path.join(root, 'heroes.db') };
 }
 
+function removeTempDatabase(fixture) {
+  fs.rmSync(fixture.root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
+
 function bodyRequest(method, value) {
   return Object.assign(Readable.from([Buffer.from(JSON.stringify(value))]), { method });
 }
@@ -69,7 +73,7 @@ describe('local Heroes SQLite store', () => {
       expect(await deleteHeroesObject(object.id, fixture.file)).toEqual({ deleted: 1 });
       expect(await listHeroesObjects(world.id, fixture.file)).toEqual([]);
     } finally {
-      fs.rmSync(fixture.root, { recursive: true, force: true });
+      removeTempDatabase(fixture);
     }
   });
 
@@ -128,7 +132,7 @@ describe('local Heroes SQLite store', () => {
         updateHeroesObject('missing', { name: 'Missing', kind: 'object' }, fixture.file)
       ).rejects.toMatchObject({ status: 404 });
     } finally {
-      fs.rmSync(fixture.root, { recursive: true, force: true });
+      removeTempDatabase(fixture);
     }
   });
 
@@ -170,7 +174,7 @@ describe('local Heroes SQLite store', () => {
         status: 404,
       });
     } finally {
-      fs.rmSync(fixture.root, { recursive: true, force: true });
+      removeTempDatabase(fixture);
     }
   });
 
@@ -197,7 +201,7 @@ describe('local Heroes SQLite store', () => {
         status: 404,
       });
     } finally {
-      fs.rmSync(fixture.root, { recursive: true, force: true });
+      removeTempDatabase(fixture);
     }
   });
 
@@ -223,7 +227,7 @@ describe('local Heroes SQLite store', () => {
       ).toThrow(expect.objectContaining({ status: 400 }));
       expect(await listHeroesWorlds(fixture.file)).toEqual([world]);
     } finally {
-      fs.rmSync(fixture.root, { recursive: true, force: true });
+      removeTempDatabase(fixture);
     }
   });
 
@@ -241,7 +245,7 @@ describe('local Heroes SQLite store', () => {
         createHeroesObject(world.id, { name: 'Thing', kind: 'planet' }, fixture.file)
       ).toThrow(expect.objectContaining({ status: 400 }));
     } finally {
-      fs.rmSync(fixture.root, { recursive: true, force: true });
+      removeTempDatabase(fixture);
     }
   });
 
@@ -311,7 +315,7 @@ describe('local Heroes SQLite store', () => {
       );
       expect(deletedWorld).toEqual({ deleted: 1, objectsDeleted: 2 });
     } finally {
-      fs.rmSync(fixture.root, { recursive: true, force: true });
+      removeTempDatabase(fixture);
     }
   });
 
@@ -331,7 +335,7 @@ describe('local Heroes SQLite store', () => {
       await new Promise((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
       });
-      fs.rmSync(fixture.root, { recursive: true, force: true });
+      removeTempDatabase(fixture);
     }
   });
 });

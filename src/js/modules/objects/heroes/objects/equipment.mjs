@@ -1,5 +1,5 @@
 import { ItemObject } from './item-objects.mjs';
-import { Collection } from '../../../../collection.mjs';
+import { Collection } from '../../../collection.mjs';
 export class EquipmentItem extends ItemObject {
   constructor({
     points = 0,

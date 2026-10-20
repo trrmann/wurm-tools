@@ -1,4 +1,4 @@
-import { Collection } from '../../collection.mjs';
+import { Collection } from '../../../collection.mjs';
 import { SentientObject } from './sentient-objects.mjs';
 
 export class AI extends SentientObject {
