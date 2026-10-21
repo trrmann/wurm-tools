@@ -20,7 +20,7 @@ import { Avian } from '../src/js/modules/objects/heroes/elements/body-shapes/avi
 import { Humanoid } from '../src/js/modules/objects/heroes/elements/body-shapes/humanoid-shapes.mjs';
 import { Head } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/head-parts.mjs';
 import { Wings } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/wings-parts.mjs';
-import { BodyChestRibs } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/body-chest-ribs-parts.mjs';
+import { BodyChestAndRibs } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/body-chest-and-ribs-parts.mjs';
 import { Stomach } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/stomach-parts.mjs';
 import { Vitals } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/vitals-parts.mjs';
 import { Legs } from '../src/js/modules/objects/heroes/elements/body-shapes/body-parts.mjs/legs-parts.mjs';
@@ -212,7 +212,7 @@ describe('HERO character generator', () => {
     const disadvantageType = getHerosCharacterElementTypes().find((entry) =>
       entry.type.endsWith('#PhysicalLimitation')
     ).type;
-    const parts = [Head, Wings, BodyChestRibs, Stomach, Vitals, Legs, Tail];
+    const parts = [Head, Wings, BodyChestAndRibs, Stomach, Vitals, Legs, Tail];
     const baseline = generateHerosObject({ typedElements: [{ type: shapeType, name: 'Avian' }] });
     expect(baseline.bodyShape.parts.map((part) => part.constructor)).toEqual(parts);
 

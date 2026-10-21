@@ -1,13 +1,20 @@
 import { Collection } from '../../../../collection.mjs';
-import { BodyPart } from './body-parts.mjs';
+import { CompoundBodyPart } from './compound-parts.mjs';
+import { LeftThigh } from './thigh-left-parts.mjs';
+import { RightThigh } from './thigh-right-parts.mjs';
 
-export class Thighs extends BodyPart {
+export class Thighs extends CompoundBodyPart {
   static defaultName = 'Thighs';
   static defaultDefinition = Object.freeze({
     name: 'Thighs',
     generalShape: 'Unspecified',
     shapeTypes: [],
   });
+  constructor() {
+    super();
+    super.parts.add(new LeftThigh());
+    super.parts.add(new RightThigh());
+  }
 }
 
 /** @extends {Collection<Thighs>} */

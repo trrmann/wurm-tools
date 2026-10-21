@@ -2,7 +2,7 @@ import { Collection } from '../../../collection.mjs';
 import { BodyShape } from './body-shapes.mjs';
 import { Head } from './body-parts.mjs/head-parts.mjs';
 import { Wings } from './body-parts.mjs/wings-parts.mjs';
-import { BodyChestRibs } from './body-parts.mjs/body-chest-ribs-parts.mjs';
+import { BodyChestAndRibs } from './body-parts.mjs/body-chest-and-ribs-parts.mjs';
 import { Stomach } from './body-parts.mjs/stomach-parts.mjs';
 import { Vitals } from './body-parts.mjs/vitals-parts.mjs';
 import { Legs } from './body-parts.mjs/legs-parts.mjs';
@@ -21,7 +21,7 @@ export class Avian extends BodyShape {
     this.parts.length = 0;
     this.parts.add(new Head());
     this.parts.add(new Wings());
-    this.parts.add(new BodyChestRibs());
+    this.parts.add(new BodyChestAndRibs());
     this.parts.add(new Stomach());
     this.parts.add(new Vitals());
     this.parts.add(new Legs());

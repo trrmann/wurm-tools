@@ -1,13 +1,20 @@
 import { Collection } from '../../../../collection.mjs';
-import { BodyPart } from './body-parts.mjs';
+import { CompoundBodyPart } from './compound-parts.mjs';
+import { LeftHindquarter } from './hindquarter-left-parts.mjs';
+import { RightHindquarter } from './hindquarter-right-parts.mjs';
 
-export class Hindquarters extends BodyPart {
+export class Hindquarters extends CompoundBodyPart {
   static defaultName = 'Hindquarters';
   static defaultDefinition = Object.freeze({
     name: 'Hindquarters',
     generalShape: 'Unspecified',
     shapeTypes: [],
   });
+  constructor() {
+    super();
+    super.parts.add(new LeftHindquarter());
+    super.parts.add(new RightHindquarter());
+  }
 }
 
 /** @extends {Collection<Hindquarters>} */

@@ -1,13 +1,13 @@
 import { Collection } from '../../../collection.mjs';
 import { BodyShape } from './body-shapes.mjs';
 import { Head } from './body-parts.mjs/head-parts.mjs';
-import { AntennaeMandibles } from './body-parts.mjs/antennae-mandibles-parts.mjs';
+import { AntennaeAndOrMandibles } from './body-parts.mjs/antennae-and-or-mandibles-parts.mjs';
 import { LegsFrontSets } from './body-parts.mjs/legs-front-sets-parts.mjs';
-import { ThoraxUpperBody } from './body-parts.mjs/thorax-upper-body-parts.mjs';
-import { AbdomenLowerBody } from './body-parts.mjs/abdomen-lower-body-parts.mjs';
+import { ThoraxAndUpperBody } from './body-parts.mjs/thorax-and-upper-body-parts.mjs';
+import { AbdomenOrLowerBody } from './body-parts.mjs/abdomen-or-lower-body-parts.mjs';
 import { Vitals } from './body-parts.mjs/vitals-parts.mjs';
 import { LegsRearSets } from './body-parts.mjs/legs-rear-sets-parts.mjs';
-import { StingerSpinneretTail } from './body-parts.mjs/stinger-spinneret-tail-parts.mjs';
+import { StingerSpinneretAndOrTail } from './body-parts.mjs/stinger-spinneret-and-or-tail-parts.mjs';
 
 export class Insectoid extends BodyShape {
   static defaultName = 'Insectoid';
@@ -21,13 +21,13 @@ export class Insectoid extends BodyShape {
     super(options);
     this.parts.length = 0;
     this.parts.add(new Head());
-    this.parts.add(new AntennaeMandibles());
+    this.parts.add(new AntennaeAndOrMandibles());
     this.parts.add(new LegsFrontSets());
-    this.parts.add(new ThoraxUpperBody());
-    this.parts.add(new AbdomenLowerBody());
+    this.parts.add(new ThoraxAndUpperBody());
+    this.parts.add(new AbdomenOrLowerBody());
     this.parts.add(new Vitals());
     this.parts.add(new LegsRearSets());
-    this.parts.add(new StingerSpinneretTail());
+    this.parts.add(new StingerSpinneretAndOrTail());
     this.restoreParts(options.parts);
   }
 }
