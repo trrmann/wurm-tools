@@ -263,13 +263,50 @@ allow it for the Render site.
   in the project folder and enter the displayed 8-digit code in the HERO Worlds page. The code
   expires after 10 minutes. A static site deployed to Render cannot reach the local database unless
   the user has the project and local helper installed and running on their own computer.
-- **HERO reusable definitions:** the HERO page includes a standalone anatomy builder and shared
+- **HERO reusable definitions:** `/site/heroes/library/` provides a standalone anatomy builder and shared
   local library for saved parts, shapes, and world-object templates. Save custom/compound anatomy
   there before using it in an object. Choose independent copy or live reference when inserting a
   saved definition; deleting a definition converts its saved uses to copies. Library/world/object
   JSON exports contain portable copies. After updating helper code, restart it with
   `npm run helper:stop` followed by `npm run helper` (or restart via `npm run dev` /
   `npm run preview`) to enable the library routes without changing existing HERO data.
+- **Heros Tools management:** HERO pages now use their own Heros Tools title, shield, navigation,
+  and cyan theme; Wurm pages retain Wurm branding. Open `/site/heroes/people/` for local Game Master
+  profiles and `/site/heroes/people/players/` for Players. A profile can have either or both roles. Use **Open workspace** to view a
+  profile's worlds/characters; the profile ID in the URL preserves that workspace across reloads.
+  The upper menu switches between Worlds & objects and Game Masters & players. Each has a distinct
+  sidebar, not a duplicate of the upper menu. The world sidebar opens dedicated Worlds, Genres,
+  Campaigns, Objects, Non-player characters, Player characters, Character assignments, and Shared
+  definition library pages. Objects contains every model-defined kind other than explicit PC/NPC
+  kinds (including generic Characters); no data is reclassified or migrated. World rows open the
+  correct object editor. The people sidebar opens Game Masters, Players, Admins, and GM notes.
+  Selected world/profile context follows sidebar and upper-menu links and survives reload.
+  Create worlds and configure ownership/subscriptions/genres on Worlds; use Character assignments
+  for player/campaign links. Unconfigured worlds also appear in the all-records Worlds list.
+  External GMs/players can be named without creating profiles, and characters may remain unowned.
+- **Local profiles are not accounts:** the existing helper pairing protects every management
+  endpoint, but anyone paired with that helper can read/change all profiles and notes. Profile
+  selection is neither authentication nor administrator impersonation. Do not store passwords or
+  confidential notes. Account registration, sign-in, server-enforced role permissions, lockout,
+  and private GM notes are deferred. The Admins page explicitly documents this boundary; it does
+  not create fake administrator roles or ACL controls. Sidebar/profile filtering is not authorization.
+  No C# is exposed to or executed by the website.
+- **Campaign backups:** export all management data, a profile collection, or individual
+  world/campaign/genre collections from the corresponding management pages. Object editor lists export
+  individual objects. JSON imports accept these collections plus existing world/object exports;
+  select a destination world when importing an individual object. Imports validate the whole
+  collection before persistence and create independent copies with new IDs, never overwrite/merge
+  existing records. Collections include required profile/world/campaign dependencies and GM notes
+  as readable JSON. A player collection includes that player's characters, not other characters
+  merely sharing their worlds; a GM collection includes all objects in the GM's owned worlds.
+  A genre includes worlds tagged with that genre and characters assigned to matching campaigns.
+  Genre labels are organizational metadata, not implemented genre rules. Exports flatten library
+  references; back up the standalone reusable-definition library separately if its original entries
+  are also needed. Limits are 1,000 records, worlds, and objects per collection and 64 MB per import.
+  Data lives in the same local `heroes.db`, not a hosted account database. Restart the helper once
+  after updating (`npm run helper:stop`, then `npm run helper`) to enable `/heroes/management`.
+  Existing world/object export formats remain definition-only backups; use management collections
+  to preserve ownership, campaigns, subscriptions, and notes.
 - `GET /status` and `POST /start/server|client` (JSON). Starting uses Steam (`steam://rungameid/402370` server, `366220` client).
 - Installs are found in Steam libraries, or set `WURM_SERVER_DIR` / `WURM_CLIENT_DIR`.
 - `WURM_HELPER_PORT` changes the port; CORS allows `localhost:3000`/`4173` plus `WURM_ALLOWED_ORIGINS` (comma-separated).

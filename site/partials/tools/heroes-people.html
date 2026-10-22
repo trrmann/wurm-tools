@@ -1,0 +1,79 @@
+<section class="heroes-workspace" aria-labelledby="management-heading">
+  <div class="heroes-page-heading">
+    <div>
+      <p class="heroes-kicker">Heros Tools</p>
+      <h2 id="management-heading">Game Masters &amp; players</h2>
+      <p>Local profiles, worlds, campaigns, characters, and GM notes.</p>
+    </div>
+    <p id="management-state" role="status" aria-live="polite">Connecting to local helper...</p>
+  </div>
+  <p class="heroes-management-notice">
+    Profiles are organizational records, not accounts. Anyone paired with this helper can access all
+    records and notes. Switching profiles is not sign-in or impersonation. Do not store passwords or
+    confidential GM notes here.
+  </p>
+  <div id="management-pair" class="heroes-pair-panel" hidden>
+    <h3>Pair the local helper</h3>
+    <p>Run npm run helper:pair-code and enter the code below.</p>
+    <form id="management-pair-form" class="heroes-inline-form">
+      <label class="heroes-field"
+        >Pairing code <input name="code" required autocomplete="off"
+      /></label>
+      <button class="btn btn-primary" type="submit">Pair helper</button>
+    </form>
+  </div>
+  <fieldset id="management-controls" disabled>
+    <legend>Campaign management</legend>
+    <div class="heroes-inline-form">
+      <label class="heroes-field"
+        >Workspace profile
+        <select id="management-profile">
+          <option value="">All local records</option>
+        </select>
+      </label>
+      <button type="button" class="btn btn-secondary" id="management-refresh">Refresh</button>
+      <button type="button" class="btn btn-secondary" id="management-export">
+        Export this collection
+      </button>
+      <button type="button" class="btn btn-secondary" id="management-export-all">
+        Export all local records
+      </button>
+    </div>
+    <div class="heroes-inline-form">
+      <label class="heroes-field"
+        >Import JSON collection, world, or object
+        <input id="management-import" type="file" accept=".json,application/json" />
+      </label>
+      <label class="heroes-field"
+        >Destination world for an individual object
+        <select id="management-import-world">
+          <option value="">Select a world</option>
+        </select>
+      </label>
+    </div>
+    <p>
+      Imports create independent copies with new IDs; they never overwrite existing data. Exports
+      include referenced profiles and required world/campaign context. Full backups of reusable
+      definitions are available on the <a href="/site/heroes/library/">Shared definition library</a>
+      page.
+    </p>
+    <h3 id="management-section-heading">People</h3>
+    <p id="management-workspace-description"></p>
+    <label id="management-roster-field" class="heroes-field"
+      >People role
+      <select id="management-roster-role">
+        <option value="">Game Masters and players</option>
+        <option value="game-master">Game Masters</option>
+        <option value="player">Players</option>
+      </select>
+    </label>
+    <div id="management-list" class="heroes-management-list"></div>
+    <form id="management-form" class="heroes-editor-panel"></form>
+    <p>
+      <a href="/site/heroes/"
+        >Open Worlds to create worlds and set ownership, subscriptions, and genre labels.</a
+      >
+      Use the sidebar for Campaigns, Character assignments, and the separate object editors.
+    </p>
+  </fieldset>
+</section>

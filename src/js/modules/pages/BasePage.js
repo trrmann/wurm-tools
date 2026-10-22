@@ -15,10 +15,11 @@ export class BasePage {
       page.mount(container);
     }
   }
-  constructor({ id, title, description } = {}) {
+  constructor({ id, title, description, brand = 'Wurm Tools' } = {}) {
     this.id = id || 'base-page';
     this.title = title || 'Wurm Tools';
     this.description = description || '';
+    this.brand = brand;
     this.container = null;
     this.isMounted = false;
   }
@@ -41,7 +42,7 @@ export class BasePage {
 
   updateDocumentTitle() {
     if (this.title) {
-      document.title = `${this.title} — Wurm Tools`;
+      document.title = `${this.title} — ${this.brand}`;
     }
   }
 

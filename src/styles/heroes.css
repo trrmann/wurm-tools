@@ -4,6 +4,62 @@
   padding: 1.5rem;
 }
 
+.heroes-workspace [hidden] {
+  display: none;
+}
+
+.heroes-worlds-page .heroes-workspace-grid {
+  grid-template-columns: 1fr;
+}
+
+:root[data-game='heroes'] {
+  --accent-gold: #67d9f2;
+  --accent-gold-hover: #a5eeff;
+  --accent-amber: #388cb8;
+  --border-focus: #67d9f2;
+  --bg-primary: #0b1726;
+  --bg-secondary: #122338;
+  --border-color: #2b4964;
+}
+
+.heroes-management-notice {
+  border-left: 3px solid var(--accent-gold);
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: var(--bg-secondary);
+}
+
+#management-controls {
+  border: 0;
+  min-width: 0;
+}
+
+#management-state.is-error {
+  color: var(--accent-red);
+}
+
+.heroes-management-row {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  margin: 1rem 0;
+  overflow-wrap: anywhere;
+}
+
+.heroes-management-row p {
+  white-space: pre-wrap;
+  margin: 0.5rem 0 1rem;
+}
+
+#management-form {
+  margin-top: 1rem;
+}
+
+#management-form[hidden],
+#management-roster-field[hidden] {
+  display: none;
+}
+
 .heroes-page-heading,
 .heroes-section-heading,
 .heroes-object-list-heading {

@@ -11,6 +11,13 @@ import {
 } from '../../modules/objects/heroes.mjs';
 import { MixedNumber } from '../../modules/objects/mixed-numbers.mjs';
 import { mountDefinitionLibrary } from './library.js';
+import { createHeroesClient, downloadHeroesJson, HELPER_TOKEN_KEY } from './helper-client.js';
+import {
+  getHeroesObjectPage,
+  heroesPageHref,
+  isObjectForHeroesPage,
+  updateHeroesContext,
+} from '../../modules/pages/heroes-navigation.js';
 import {
   copyLibraryDefinition,
   detachLibraryReference,
@@ -21,8 +28,6 @@ import {
   getHerosSheetSection,
 } from '../../modules/objects/heroes/sheet-layout.mjs';
 
-const HELPER_URL = 'http://127.0.0.1:5180';
-const HELPER_TOKEN_KEY = 'wurm-tools-helper-token-v1';
 const CHARACTERISTIC_SHORT_NAMES = new Map([
   ['strength', 'STR'],
   ['dexterity', 'DEX'],
@@ -40,25 +45,48 @@ export function unmount() {
   controller = null;
 }
 
-export function mount(container) {
+export function mount(container, { page = null } = {}) {
   unmount();
   controller = new AbortController();
   const { signal } = controller;
   container.innerHTML = fill(getShell(template), {});
+  if (page) {
+    container.querySelector('#heroes-page-title').textContent = page.title;
+    const libraryOnly = page.editor === 'library';
+    const worldsOnly = page.editor === 'worlds';
+    container.querySelector('.heroes-workspace').classList.toggle('heroes-worlds-page', worldsOnly);
+    container.querySelector('#heroes-page-title + p').textContent = libraryOnly
+      ? 'Author and reuse shared anatomy and object templates across worlds.'
+      : worldsOnly
+        ? 'Create, import, and manage worlds; open objects on their dedicated pages.'
+        : 'Build and edit this category in the selected world. Other categories have separate pages.';
+    container.querySelector('#heroes-library').hidden = !libraryOnly;
+    container.querySelector('.heroes-workspace-grid').hidden = libraryOnly;
+    container.querySelector('.heroes-editor-panel').hidden = worldsOnly;
+    container.querySelector('#heroes-world-form').hidden = !worldsOnly;
+    container.querySelector('.heroes-world-actions').hidden = !worldsOnly;
+  }
 
   const characterElementTypes = getHerosCharacterElementTypes();
   const objectTypes = getHerosObjectTypes();
+  const availableObjectTypes =
+    page && !['worlds', 'library'].includes(page.editor)
+      ? objectTypes.filter((type) => isObjectForHeroesPage({ kind: type.type }, page))
+      : objectTypes;
   const objectTypeById = new Map(objectTypes.map((type) => [type.type, type]));
   const objectKindSelect = container.querySelector('#heroes-object-kind');
   const pointLevelSelect = container.querySelector('#heroes-point-level');
   objectKindSelect.replaceChildren();
-  for (const type of objectTypes) {
+  for (const type of availableObjectTypes) {
     const option = document.createElement('option');
     option.value = type.type;
     option.textContent = type.label;
     objectKindSelect.append(option);
   }
-  objectKindSelect.value = 'character';
+  const defaultObjectType = availableObjectTypes.some((type) => type.type === 'character')
+    ? 'character'
+    : availableObjectTypes[0].type;
+  objectKindSelect.value = defaultObjectType;
   for (const preset of HerosPointLevelClassification.Presets) {
     const option = document.createElement('option');
     option.value = preset.id;
@@ -130,6 +158,12 @@ export function mount(container) {
   let editingObjectId = null;
   let editingNestedIndex = null;
   let editingEquationElement = null;
+  const sendRequest = createHeroesClient({
+    signal,
+    onUnauthorized: () => {
+      pairingPanel.hidden = false;
+    },
+  });
   const library = mountDefinitionLibrary(element('#heroes-library'), {
     request,
     downloadJson,
@@ -203,32 +237,8 @@ export function mount(container) {
     state.classList.toggle('is-error', isError);
   }
 
-  async function request(route, options = {}) {
-    const headers = new Headers(options.headers || {});
-    const token = localStorage.getItem(HELPER_TOKEN_KEY);
-    if (token) headers.set('Authorization', `Bearer ${token}`);
-    if (options.body) headers.set('Content-Type', 'application/json');
-    const response = await fetch(`${HELPER_URL}${route}`, {
-      ...options,
-      headers,
-      signal,
-    });
-    const body = response.headers.get('content-type')?.includes('application/json')
-      ? await response.json()
-      : null;
-    if (!response.ok) {
-      if (response.status === 404 && route === '/heroes/library' && !options.method) {
-        throw new Error(
-          'The running local helper has no library API. Restart it with npm run helper:stop, then npm run helper.'
-        );
-      }
-      if (response.status === 401) {
-        localStorage.removeItem(HELPER_TOKEN_KEY);
-        pairingPanel.hidden = false;
-      }
-      throw new Error(body?.error || `Local helper returned ${response.status}`);
-    }
-    return body;
+  function request(route, options) {
+    return sendRequest(route, options);
   }
 
   function setEditorEnabled(enabled) {
@@ -1092,7 +1102,7 @@ export function mount(container) {
   function resetEditor() {
     editingObjectId = null;
     objectForm.reset();
-    objectKindSelect.value = 'character';
+    objectKindSelect.value = defaultObjectType;
     pointLevelSelect.value = '';
     pointLevelCustomInput.value = '';
     updatePointLevelFields();
@@ -1193,12 +1203,13 @@ export function mount(container) {
       objectCount.value = '0';
       return;
     }
-    const { objects } = await request(`/heroes/worlds/${encodeURIComponent(worldId)}/objects`);
+    const result = await request(`/heroes/worlds/${encodeURIComponent(worldId)}/objects`);
+    const objects = result.objects.filter((object) => !page || isObjectForHeroesPage(object, page));
     objectCount.value = String(objects.length);
     if (!objects.length) {
       const empty = document.createElement('li');
       empty.className = 'heroes-empty-list';
-      empty.textContent = 'No objects in this world yet.';
+      empty.textContent = 'No matching objects in this world yet.';
       objectList.append(empty);
       return;
     }
@@ -1222,12 +1233,23 @@ export function mount(container) {
       const typeLabel = objectTypeById.get(objectType)?.label ?? objectType;
       detail.textContent = `${typeLabel} · ${equation.leftSideValue} = ${equation.rightSideValue}${equation.isBalanced ? '' : ` · difference ${equation.difference}`}${typedCount ? ` · ${typedCount} typed element(s)` : ''}`;
       content.append(name, detail);
-      const edit = document.createElement('button');
-      edit.type = 'button';
+      const edit = document.createElement(page?.editor === 'worlds' ? 'a' : 'button');
+      if (edit.tagName === 'BUTTON') edit.type = 'button';
       edit.className = 'btn';
       edit.textContent = 'Edit';
       edit.setAttribute('aria-label', `Edit ${object.name}`);
-      edit.addEventListener('click', () => beginEditing(object));
+      if (page?.editor === 'worlds') {
+        const query = new URLSearchParams(window.location.search);
+        query.set('world', worldId);
+        const url = new URL(
+          heroesPageHref(getHeroesObjectPage(object), query),
+          window.location.origin
+        );
+        url.searchParams.set('object', object.id);
+        edit.href = url.href;
+      } else {
+        edit.addEventListener('click', () => beginEditing(object));
+      }
       const exportButton = document.createElement('button');
       exportButton.type = 'button';
       exportButton.className = 'btn';
@@ -1281,6 +1303,15 @@ export function mount(container) {
       row.append(content, edit, exportButton, saveToLibrary, remove);
       objectList.append(row);
     }
+    const requestedObjectId = new URLSearchParams(window.location.search).get('object');
+    if (requestedObjectId && !editingObjectId && page?.editor !== 'worlds') {
+      const object = objects.find((object) => object.id === requestedObjectId);
+      if (object) beginEditing(object);
+      else setState('The requested object is not in this world or page category.', true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('object');
+      window.history.replaceState(null, '', url);
+    }
   }
 
   async function loadWorlds(selectedId) {
@@ -1297,9 +1328,12 @@ export function mount(container) {
       option.textContent = world.name;
       worldSelect.append(option);
     }
-    const selected = worlds.find((world) => world.id === selectedId) || worlds[0];
+    const requestedId =
+      selectedId || activeWorldId || new URLSearchParams(window.location.search).get('world');
+    const selected = worlds.find((world) => world.id === requestedId) || worlds[0];
     worldSelect.value = selected?.id || '';
     activeWorldId = selected?.id || null;
+    updateHeroesContext({ world: activeWorldId });
     setEditorEnabled(true);
     await loadObjects(activeWorldId);
     setState(
@@ -1319,13 +1353,7 @@ export function mount(container) {
   }
 
   function downloadJson(value, fileName) {
-    const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    downloadHeroesJson(value, fileName);
   }
 
   pairingForm.addEventListener('submit', async (event) => {
@@ -1365,6 +1393,7 @@ export function mount(container) {
   worldSelect.addEventListener('change', async () => {
     resetEditor();
     activeWorldId = worldSelect.value || null;
+    updateHeroesContext({ world: activeWorldId, object: null });
     setEditorEnabled(true);
     await loadObjects(activeWorldId);
   });
@@ -1426,7 +1455,10 @@ export function mount(container) {
         { method: 'POST', body: JSON.stringify(backup) }
       );
       await loadObjects(activeWorldId);
-      setState(`Imported ${object.name} into ${worldSelect.selectedOptions[0].textContent}.`);
+      const destination = getHeroesObjectPage(object);
+      setState(
+        `Imported ${object.name} into ${worldSelect.selectedOptions[0].textContent}.${page && !isObjectForHeroesPage(object, page) ? ` Open ${destination.title} in the sidebar to edit it.` : ''}`
+      );
     } catch (error) {
       setState(
         error instanceof SyntaxError ? 'Object file is not valid JSON.' : error.message,

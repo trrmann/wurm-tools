@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { BasePage } from '../src/js/modules/pages/BasePage.js';
 import { ConceptsPage, ROADMAP_CATEGORIES } from '../src/js/modules/pages/ConceptsPage.js';
 import { PRIMARY_NAVIGATION, TOOLS_LIST, getToolById } from '../src/js/tools/registry.js';
+import { HEROES_NAVIGATION } from '../src/js/modules/pages/heroes-navigation.js';
 
 describe('Tool Registry Migration', () => {
   it('loads all registered tools from src/js/tools/registry.js', () => {
@@ -32,6 +33,19 @@ describe('Tool Registry Migration', () => {
 });
 
 describe('Page Objects Model', () => {
+  it('keeps Wurm and Heros document branding separate', () => {
+    vi.stubGlobal('document', { title: '' });
+    try {
+      new BasePage({ title: 'Dashboard' }).updateDocumentTitle();
+      expect(document.title).toBe('Dashboard — Wurm Tools');
+      new BasePage({ title: 'Game Masters & players', brand: 'Heros Tools' }).updateDocumentTitle();
+      expect(document.title).toBe('Game Masters & players — Heros Tools');
+      expect(HEROES_NAVIGATION).toContainEqual(['Game Masters & players', '/site/heroes/people/']);
+      expect(HEROES_NAVIGATION).toContainEqual(['Wurm Tools', '/']);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it('initializes BasePage with default options', () => {
     const base = new BasePage();
     expect(base.id).toBe('base-page');

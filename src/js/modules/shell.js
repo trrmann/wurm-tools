@@ -13,6 +13,7 @@ import { Modal } from './modal.js';
 export const ACTIVE_TOOL_KEY = 'wurm_active_tool';
 
 export function renderShell(container) {
+  delete document.documentElement.dataset.game;
   container.innerHTML = fill(shellHtml, {
     sidebar: loadSidebarHtml(),
     header: loadHeaderHtml(),

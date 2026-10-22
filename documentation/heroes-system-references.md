@@ -2,6 +2,47 @@
 
 This project models character data, not the rules text. The current model is locked to HERO System 5th Edition; generation rejects other edition identifiers rather than applying undocumented edition rules. Point-cost calculations remain limited to researched 5th-edition behavior.
 
+## Local Campaign Management
+
+The Heros Tools management page uses the common C# IAM and HERO IAM code only as an architectural reference:
+stable profile identities, multiple GM/Player roles, a world's owning Game Master and subscribed players,
+and active/inactive campaigns. The deployed implementation is JavaScript, with relationship validation in
+`campaign-management.mjs` and persistence in the existing local SQLite store. Its management records link
+to the existing worlds and object definitions; they do not introduce another character model or duplicate
+the object data.
+
+Per user scope confirmation, profiles are organizational records protected by existing helper pairing,
+not authenticated users. C# password derivation, account lockout, ACL evaluation, administrator bypass,
+and present/effective-user impersonation have **not** been ported or simulated with browser-selected roles.
+Every paired browser has the same local-data access, including all GM notes and exported JSON. Actual
+account registration, authentication, authorization, and note confidentiality remain separate backlog work.
+Non-web/C#/Blazor/desktop development remains on hold.
+
+The upper navigation selects the world/object or people workspace. Context-specific sidebars open
+separate HTML pages for worlds, genres, campaigns, other objects, NPCs, PCs, assignments, the shared
+library, GMs, players, admins, and GM notes. Existing object-kind identifiers determine the editor
+category; generic characters remain in Objects rather than being relabeled as NPCs. The same model,
+storage, and editors serve all pages. World/profile URL context is organizational, never an ACL.
+Per the subsequent user scope confirmation, the Admins page only explains deferred registration
+and authorization; it exposes no administrator or permission-assignment functionality.
+
+Worlds can reference a local GM or an external GM label, and subscribe local player profiles. Saved
+characters can link to a local player, external player label, or no player; external-GM characters can
+still belong to a local player's collection. Campaign links must share the character's stored world.
+GM notes require a locally assigned world GM and a subscribed player or a character in that world.
+Deleting referenced profiles/campaigns or removing subscriptions required by notes is rejected explicitly.
+Deleting an object removes its assignment and character-only notes; combined player/character notes keep
+the subscribed-player note without the removed character link. World deletion removes its management
+links, campaigns, assignments, and notes, but retains profiles and the shared definition library.
+
+Management collections are additive, versioned JSON backups with remapped IDs and validated dependencies.
+World/campaign/genre/profile scopes include required context; they are not security boundaries. GM profile
+collections include their owned worlds' objects; player profiles include their assigned characters plus
+subscribed world context, not unrelated characters. Individual object exports and existing world exports
+retain their previous format and do not include management relationships. Portable object definitions
+flatten live library references; the original reusable-definition library can be exported separately.
+Genres and campaign labels do not enable unfinished genre-specific rules.
+
 ## Character Sheets
 
 - [HERO System 6th Edition Character Sheet](https://www.herogames.com/files/file/7-hero-system-6th-edition-character-sheet/) — official HERO Games download.

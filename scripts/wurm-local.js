@@ -69,6 +69,11 @@ import {
   deleteHeroesLibrary,
   exportHeroesLibrary,
   importHeroesLibrary,
+  listHeroesManagement,
+  saveHeroesManagement,
+  deleteHeroesManagement,
+  exportHeroesManagement,
+  importHeroesManagement,
 } from './heroes-store.js';
 
 export const PORT = Number(process.env.WURM_HELPER_PORT || 5180);
@@ -400,6 +405,32 @@ export async function handleMap(req, url, serverDir = findInstall(TARGETS.server
 
 export async function handleHeroes(req, url, filePath = heroesDatabasePath()) {
   const parts = url.pathname.split('/').filter(Boolean).slice(1).map(decodeURIComponent);
+  if (parts[0] === 'management') {
+    if (parts.length === 1 && req.method === 'GET') return listHeroesManagement(filePath);
+    if (parts.length === 1 && req.method === 'POST')
+      return {
+        statusCode: 201,
+        body: {
+          record: await saveHeroesManagement(await readJsonBody(req, 64 * 1024), null, filePath),
+        },
+      };
+    if (parts.length === 2 && parts[1] === 'export' && req.method === 'GET')
+      return exportHeroesManagement(
+        {
+          type: url.searchParams.get('type') || 'all',
+          id: url.searchParams.get('id') || '',
+        },
+        filePath
+      );
+    if (parts.length === 2 && parts[1] === 'import' && req.method === 'POST')
+      return importHeroesManagement(await readJsonBody(req, MAX_HEROES_IMPORT_BYTES), filePath);
+    if (parts.length === 2 && req.method === 'PUT')
+      return {
+        record: await saveHeroesManagement(await readJsonBody(req, 64 * 1024), parts[1], filePath),
+      };
+    if (parts.length === 2 && req.method === 'DELETE')
+      return deleteHeroesManagement(parts[1], filePath);
+  }
   if (parts[0] === 'library') {
     if (parts.length === 1 && req.method === 'GET')
       return { entries: await listHeroesLibrary(filePath) };
