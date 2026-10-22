@@ -11,8 +11,9 @@ export class StingerSpinneretAndOrTail extends CompoundBodyPart {
     generalShape: 'Unspecified',
     shapeTypes: [],
   });
-  constructor() {
-    super();
+  constructor(options = {}) {
+    super(options);
+    if (options.parts !== undefined) return;
     super.parts.add(new Stinger());
     super.parts.add(new Spinneret());
     super.parts.add(new Tail());

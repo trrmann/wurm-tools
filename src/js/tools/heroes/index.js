@@ -10,6 +10,11 @@ import {
   HerosPointLevelClassification,
 } from '../../modules/objects/heroes.mjs';
 import { MixedNumber } from '../../modules/objects/mixed-numbers.mjs';
+import { mountDefinitionLibrary } from './library.js';
+import {
+  copyLibraryDefinition,
+  detachLibraryReference,
+} from '../../modules/objects/heroes/definition-library.mjs';
 import {
   getHerosSheetEntries,
   getHerosSheetLayout,
@@ -65,6 +70,7 @@ export function mount(container) {
   );
   const objectBodyShapeSelect = container.querySelector('#heroes-object-body-shape');
   for (const definition of characterElementTypes.filter((entry) => entry.group === 'body-shapes')) {
+    if (definition.elementClass?.requiresLibrary) continue;
     objectBodyShapeSelect.add(new Option(definition.label, definition.type));
   }
   const NON_PRICED_TYPES = new Set(
@@ -115,6 +121,8 @@ export function mount(container) {
   const pointLevelValueInput = element('#heroes-point-level-value');
   const equationElements = { advantages: [], disadvantages: [] };
   const typedElements = [];
+  let libraryEntries = [];
+  const containedObjects = [];
   const observedElementNameLabels = new Set();
   const nestedElements = [];
   let generatedCharacter = null;
@@ -122,6 +130,69 @@ export function mount(container) {
   let editingObjectId = null;
   let editingNestedIndex = null;
   let editingEquationElement = null;
+  const library = mountDefinitionLibrary(element('#heroes-library'), {
+    request,
+    downloadJson,
+    signal,
+    onChange: async (entries) => {
+      const removed = libraryEntries.filter(
+        (previous) => !entries.some((entry) => entry.id === previous.id)
+      );
+      for (const entry of removed) {
+        const detached = detachLibraryReference(
+          { typedElements, containedObjects },
+          entry.id,
+          libraryEntries
+        );
+        typedElements.splice(0, typedElements.length, ...detached.typedElements);
+        containedObjects.splice(0, containedObjects.length, ...detached.containedObjects);
+      }
+      libraryEntries = entries;
+      const select = element('#heroes-saved-definition');
+      select.replaceChildren();
+      for (const entry of entries.filter((entry) => entry.kind !== 'part')) {
+        select.add(new Option(`${entry.name} (${entry.kind})`, entry.id));
+      }
+      updateEquationReadout();
+      if (activeWorldId) await loadObjects(activeWorldId);
+    },
+  });
+
+  element('#heroes-use-saved').addEventListener('click', () => {
+    try {
+      const entry = libraryEntries.find(
+        (entry) => entry.id === element('#heroes-saved-definition').value
+      );
+      if (!entry) throw new Error('Select a saved shape or object.');
+      const live = element('#heroes-saved-mode').value === 'reference';
+      const definition = live
+        ? { ...entry.definition, libraryRef: entry.id }
+        : copyLibraryDefinition(entry.definition, libraryEntries);
+      if (entry.kind === 'shape') {
+        const object = replaceHerosObjectBodyShape(
+          { objectType: objectKindSelect.value, typedElements, libraryEntries },
+          { ...definition, type: definition.anatomyType, isBase: true }
+        );
+        typedElements.splice(0, typedElements.length, ...object.typedElements);
+      } else containedObjects.push(definition);
+      updateEquationReadout();
+      setState(`Added ${entry.name} as ${live ? 'a live reference' : 'an independent copy'}.`);
+    } catch (error) {
+      setState(error.message, true);
+    }
+  });
+  element('#heroes-detach-shape').addEventListener('click', () => {
+    const index = typedElements.findIndex(
+      (item) => characterElementTypeById.get(item.type)?.group === 'body-shapes'
+    );
+    try {
+      typedElements[index] = copyLibraryDefinition(typedElements[index], libraryEntries);
+      updateEquationReadout();
+      setState('The shape is now an independent copy.');
+    } catch (error) {
+      setState(error.message, true);
+    }
+  });
 
   function newBodyComponentId() {
     return `body-change-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
@@ -146,6 +217,11 @@ export function mount(container) {
       ? await response.json()
       : null;
     if (!response.ok) {
+      if (response.status === 404 && route === '/heroes/library' && !options.method) {
+        throw new Error(
+          'The running local helper has no library API. Restart it with npm run helper:stop, then npm run helper.'
+        );
+      }
       if (response.status === 401) {
         localStorage.removeItem(HELPER_TOKEN_KEY);
         pairingPanel.hidden = false;
@@ -199,6 +275,7 @@ export function mount(container) {
         disadvantages: equationElements.disadvantages,
       },
       typedElements,
+      libraryEntries,
     }).equation;
   }
 
@@ -222,6 +299,8 @@ export function mount(container) {
           disadvantages: equationElements.disadvantages,
         },
         typedElements,
+        containedObjects,
+        libraryEntries,
       });
       typedElements.splice(
         0,
@@ -231,7 +310,20 @@ export function mount(container) {
           modelTypes: [...item.modelTypes].map(String),
         }))
       );
-      objectBodyShapeSelect.value = bodyShapeDefinitions()[0].type;
+      const shapeDefinition = bodyShapeDefinitions()[0];
+      for (const option of [...objectBodyShapeSelect.options].filter(
+        (option) => option.dataset.saved
+      ))
+        option.remove();
+      if (
+        shapeDefinition &&
+        ![...objectBodyShapeSelect.options].some((option) => option.value === shapeDefinition.type)
+      ) {
+        const option = new Option(`${shapeDefinition.name} (saved anatomy)`, shapeDefinition.type);
+        option.dataset.saved = 'true';
+        objectBodyShapeSelect.add(option);
+      }
+      objectBodyShapeSelect.value = shapeDefinition?.type ?? '';
       const equation = generatedCharacter.equation;
       equationReadout.textContent = `Advantages ${equation.advantagesValue} + points ${equation.pointsValue} = disadvantages ${equation.disadvantagesValue}${equation.isBalanced ? ' (balanced)' : ` (difference ${equation.difference})`}`;
       element('#heroes-object-form button[type="submit"]').disabled = !activeWorldId;
@@ -342,6 +434,10 @@ export function mount(container) {
         });
       }
       (component.components ?? []).forEach((child) => visit(child, componentType, depth + 1));
+      (component.parts ?? []).forEach((child) => visit(child, 'body-part', depth + 1));
+      (component.shapes ?? []).forEach((child) => visit(child, 'body-shape', depth + 1));
+      (component.hitLocations ?? []).forEach((child) => visit(child, 'hit-location', depth + 1));
+      (component.extraLimbs ?? []).forEach((child) => visit(child, 'extra-limb', depth + 1));
     };
     for (const source of [shape.baseBodyShape, shape].filter(Boolean)) {
       for (const [componentType, components] of [
@@ -349,6 +445,7 @@ export function mount(container) {
         ['body-part', source.parts ?? []],
         ['hit-location', source.hitLocations ?? []],
         ['extra-limb', source.extraLimbs ?? []],
+        ['body-shape', source.shapes ?? []],
       ]) {
         components.forEach((component) => visit(component, componentType));
       }
@@ -593,7 +690,8 @@ export function mount(container) {
       const components = bodyShapeComponentOptions(shape);
       const parts = document.createElement('p');
       parts.className = 'heroes-sheet-summary';
-      parts.textContent = `Parts: ${(shape.parts ?? []).map((part) => part.name).join(', ') || 'None defined'}`;
+      const modelParts = generatedCharacter?.bodyShape?.parts ?? shape.parts ?? [];
+      parts.textContent = `Parts: ${modelParts.map((part) => part.name).join(', ') || 'None defined'}`;
       summary.append(parts);
       if (components.length) {
         const list = document.createElement('ul');
@@ -610,6 +708,43 @@ export function mount(container) {
   }
 
   function renderTypedElements() {
+    const rootShape = bodyShapeDefinitions()[0];
+    element('#heroes-shape-reference').textContent = rootShape?.libraryRef
+      ? `Shape uses live library definition: ${libraryEntries.find((entry) => entry.id === rootShape.libraryRef)?.name ?? rootShape.libraryRef}`
+      : 'Shape is an independent definition.';
+    element('#heroes-detach-shape').hidden = !rootShape?.libraryRef;
+    const containedList = element('#heroes-contained-objects');
+    containedList.replaceChildren();
+    containedObjects.forEach((item, index) => {
+      const row = document.createElement('li');
+      const label = document.createElement('span');
+      label.textContent = `${item.name ?? libraryEntries.find((entry) => entry.id === item.libraryRef)?.name} (${item.libraryRef ? 'live reference' : 'copy'})`;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn';
+      remove.textContent = 'Remove contained object';
+      remove.addEventListener('click', () => {
+        containedObjects.splice(index, 1);
+        updateEquationReadout();
+      });
+      row.append(label, remove);
+      if (item.libraryRef) {
+        const detach = document.createElement('button');
+        detach.type = 'button';
+        detach.className = 'btn';
+        detach.textContent = 'Make independent copy';
+        detach.addEventListener('click', () => {
+          try {
+            containedObjects[index] = copyLibraryDefinition(item, libraryEntries);
+            updateEquationReadout();
+          } catch (error) {
+            setState(error.message, true);
+          }
+        });
+        row.append(detach);
+      }
+      containedList.append(row);
+    });
     typedElementList.replaceChildren();
     typedElementList.append(renderBodyShapeSummary());
     const objectType = element('#heroes-object-kind').value;
@@ -964,6 +1099,7 @@ export function mount(container) {
     equationElements.advantages.length = 0;
     equationElements.disadvantages.length = 0;
     typedElements.length = 0;
+    containedObjects.length = 0;
     resetEquationForm();
     pointValueInput.value = '0';
     element('#heroes-editor-title').textContent = 'Create object';
@@ -979,8 +1115,11 @@ export function mount(container) {
   objectBodyShapeSelect.addEventListener('change', () => {
     try {
       const selected = characterElementTypeById.get(objectBodyShapeSelect.value);
+      if (selected.elementClass?.requiresLibrary) {
+        throw new Error('Use saved anatomy through the shared library selector.');
+      }
       const object = replaceHerosObjectBodyShape(
-        { objectType: objectKindSelect.value, typedElements },
+        { objectType: objectKindSelect.value, typedElements, libraryEntries },
         { type: selected.type, name: selected.defaultName ?? selected.label }
       );
       typedElements.splice(
@@ -1036,6 +1175,7 @@ export function mount(container) {
     const equation = new HerosEquation({ points: definition.equation?.points || [] });
     pointValueInput.value = equation.pointsValue.toString();
     typedElements.splice(0, typedElements.length, ...(definition.typedElements || []));
+    containedObjects.splice(0, containedObjects.length, ...(definition.containedObjects ?? []));
     objectKindSelect.dispatchEvent(new Event('change'));
     resetTypedForm();
     element('#heroes-editor-title').textContent = `Edit ${object.name}`;
@@ -1074,6 +1214,7 @@ export function mount(container) {
         ...definition,
         name: object.name,
         objectType,
+        libraryEntries,
       });
       const equation = generatedObject.equation;
       name.textContent = object.name;
@@ -1106,6 +1247,27 @@ export function mount(container) {
       remove.className = 'btn';
       remove.textContent = 'Delete';
       remove.setAttribute('aria-label', `Delete ${object.name}`);
+      const saveToLibrary = document.createElement('button');
+      saveToLibrary.type = 'button';
+      saveToLibrary.className = 'btn';
+      saveToLibrary.textContent = 'Save to shared library';
+      saveToLibrary.setAttribute('aria-label', `Save ${object.name} to library`);
+      saveToLibrary.addEventListener('click', async () => {
+        try {
+          await request('/heroes/library', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: object.name,
+              kind: 'object',
+              definition: object.definition,
+            }),
+          });
+          await library.refresh();
+          setState(`Saved ${object.name} to the shared library.`);
+        } catch (error) {
+          setState(error.message, true);
+        }
+      });
       remove.addEventListener('click', async () => {
         try {
           await request(`/heroes/objects/${encodeURIComponent(object.id)}`, { method: 'DELETE' });
@@ -1116,12 +1278,13 @@ export function mount(container) {
           setState(error.message, true);
         }
       });
-      row.append(content, edit, exportButton, remove);
+      row.append(content, edit, exportButton, saveToLibrary, remove);
       objectList.append(row);
     }
   }
 
   async function loadWorlds(selectedId) {
+    await library.refresh();
     const { worlds } = await request('/heroes/worlds');
     worldSelect.replaceChildren();
     const placeholder = document.createElement('option');
@@ -1286,6 +1449,7 @@ export function mount(container) {
       objectType,
       edition: '5e',
       typedElements: retainedElements,
+      libraryEntries,
     });
     typedElements.splice(
       0,
@@ -1657,8 +1821,9 @@ export function mount(container) {
           })),
         },
         typedElements: typedElements.map((item) => ({ ...item })),
+        containedObjects: structuredClone(containedObjects),
       };
-      const generatedObject = generateHerosObject(definition);
+      const generatedObject = generateHerosObject({ ...definition, libraryEntries });
       definition.objectModelTypes = generatedObject.objectModelTypes.map(String);
       definition.typedElements = generatedObject.typedElements.map((item) => ({
         ...item,

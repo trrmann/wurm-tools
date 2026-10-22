@@ -12,6 +12,7 @@ import { PowerModifier } from './elements/powers/power-modifiers/power-modifiers
 import { Advantage } from './elements/powers/power-modifiers/power-advantages/power-advantages.mjs';
 import { Skill } from './elements/skills/skills.mjs';
 import { Talent } from './elements/talents/talents.mjs';
+import './anatomy-catalog.mjs';
 
 const moduleCatalog =
   typeof import.meta.env === 'object'

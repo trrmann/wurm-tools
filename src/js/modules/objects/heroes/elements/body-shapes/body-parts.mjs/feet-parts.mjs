@@ -10,8 +10,9 @@ export class Feet extends CompoundBodyPart {
     generalShape: 'Unspecified',
     shapeTypes: [],
   });
-  constructor() {
-    super();
+  constructor(options = {}) {
+    super(options);
+    if (options.parts !== undefined) return;
     super.parts.add(new LeftFoot());
     super.parts.add(new RightFoot());
   }

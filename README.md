@@ -263,6 +263,13 @@ allow it for the Render site.
   in the project folder and enter the displayed 8-digit code in the HERO Worlds page. The code
   expires after 10 minutes. A static site deployed to Render cannot reach the local database unless
   the user has the project and local helper installed and running on their own computer.
+- **HERO reusable definitions:** the HERO page includes a standalone anatomy builder and shared
+  local library for saved parts, shapes, and world-object templates. Save custom/compound anatomy
+  there before using it in an object. Choose independent copy or live reference when inserting a
+  saved definition; deleting a definition converts its saved uses to copies. Library/world/object
+  JSON exports contain portable copies. After updating helper code, restart it with
+  `npm run helper:stop` followed by `npm run helper` (or restart via `npm run dev` /
+  `npm run preview`) to enable the library routes without changing existing HERO data.
 - `GET /status` and `POST /start/server|client` (JSON). Starting uses Steam (`steam://rungameid/402370` server, `366220` client).
 - Installs are found in Steam libraries, or set `WURM_SERVER_DIR` / `WURM_CLIENT_DIR`.
 - `WURM_HELPER_PORT` changes the port; CORS allows `localhost:3000`/`4173` plus `WURM_ALLOWED_ORIGINS` (comma-separated).

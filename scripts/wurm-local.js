@@ -64,6 +64,11 @@ import {
   listHeroesObjects,
   listHeroesWorlds,
   updateHeroesObject,
+  listHeroesLibrary,
+  saveHeroesLibrary,
+  deleteHeroesLibrary,
+  exportHeroesLibrary,
+  importHeroesLibrary,
 } from './heroes-store.js';
 
 export const PORT = Number(process.env.WURM_HELPER_PORT || 5180);
@@ -395,6 +400,30 @@ export async function handleMap(req, url, serverDir = findInstall(TARGETS.server
 
 export async function handleHeroes(req, url, filePath = heroesDatabasePath()) {
   const parts = url.pathname.split('/').filter(Boolean).slice(1).map(decodeURIComponent);
+  if (parts[0] === 'library') {
+    if (parts.length === 1 && req.method === 'GET')
+      return { entries: await listHeroesLibrary(filePath) };
+    if (parts.length === 1 && req.method === 'POST') {
+      return {
+        statusCode: 201,
+        body: {
+          entry: await saveHeroesLibrary(await readJsonBody(req, 256 * 1024), null, filePath),
+        },
+      };
+    }
+    if (parts.length === 2 && parts[1] === 'export' && req.method === 'GET')
+      return exportHeroesLibrary(filePath);
+    if (parts.length === 2 && parts[1] === 'import' && req.method === 'POST') {
+      return importHeroesLibrary(await readJsonBody(req, MAX_HEROES_IMPORT_BYTES), filePath);
+    }
+    if (parts.length === 2 && req.method === 'PUT') {
+      return {
+        entry: await saveHeroesLibrary(await readJsonBody(req, 256 * 1024), parts[1], filePath),
+      };
+    }
+    if (parts.length === 2 && req.method === 'DELETE')
+      return deleteHeroesLibrary(parts[1], filePath);
+  }
   if (
     parts.length === 2 &&
     parts[0] === 'worlds' &&
@@ -484,7 +513,7 @@ export function createServer({ env = process.env } = {}) {
         ...(origin && originOk
           ? {
               'Access-Control-Allow-Origin': origin,
-              'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+              'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
               'Access-Control-Allow-Headers': 'Authorization, Content-Type',
               'Access-Control-Allow-Private-Network': 'true',
               'Access-Control-Max-Age': '600',

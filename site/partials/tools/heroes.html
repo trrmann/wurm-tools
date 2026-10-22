@@ -39,6 +39,7 @@
     </form>
   </section>
 
+  <div id="heroes-library"></div>
   <div class="heroes-workspace-grid">
     <section class="heroes-world-panel" aria-labelledby="heroes-world-title">
       <div class="heroes-section-heading">
@@ -103,6 +104,30 @@
         </div>
       </div>
       <form id="heroes-object-form">
+        <fieldset>
+          <legend>Use a saved definition</legend>
+          <p>
+            Saved shapes replace the root shape. Saved objects are included as independent contained
+            objects; their acquisition cost is not inferred.
+          </p>
+          <label class="heroes-field" for="heroes-saved-definition"
+            >Saved shape or object
+            <select id="heroes-saved-definition" class="custom-select"></select>
+          </label>
+          <label class="heroes-field" for="heroes-saved-mode"
+            >Insertion mode
+            <select id="heroes-saved-mode" class="custom-select">
+              <option value="copy">Independent copy</option>
+              <option value="reference">Live reference</option>
+            </select>
+          </label>
+          <button id="heroes-use-saved" class="btn" type="button">Use saved definition</button>
+          <p id="heroes-shape-reference"></p>
+          <button id="heroes-detach-shape" class="btn" type="button" hidden>
+            Make shape an independent copy
+          </button>
+          <ul id="heroes-contained-objects" class="heroes-object-list"></ul>
+        </fieldset>
         <div class="heroes-form-grid">
           <label class="heroes-field" for="heroes-object-name">
             Name

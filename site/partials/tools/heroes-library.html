@@ -1,0 +1,80 @@
+<section class="heroes-editor-panel" aria-labelledby="heroes-library-title">
+  <h3 id="heroes-library-title">Shared definition library &amp; anatomy builder</h3>
+  <p>
+    Saved definitions are available across all local worlds. Build custom and compound anatomy here
+    before using it in an object. Copies are independent; live references refresh when loaded or
+    regenerated.
+  </p>
+  <p id="heroes-library-state" role="status" aria-live="polite">
+    Connect the local database to load the library.
+  </p>
+  <button id="heroes-library-refresh" class="btn" type="button">Refresh library</button>
+  <button id="heroes-library-export" class="btn" type="button">Export library as copies</button>
+  <label class="btn heroes-file-label"
+    >Import library
+    <input id="heroes-library-import" type="file" accept="application/json,.json" />
+  </label>
+  <ul id="heroes-library-list" class="heroes-object-list"></ul>
+  <form id="heroes-library-object-form" hidden>
+    <h4>Edit saved object definition</h4>
+    <label class="heroes-field"
+      >Saved object JSON
+      <textarea id="heroes-library-object-json" rows="14" spellcheck="false"></textarea>
+    </label>
+    <button class="btn btn-primary" type="submit">Update saved object</button>
+    <button id="heroes-library-object-cancel" class="btn" type="button">
+      Cancel saved-object edit
+    </button>
+  </form>
+  <form id="heroes-anatomy-form">
+    <h4 id="heroes-anatomy-heading">Create reusable anatomy</h4>
+    <div class="heroes-form-grid">
+      <label class="heroes-field"
+        >Anatomy type
+        <select id="heroes-anatomy-type" class="custom-select"></select>
+      </label>
+      <label class="heroes-field"
+        >Definition name
+        <input id="heroes-anatomy-name" maxlength="120" required />
+      </label>
+      <label class="heroes-field"
+        >General shape
+        <input id="heroes-anatomy-general" />
+      </label>
+      <label class="heroes-field"
+        >Shape types (comma separated)
+        <input id="heroes-anatomy-tags" />
+      </label>
+    </div>
+    <fieldset>
+      <legend id="heroes-anatomy-children-title">Parts</legend>
+      <label class="heroes-field"
+        >Add anatomy from model or library
+        <select id="heroes-anatomy-child" class="custom-select"></select>
+      </label>
+      <label class="heroes-field"
+        >Library insertion mode
+        <select id="heroes-anatomy-mode" class="custom-select">
+          <option value="copy">Independent copy</option>
+          <option value="reference">Live reference</option>
+        </select>
+      </label>
+      <button id="heroes-anatomy-add" class="btn" type="button">Add anatomy</button>
+      <ul id="heroes-anatomy-children" class="heroes-object-list"></ul>
+    </fieldset>
+    <details>
+      <summary>Advanced model definition</summary>
+      <p>
+        Edit the model's components, locations, called shots, extra limbs and limitations as JSON.
+        Apply before saving; invalid model values report an error.
+      </p>
+      <label class="heroes-field"
+        >Anatomy definition JSON
+        <textarea id="heroes-anatomy-json" rows="14" spellcheck="false"></textarea>
+      </label>
+      <button id="heroes-anatomy-apply" class="btn" type="button">Apply model JSON</button>
+    </details>
+    <button class="btn btn-primary" type="submit">Save anatomy to library</button>
+    <button id="heroes-anatomy-reset" class="btn" type="button">New definition</button>
+  </form>
+</section>

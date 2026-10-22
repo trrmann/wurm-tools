@@ -1,3 +1,4 @@
+import { resolveLibraryReferences } from './definition-library.mjs';
 import {
   HerosAdvantage,
   HerosAdvantageModifier,
@@ -557,6 +558,8 @@ export function generateHerosCharacter(definition = {}) {
   if (definition == null || typeof definition !== 'object' || Array.isArray(definition)) {
     throw new TypeError('Character definition must be an object');
   }
+  const { libraryEntries, ...source } = definition;
+  definition = resolveLibraryReferences(source, libraryEntries);
 
   const edition = normalizeHerosEdition(definition.edition);
   const characterElements = new CharacterElements();

@@ -10,8 +10,9 @@ export class LegsRearSets extends CompoundBodyPart {
     generalShape: 'Unspecified',
     shapeTypes: [],
   });
-  constructor() {
-    super();
+  constructor(options = {}) {
+    super(options);
+    if (options.parts !== undefined) return;
     super.parts.add(new FirstSetRearLegs());
     super.parts.add(new SecondSetRearLegs());
   }

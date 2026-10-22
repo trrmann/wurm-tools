@@ -10,8 +10,9 @@ export class Paws extends CompoundBodyPart {
     generalShape: 'Unspecified',
     shapeTypes: [],
   });
-  constructor() {
-    super();
+  constructor(options = {}) {
+    super(options);
+    if (options.parts !== undefined) return;
     super.parts.add(new LeftPaw());
     super.parts.add(new RightPaw());
   }

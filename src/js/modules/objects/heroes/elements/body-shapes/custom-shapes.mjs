@@ -2,6 +2,7 @@ import { Collection } from '../../../collection.mjs';
 import { BodyShape } from './body-shapes.mjs';
 
 export class CustomShape extends BodyShape {
+  static requiresLibrary = true;
   static defaultName = 'CustomShape';
   static defaultDefinition = Object.freeze({
     name: 'CustomShape',

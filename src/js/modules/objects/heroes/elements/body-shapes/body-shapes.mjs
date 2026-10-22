@@ -2,8 +2,10 @@ import { Collection } from '../../../collection.mjs';
 import { CharacterElement } from '../character-elements.mjs';
 import { BodyPart, BodyParts } from './body-parts.mjs/body-parts.mjs';
 import { HerosBodyShape } from '../../body-shape-structure.mjs';
+import { anatomyTypeId, restoreAnatomy } from '../../anatomy-registry.mjs';
 
 export class BodyShape extends CharacterElement {
+  static childKind = 'part';
   static defaultName = 'Body Shape';
   static defaultDefinition = Object.freeze({
     name: 'Body Shape',
@@ -22,6 +24,8 @@ export class BodyShape extends CharacterElement {
       ShortName: options.shortName ?? options.ShortName ?? 'BSHP',
     });
     this.#parts = new BodyParts();
+    this.libraryRef = options.libraryRef;
+    this.id = options.id;
     this.shape = new HerosBodyShape({
       ...new.target.defaultDefinition,
       ...options,
@@ -32,12 +36,12 @@ export class BodyShape extends CharacterElement {
 
   restoreParts(definitions) {
     if (definitions === undefined) return;
-    const partTypes = new Map(this.parts.map((part) => [part.id, part.constructor]));
+    const partTypes = new Map(this.#parts.map((part) => [part.id, part.constructor]));
     const restored = Array.from(definitions, (part) => {
       const Type = partTypes.get(part.id) ?? BodyPart;
-      return new Type(part);
+      return restoreAnatomy(part, BodyPart, Type);
     });
-    this.parts.splice(0, this.parts.length, ...restored);
+    this.#parts.splice(0, this.#parts.length, ...restored);
   }
 
   get generalShape() {
@@ -182,7 +186,10 @@ export class BodyShape extends CharacterElement {
     return {
       ...this.shape.toJSON(),
       shortName: this.shortName,
-      parts: this.#parts.map((part) => part.toJSON()),
+      ...(anatomyTypeId(this.constructor) ? { anatomyType: anatomyTypeId(this.constructor) } : {}),
+      ...(this.libraryRef ? { libraryRef: this.libraryRef } : {}),
+      ...(this.id ? { id: this.id } : {}),
+      parts: this.parts.map((part) => part.toJSON()),
     };
   }
 }

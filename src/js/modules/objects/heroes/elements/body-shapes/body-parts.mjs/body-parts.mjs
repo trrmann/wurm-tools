@@ -1,8 +1,11 @@
 import { Collection } from '../../../../collection.mjs';
 import { CharacterElement } from '../../character-elements.mjs';
 import { HerosBodyShape } from '../../../body-shape-structure.mjs';
+import { anatomyTypeId, restoreAnatomy } from '../../../anatomy-registry.mjs';
 
 export class BodyPart extends CharacterElement {
+  #parts;
+  static childKind = 'part';
   static defaultName = 'Body Part';
   static defaultDefinition = Object.freeze({
     name: 'Body Part',
@@ -19,9 +22,19 @@ export class BodyPart extends CharacterElement {
       Name: name,
       ShortName: options.shortName ?? options.ShortName ?? 'BSHP',
     });
-    this.shape = new HerosBodyShape({ ...options, name });
-    this.id = options.id ?? `body-part-${new.target.name}`;
+    this.shape = new HerosBodyShape({ ...new.target.defaultDefinition, ...options, name });
+    this.id = options.id ?? `body-part-${new.target.defaultName}`;
     this.isPresent = options.isPresent !== false;
+    if (typeof options.isPresent !== 'undefined' && typeof options.isPresent !== 'boolean') {
+      throw new TypeError('Body-part presence must be a boolean');
+    }
+    this.libraryRef = options.libraryRef;
+    this.#parts = new BodyParts(
+      (options.parts ?? []).map((part) => restoreAnatomy(part, BodyPart))
+    );
+  }
+  get parts() {
+    return this.#parts;
   }
 
   get generalShape() {
@@ -53,14 +66,31 @@ export class BodyPart extends CharacterElement {
   }
 
   getComponent(reference) {
+    const key = typeof reference === 'object' ? reference.id : reference;
+    for (const part of this.parts) {
+      if (part.id === key || part.name === key) return part;
+      const component = part.getComponent(key);
+      if (component) return component;
+    }
     return this.shape.getComponent(reference);
   }
 
   addComponent(component, parent) {
+    if (parent) {
+      for (const part of this.parts) {
+        if (part.id === parent || part.name === parent) return part.addComponent(component);
+        if (part.getComponent(parent)) return part.addComponent(component, parent);
+      }
+    }
     return this.shape.addComponent(component, parent);
   }
 
   removeComponent(component) {
+    const target = this.getComponent(component);
+    if (this.parts.includes(target)) return this.parts.remove(target);
+    for (const part of this.parts) {
+      if (part.getComponent(target?.id)) return part.removeComponent(target);
+    }
     return this.shape.removeComponent(component);
   }
 
@@ -101,6 +131,11 @@ export class BodyPart extends CharacterElement {
   }
 
   isComponentPresent(component) {
+    const target = this.getComponent(component);
+    for (const part of this.parts) {
+      if (part === target) return part.isPresent;
+      if (part.getComponent(target?.id)) return part.isPresent && part.isComponentPresent(target);
+    }
     return this.shape.isComponentPresent(component);
   }
 
@@ -114,6 +149,9 @@ export class BodyPart extends CharacterElement {
       id: this.id,
       isPresent: this.isPresent,
       shortName: this.shortName,
+      ...(anatomyTypeId(this.constructor) ? { anatomyType: anatomyTypeId(this.constructor) } : {}),
+      ...(this.libraryRef ? { libraryRef: this.libraryRef } : {}),
+      parts: this.parts.map((part) => part.toJSON()),
     };
   }
 }

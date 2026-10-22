@@ -18,6 +18,7 @@ import {
   getHerosCharacterElementTypes,
   withHerosObjectElements,
 } from './character-generator.mjs';
+import { resolveLibraryReferences } from './definition-library.mjs';
 
 const objectTypes = new Map([
   ['object', { label: 'Generic object', Type: HerosGameObject }],
@@ -73,6 +74,8 @@ export function generateHerosObject(definition = {}) {
   if (definition == null || typeof definition !== 'object' || Array.isArray(definition)) {
     throw new TypeError('Object definition must be an object');
   }
+  const { libraryEntries, ...source } = definition;
+  definition = resolveLibraryReferences(source, libraryEntries);
   if ('bodyShapes' in definition || 'bodyShape' in definition) {
     throw new TypeError('Define body shape only as a typedElements body-shape element');
   }
@@ -89,6 +92,7 @@ export function generateHerosObject(definition = {}) {
     edition: edition.id,
     characterType: inferCharacterType(objectType),
     typedElements,
+    libraryEntries,
   });
   const shape = character.bodyShape;
   const finalTypedElements = character.typedElements.map((item) =>
@@ -118,5 +122,8 @@ export function generateHerosObject(definition = {}) {
   object.kind = objectType;
   object.edition = edition;
   object.generatedElements = character.generatedElements;
+  for (const item of definition.containedObjects ?? []) {
+    object.addObject(generateHerosObject({ ...item, libraryEntries }));
+  }
   return object;
 }

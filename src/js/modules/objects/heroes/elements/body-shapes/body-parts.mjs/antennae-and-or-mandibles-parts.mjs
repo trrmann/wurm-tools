@@ -10,8 +10,9 @@ export class AntennaeAndOrMandibles extends CompoundBodyPart {
     generalShape: 'Unspecified',
     shapeTypes: [],
   });
-  constructor() {
-    super();
+  constructor(options = {}) {
+    super(options);
+    if (options.parts !== undefined) return;
     super.parts.add(new Antennae());
     super.parts.add(new Mandibles());
   }

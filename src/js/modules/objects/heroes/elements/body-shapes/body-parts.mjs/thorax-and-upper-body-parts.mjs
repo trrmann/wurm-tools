@@ -10,8 +10,9 @@ export class ThoraxAndUpperBody extends CompoundBodyPart {
     generalShape: 'Unspecified',
     shapeTypes: [],
   });
-  constructor() {
-    super();
+  constructor(options = {}) {
+    super(options);
+    if (options.parts !== undefined) return;
     super.parts.add(new Thorax());
     super.parts.add(new UpperBody());
   }

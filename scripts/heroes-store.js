@@ -4,8 +4,26 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import initSqlJs from 'sql.js';
 import { httpError } from './wurm-db.js';
+import {
+  resolveLibraryReferences,
+  copyLibraryDefinition,
+  detachLibraryReference,
+} from '../src/js/modules/objects/heroes/definition-library.mjs';
 
-const OBJECT_KINDS = new Set(['object', 'character', 'base', 'vehicle', 'equipment']);
+const OBJECT_KINDS = new Set([
+  'object',
+  'character',
+  'player-character',
+  'non-player-character',
+  'base',
+  'vehicle',
+  'equipment',
+  'animal',
+  'plant',
+  'automaton',
+  'computer',
+  'ai',
+]);
 export const HEROES_WORLD_EXPORT_FORMAT = 'wurm-tools-heroes-world';
 export const HEROES_WORLD_EXPORT_VERSION = 1;
 export const HEROES_OBJECT_EXPORT_FORMAT = 'wurm-tools-heroes-object';
@@ -70,6 +88,14 @@ async function withDatabase(filePath, write, action) {
           FOREIGN KEY (world_id) REFERENCES heroes_worlds(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS heroes_objects_world_id ON heroes_objects(world_id);
+        CREATE TABLE IF NOT EXISTS heroes_library (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          definition_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
       `);
       const result = await action(db);
       if (write) {
@@ -136,6 +162,155 @@ function normalizeDefinition(definition) {
   return { name, kind, definitionJson };
 }
 
+function libraryRows(db) {
+  return queryRows(db, 'SELECT * FROM heroes_library ORDER BY name COLLATE NOCASE').map((row) => ({
+    id: row.id,
+    name: row.name,
+    kind: row.kind,
+    definition: JSON.parse(row.definition_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+function validateReferences(value, entries) {
+  try {
+    const resolved = resolveLibraryReferences(value, entries);
+    if (Buffer.byteLength(JSON.stringify(resolved), 'utf8') > 256 * 1024) {
+      throw httpError(413, 'Resolved definition is too large');
+    }
+  } catch (error) {
+    if (error.status) throw error;
+    throw httpError(400, error.message);
+  }
+}
+
+export function listHeroesLibrary(filePath = heroesDatabasePath()) {
+  return withDatabase(filePath, false, libraryRows);
+}
+
+export function saveHeroesLibrary(data, id = null, filePath = heroesDatabasePath()) {
+  const name = requireName(data?.name, 'saved definition name');
+  if (!['shape', 'part', 'object'].includes(data?.kind))
+    throw httpError(400, 'Invalid saved definition kind');
+  if (!data.definition || typeof data.definition !== 'object' || Array.isArray(data.definition)) {
+    throw httpError(400, 'Invalid saved definition');
+  }
+  const definition = { ...data.definition, name };
+  if (data.kind === 'object') normalizeDefinition(definition);
+  else if (typeof definition.anatomyType !== 'string')
+    throw httpError(400, 'Anatomy type is required');
+  return withDatabase(filePath, true, (db) => {
+    const entries = libraryRows(db);
+    const previous = id ? entries.find((entry) => entry.id === id) : null;
+    if (id && !previous) throw httpError(404, 'Saved definition not found');
+    if (previous && previous.kind !== data.kind)
+      throw httpError(400, 'Cannot change saved definition kind');
+    const now = new Date().toISOString();
+    const entry = {
+      id: id ?? randomUUID(),
+      name,
+      kind: data.kind,
+      definition,
+      createdAt: previous?.createdAt ?? now,
+      updatedAt: now,
+    };
+    const next = [...entries.filter((item) => item.id !== entry.id), entry];
+    for (const item of next) validateReferences(item.definition, next);
+    for (const row of queryRows(db, 'SELECT definition_json FROM heroes_objects')) {
+      validateReferences(JSON.parse(row.definition_json), next);
+    }
+    db.run(
+      `INSERT OR REPLACE INTO heroes_library
+      (id, name, kind, definition_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      [entry.id, name, entry.kind, JSON.stringify(definition), entry.createdAt, now]
+    );
+    return entry;
+  });
+}
+
+export function deleteHeroesLibrary(id, filePath = heroesDatabasePath()) {
+  return withDatabase(filePath, true, (db) => {
+    const entries = libraryRows(db);
+    if (!entries.some((entry) => entry.id === id))
+      throw httpError(404, 'Saved definition not found');
+    for (const entry of entries.filter((entry) => entry.id !== id)) {
+      const definition = detachLibraryReference(entry.definition, id, entries);
+      db.run('UPDATE heroes_library SET definition_json = ?, updated_at = ? WHERE id = ?', [
+        JSON.stringify(definition),
+        new Date().toISOString(),
+        entry.id,
+      ]);
+    }
+    for (const row of queryRows(db, 'SELECT id, definition_json FROM heroes_objects')) {
+      const definition = detachLibraryReference(JSON.parse(row.definition_json), id, entries);
+      db.run('UPDATE heroes_objects SET definition_json = ? WHERE id = ?', [
+        JSON.stringify(definition),
+        row.id,
+      ]);
+    }
+    db.run('DELETE FROM heroes_library WHERE id = ?', [id]);
+    return { deleted: 1 };
+  });
+}
+
+export function exportHeroesLibrary(filePath = heroesDatabasePath()) {
+  return withDatabase(filePath, false, (db) => {
+    const entries = libraryRows(db);
+    return {
+      format: 'wurm-tools-heroes-library',
+      version: 1,
+      entries: entries.map((entry) => ({
+        ...entry,
+        definition: copyLibraryDefinition(entry.definition, entries),
+      })),
+    };
+  });
+}
+
+export function importHeroesLibrary(data, filePath = heroesDatabasePath()) {
+  if (
+    data?.format !== 'wurm-tools-heroes-library' ||
+    data.version !== 1 ||
+    !Array.isArray(data.entries) ||
+    data.entries.length > MAX_IMPORTED_OBJECTS
+  ) {
+    throw httpError(400, 'Invalid saved-definition library export');
+  }
+  const now = new Date().toISOString();
+  const entries = data.entries.map((item) => {
+    if (!item || typeof item !== 'object') throw httpError(400, 'Invalid saved definition entry');
+    const name = requireName(item.name, 'saved definition name');
+    if (!['shape', 'part', 'object'].includes(item.kind))
+      throw httpError(400, 'Invalid saved definition kind');
+    validateReferences(item.definition, []);
+    const definition = copyLibraryDefinition(item.definition);
+    if (!definition || typeof definition !== 'object' || Array.isArray(definition))
+      throw httpError(400, 'Invalid saved definition');
+    if (item.kind === 'object') normalizeDefinition(definition);
+    else if (typeof definition.anatomyType !== 'string')
+      throw httpError(400, 'Anatomy type is required');
+    validateReferences(definition, []);
+    return {
+      id: randomUUID(),
+      name,
+      kind: item.kind,
+      definition: { ...definition, name },
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+  return withDatabase(filePath, true, (db) => {
+    for (const entry of entries) {
+      db.run(
+        'INSERT INTO heroes_library (id, name, kind, definition_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [entry.id, entry.name, entry.kind, JSON.stringify(entry.definition), now, now]
+      );
+    }
+    return { imported: entries.length };
+  });
+}
+
 export function listHeroesWorlds(filePath = heroesDatabasePath()) {
   return withDatabase(filePath, false, (db) =>
     queryRows(
@@ -185,7 +360,12 @@ export function exportHeroesWorld(id, filePath = heroesDatabasePath()) {
       db,
       'SELECT id, world_id, name, kind, definition_json, created_at FROM heroes_objects WHERE world_id = ? ORDER BY name COLLATE NOCASE',
       [id]
-    ).map(objectFromRow);
+    )
+      .map(objectFromRow)
+      .map((object) => ({
+        ...object,
+        definition: copyLibraryDefinition(object.definition, libraryRows(db)),
+      }));
     return {
       format: HEROES_WORLD_EXPORT_FORMAT,
       version: HEROES_WORLD_EXPORT_VERSION,
@@ -217,6 +397,8 @@ export function importHeroesWorld(data, filePath = heroesDatabasePath()) {
   const id = randomUUID();
   const createdAt = new Date().toISOString();
   return withDatabase(filePath, true, (db) => {
+    for (const object of objects)
+      validateReferences(JSON.parse(object.definitionJson), libraryRows(db));
     db.run('BEGIN');
     try {
       db.run('INSERT INTO heroes_worlds (id, name, created_at) VALUES (?, ?, ?)', [
@@ -263,6 +445,7 @@ export function createHeroesObject(worldId, definition, filePath = heroesDatabas
     if (!queryRows(db, 'SELECT id FROM heroes_worlds WHERE id = ?', [worldId]).length) {
       throw httpError(404, 'Heroes world not found');
     }
+    validateReferences(definition, libraryRows(db));
     db.run(
       'INSERT INTO heroes_objects (id, world_id, name, kind, definition_json, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       [id, worldId, name, kind, definitionJson, createdAt]
@@ -277,6 +460,7 @@ export function updateHeroesObject(id, definition, filePath = heroesDatabasePath
   return withDatabase(filePath, true, (db) => {
     const existing = queryRows(db, 'SELECT world_id FROM heroes_objects WHERE id = ?', [id])[0];
     if (!existing) throw httpError(404, 'Heroes object not found');
+    validateReferences(definition, libraryRows(db));
     db.run('UPDATE heroes_objects SET name = ?, kind = ?, definition_json = ? WHERE id = ?', [
       name,
       kind,
@@ -315,7 +499,11 @@ export function exportHeroesObject(id, filePath = heroesDatabasePath()) {
       format: HEROES_OBJECT_EXPORT_FORMAT,
       version: HEROES_OBJECT_EXPORT_VERSION,
       exportedAt: new Date().toISOString(),
-      object: { name: object.name, kind: object.kind, definition: object.definition },
+      object: {
+        name: object.name,
+        kind: object.kind,
+        definition: copyLibraryDefinition(object.definition, libraryRows(db)),
+      },
     };
   });
 }
@@ -343,6 +531,7 @@ export function importHeroesObject(worldId, data, filePath = heroesDatabasePath(
     if (!queryRows(db, 'SELECT id FROM heroes_worlds WHERE id = ?', [worldId]).length) {
       throw httpError(404, 'Heroes world not found');
     }
+    validateReferences(JSON.parse(definitionJson), libraryRows(db));
     db.run(
       'INSERT INTO heroes_objects (id, world_id, name, kind, definition_json, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       [id, worldId, name, kind, definitionJson, createdAt]
