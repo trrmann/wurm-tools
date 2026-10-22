@@ -6,6 +6,8 @@ import initSqlJs from 'sql.js';
 import {
   normalizeManagementRecord,
   validateManagementRelations,
+  migrateManagementHierarchy,
+  isObjectAvailableInWorld,
 } from '../src/js/modules/objects/heroes/campaign-management.mjs';
 import { httpError } from './wurm-db.js';
 import {
@@ -96,7 +98,7 @@ async function withDatabase(filePath, write, action) {
         );
         CREATE TABLE IF NOT EXISTS heroes_objects (
           id TEXT PRIMARY KEY,
-          world_id TEXT NOT NULL,
+          world_id TEXT,
           name TEXT NOT NULL,
           kind TEXT NOT NULL,
           definition_json TEXT NOT NULL,
@@ -117,9 +119,53 @@ async function withDatabase(filePath, write, action) {
           kind TEXT NOT NULL,
           data_json TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS heroes_metadata (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
       `);
+      const legacyObjectStorage = queryRows(db, 'PRAGMA table_info(heroes_objects)').some(
+        (column) => column.name === 'world_id' && column.notnull
+      );
+      if (legacyObjectStorage) {
+        db.run(`
+          ALTER TABLE heroes_objects RENAME TO heroes_objects_legacy;
+          CREATE TABLE heroes_objects (
+            id TEXT PRIMARY KEY, world_id TEXT, name TEXT NOT NULL, kind TEXT NOT NULL,
+            definition_json TEXT NOT NULL, created_at TEXT NOT NULL,
+            FOREIGN KEY (world_id) REFERENCES heroes_worlds(id) ON DELETE CASCADE
+          );
+          INSERT INTO heroes_objects SELECT * FROM heroes_objects_legacy;
+          DROP TABLE heroes_objects_legacy;
+          CREATE INDEX heroes_objects_world_id ON heroes_objects(world_id);
+        `);
+      }
+      const hierarchyVersion = queryRows(
+        db,
+        "SELECT value FROM heroes_metadata WHERE key = 'hierarchy_version'"
+      )[0]?.value;
+      if (hierarchyVersion && hierarchyVersion !== '2')
+        throw httpError(400, 'Unsupported HERO management hierarchy version');
+      const legacyRecords = hierarchyVersion ? [] : managementRows(db);
+      if (legacyRecords.length) {
+        const worlds = queryRows(db, 'SELECT * FROM heroes_worlds').map(worldFromRow);
+        const records = migrateManagementHierarchy(
+          legacyRecords,
+          worlds,
+          randomUUID,
+          queryRows(db, 'SELECT * FROM heroes_objects').map(objectFromRow)
+        );
+        validateManagementState({
+          records,
+          worlds,
+          objects: queryRows(db, 'SELECT * FROM heroes_objects').map(objectFromRow),
+        });
+        for (const record of records) writeManagementRecord(db, record);
+      }
+      if (!hierarchyVersion)
+        db.run("INSERT INTO heroes_metadata (key, value) VALUES ('hierarchy_version', '2')");
       const result = await action(db);
-      if (write) {
+      if (write || legacyRecords.length || legacyObjectStorage) {
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         const temp = `${filePath}.${process.pid}.tmp`;
         try {
@@ -360,21 +406,32 @@ export function deleteHeroesWorld(id, filePath = heroesDatabasePath()) {
   return withDatabase(filePath, true, (db) => {
     const exists = queryRows(db, 'SELECT id FROM heroes_worlds WHERE id = ?', [id])[0];
     if (!exists) throw httpError(404, 'Heroes world not found');
-    const objectsDeleted = queryRows(
-      db,
-      'SELECT COUNT(*) AS count FROM heroes_objects WHERE world_id = ?',
-      [id]
-    )[0].count;
-    const objectIds = new Set(
-      queryRows(db, 'SELECT id FROM heroes_objects WHERE world_id = ?', [id]).map((row) => row.id)
+    const records = managementRows(db);
+    const sharedIds = new Set(
+      records
+        .filter((record) => record.kind === 'object-scope')
+        .map((record) => record.data.objectId)
     );
-    for (const record of managementRows(db)) {
+    const objectIds = new Set(
+      queryRows(db, 'SELECT id FROM heroes_objects WHERE world_id = ?', [id])
+        .filter((row) => !sharedIds.has(row.id))
+        .map((row) => row.id)
+    );
+    for (const record of records) {
       if (record.data.worldId === id || objectIds.has(record.data.objectId)) {
         db.run('DELETE FROM heroes_management WHERE id = ?', [record.id]);
+      } else if (record.kind === 'object-scope' && record.data.worldIds.includes(id)) {
+        record.data.worldIds = record.data.worldIds.filter((worldId) => worldId !== id);
+        writeManagementRecord(db, record);
       }
     }
+    for (const objectId of sharedIds)
+      db.run('UPDATE heroes_objects SET world_id = NULL WHERE id = ? AND world_id = ?', [
+        objectId,
+        id,
+      ]);
     db.run('DELETE FROM heroes_worlds WHERE id = ?', [id]);
-    return { deleted: 1, objectsDeleted };
+    return { deleted: 1, objectsDeleted: objectIds.size };
   });
 }
 
@@ -385,12 +442,10 @@ export function exportHeroesWorld(id, filePath = heroesDatabasePath()) {
       id,
     ])[0];
     if (!worldRow) throw httpError(404, 'Heroes world not found');
-    const objects = queryRows(
-      db,
-      'SELECT id, world_id, name, kind, definition_json, created_at FROM heroes_objects WHERE world_id = ? ORDER BY name COLLATE NOCASE',
-      [id]
-    )
+    const records = managementRows(db);
+    const objects = queryRows(db, 'SELECT * FROM heroes_objects ORDER BY name COLLATE NOCASE')
       .map(objectFromRow)
+      .filter((object) => isObjectAvailableInWorld(object, id, records))
       .map((object) => ({
         ...object,
         definition: copyLibraryDefinition(object.definition, libraryRows(db)),
@@ -451,27 +506,26 @@ export function importHeroesWorld(data, filePath = heroesDatabasePath()) {
 }
 
 export function listHeroesObjects(worldId, filePath = heroesDatabasePath()) {
-  if (!worldId) throw httpError(400, 'Invalid world id');
+  if (worldId !== null && !worldId) throw httpError(400, 'Invalid world id');
   return withDatabase(filePath, false, (db) => {
-    if (!queryRows(db, 'SELECT id FROM heroes_worlds WHERE id = ?', [worldId]).length) {
+    if (worldId && !queryRows(db, 'SELECT id FROM heroes_worlds WHERE id = ?', [worldId]).length) {
       throw httpError(404, 'Heroes world not found');
     }
-    return queryRows(
-      db,
-      'SELECT id, world_id, name, kind, definition_json, created_at FROM heroes_objects WHERE world_id = ? ORDER BY name COLLATE NOCASE',
-      [worldId]
-    ).map(objectFromRow);
+    const records = managementRows(db);
+    return queryRows(db, 'SELECT * FROM heroes_objects ORDER BY name COLLATE NOCASE')
+      .map(objectFromRow)
+      .filter((object) => !worldId || isObjectAvailableInWorld(object, worldId, records));
   });
 }
 
 export function createHeroesObject(worldId, definition, filePath = heroesDatabasePath()) {
-  if (!worldId) throw httpError(400, 'Invalid world id');
+  if (worldId !== null && !worldId) throw httpError(400, 'Invalid world id');
   const { name, kind, definitionJson } = normalizeDefinition(definition);
 
   const id = randomUUID();
   const createdAt = new Date().toISOString();
   return withDatabase(filePath, true, (db) => {
-    if (!queryRows(db, 'SELECT id FROM heroes_worlds WHERE id = ?', [worldId]).length) {
+    if (worldId && !queryRows(db, 'SELECT id FROM heroes_worlds WHERE id = ?', [worldId]).length) {
       throw httpError(404, 'Heroes world not found');
     }
     validateReferences(definition, libraryRows(db));
@@ -479,6 +533,19 @@ export function createHeroesObject(worldId, definition, filePath = heroesDatabas
       'INSERT INTO heroes_objects (id, world_id, name, kind, definition_json, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       [id, worldId, name, kind, definitionJson, createdAt]
     );
+    if (worldId === null)
+      writeManagementRecord(db, {
+        id: randomUUID(),
+        kind: 'object-scope',
+        data: {
+          name: `${name} availability`.slice(0, 120),
+          objectId: id,
+          global: true,
+          genreIds: [],
+          campaignIds: [],
+          worldIds: [],
+        },
+      });
     return { id, worldId, name, kind, definition: JSON.parse(definitionJson), createdAt };
   });
 }
@@ -548,7 +615,7 @@ export function exportHeroesObject(id, filePath = heroesDatabasePath()) {
 }
 
 export function importHeroesObject(worldId, data, filePath = heroesDatabasePath()) {
-  if (!worldId) throw httpError(400, 'Invalid world id');
+  if (worldId !== null && !worldId) throw httpError(400, 'Invalid world id');
   if (data?.format !== HEROES_OBJECT_EXPORT_FORMAT) {
     throw httpError(400, 'Not a Wurm Tools Heroes object export');
   }
@@ -564,6 +631,7 @@ export function importHeroesObject(worldId, data, filePath = heroesDatabasePath(
     throw httpError(400, 'Heroes object metadata does not match its definition');
   }
   const { name, kind, definitionJson } = normalizeDefinition(source.definition);
+  if (worldId === null) return createHeroesObject(null, source.definition, filePath);
   const id = randomUUID();
   const createdAt = new Date().toISOString();
   return withDatabase(filePath, true, (db) => {
@@ -625,6 +693,9 @@ export function saveHeroesManagement(source, id = null, filePath = heroesDatabas
   let data;
   try {
     data = normalizeManagementRecord(source?.kind, source?.data);
+    if (source.kind === 'campaign' && !data.genreId) throw new RangeError('Select a parent genre');
+    if (source.kind === 'world' && !data.campaignId)
+      throw new RangeError('Select a parent campaign');
   } catch (error) {
     if (!(error instanceof TypeError || error instanceof RangeError)) throw error;
     throw httpError(400, error.message);
@@ -635,10 +706,31 @@ export function saveHeroesManagement(source, id = null, filePath = heroesDatabas
     if (id && !previous) throw httpError(404, 'Management record not found');
     if (previous && previous.kind !== source.kind)
       throw httpError(400, 'Cannot change record kind');
+    if (previous?.kind === 'object-scope' && previous.data.objectId !== data.objectId)
+      throw httpError(400, 'Cannot change the object targeted by an availability record');
+    if (previous?.data.migrationNotes && !data.migrationNotes)
+      data.migrationNotes = previous.data.migrationNotes;
     const record = { id: id ?? randomUUID(), kind: source.kind, data };
+    if (record.kind === 'character' && !data.worldId)
+      data.worldId = state.objects.find((object) => object.id === data.objectId)?.worldId || '';
+    if (record.kind === 'object-scope') {
+      const object = state.objects.find((object) => object.id === data.objectId);
+      for (const assignment of state.records.filter(
+        (item) => item.kind === 'character' && item.data.objectId === data.objectId
+      )) {
+        if (!assignment.data.worldId && object?.worldId) assignment.data.worldId = object.worldId;
+      }
+    }
     state.records = [...state.records.filter((item) => item.id !== record.id), record];
     validateManagementState(state);
     writeManagementRecord(db, record);
+    if (record.kind === 'object-scope') {
+      for (const assignment of state.records.filter(
+        (item) => item.kind === 'character' && item.data.objectId === data.objectId
+      ))
+        writeManagementRecord(db, assignment);
+      db.run('UPDATE heroes_objects SET world_id = NULL WHERE id = ?', [data.objectId]);
+    }
     return record;
   });
 }
@@ -648,6 +740,11 @@ export function deleteHeroesManagement(id, filePath = heroesDatabasePath()) {
     const state = managementState(db);
     if (!state.records.some((record) => record.id === id))
       throw httpError(404, 'Management record not found');
+    if (state.records.find((record) => record.id === id)?.kind === 'object-scope')
+      throw httpError(
+        400,
+        'Edit object availability instead of deleting it; delete the object to remove its shared definition'
+      );
     state.records = state.records.filter((record) => record.id !== id);
     validateManagementState(state);
     db.run('DELETE FROM heroes_management WHERE id = ?', [id]);
@@ -676,7 +773,7 @@ export function exportHeroesManagement(scope = {}, filePath = heroesDatabasePath
     if (type === 'genre' && !id.trim()) throw httpError(400, 'Select a genre');
     if (
       type === 'genre' &&
-      !state.records.some((record) => record.data.genre === id || record.data.genres?.includes(id))
+      !state.records.some((record) => record.kind === 'genre' && record.id === id)
     ) {
       throw httpError(404, 'Genre collection not found');
     }
@@ -687,21 +784,27 @@ export function exportHeroesManagement(scope = {}, filePath = heroesDatabasePath
     const recordIds = new Set();
     for (const record of state.records) {
       const data = record.data;
-      if (
-        (type === 'profile' && record.kind === 'world' && data.gameMasterId === id) ||
-        (type === 'genre' && record.kind === 'world' && data.genres.includes(id))
-      )
+      if (type === 'profile' && record.kind === 'world' && data.gameMasterId === id)
         worldIds.add(data.worldId);
       if (type === 'profile' && record.kind === 'world' && data.playerIds.includes(id))
         contextWorldIds.add(data.worldId);
       if (
         (type === 'campaign' && record.id === id) ||
-        (type === 'genre' && record.kind === 'campaign' && data.genre === id)
+        (type === 'genre' && record.kind === 'campaign' && data.genreId === id)
       )
         campaignIds.add(record.id);
       if (type === 'profile' && record.kind === 'character' && data.playerId === id)
         objectIds.add(data.objectId);
     }
+    if (type === 'record' && selectedRecord.kind === 'campaign') campaignIds.add(id);
+    if (type === 'record' && selectedRecord.kind === 'genre') {
+      state.records
+        .filter((record) => record.kind === 'campaign' && record.data.genreId === id)
+        .forEach((record) => campaignIds.add(record.id));
+    }
+    state.records
+      .filter((record) => record.kind === 'world' && campaignIds.has(record.data.campaignId))
+      .forEach((record) => worldIds.add(record.data.worldId));
     if (type === 'all') state.worlds.forEach((world) => worldIds.add(world.id));
     if (type === 'world') worldIds.add(id);
     if (type === 'record') {
@@ -709,34 +812,50 @@ export function exportHeroesManagement(scope = {}, filePath = heroesDatabasePath
       if (selectedRecord.data.worldId) worldIds.add(selectedRecord.data.worldId);
       if (selectedRecord.data.objectId) objectIds.add(selectedRecord.data.objectId);
     }
-    const objects = state.objects.filter(
-      (object) =>
-        worldIds.has(object.worldId) ||
-        objectIds.has(object.id) ||
-        state.records.some(
-          (record) =>
-            record.kind === 'character' &&
-            record.data.objectId === object.id &&
-            campaignIds.has(record.data.campaignId)
-        )
-    );
+    const objects = state.objects.filter((object) => {
+      if (type === 'all' || objectIds.has(object.id)) return true;
+      if ([...worldIds].some((worldId) => isObjectAvailableInWorld(object, worldId, state.records)))
+        return true;
+      const availability = state.records.find(
+        (record) => record.kind === 'object-scope' && record.data.objectId === object.id
+      )?.data;
+      if (!availability) return false;
+      if (type === 'genre')
+        return (
+          availability.global ||
+          availability.genreIds.includes(id) ||
+          availability.campaignIds.some((campaignId) => campaignIds.has(campaignId))
+        );
+      if (type === 'campaign')
+        return (
+          availability.global ||
+          availability.campaignIds.includes(id) ||
+          availability.genreIds.includes(campaign.data.genreId)
+        );
+      return false;
+    });
     objects.forEach((object) => objectIds.add(object.id));
     const includedWorlds = new Set([
       ...worldIds,
       ...contextWorldIds,
       ...objects.map((object) => object.worldId),
-      ...state.records
-        .filter((record) => campaignIds.has(record.id))
-        .map((record) => record.data.worldId),
     ]);
     const records = state.records.filter(
       (record) =>
         type === 'all' ||
         recordIds.has(record.id) ||
+        (record.kind === 'genre' && type === 'genre' && record.id === id) ||
         (record.kind === 'world' && includedWorlds.has(record.data.worldId)) ||
-        (record.kind === 'campaign' &&
-          (worldIds.has(record.data.worldId) || campaignIds.has(record.id))) ||
-        (record.kind === 'character' && objectIds.has(record.data.objectId)) ||
+        (record.kind === 'campaign' && campaignIds.has(record.id)) ||
+        (record.kind === 'object-scope' && objectIds.has(record.data.objectId)) ||
+        (record.kind === 'character' &&
+          objectIds.has(record.data.objectId) &&
+          (type !== 'profile' ||
+            record.data.playerId === id ||
+            worldIds.has(
+              record.data.worldId ||
+                state.objects.find((object) => object.id === record.data.objectId)?.worldId
+            ))) ||
         (record.kind === 'note' &&
           includedWorlds.has(record.data.worldId) &&
           (type !== 'profile' ||
@@ -745,6 +864,24 @@ export function exportHeroesManagement(scope = {}, filePath = heroesDatabasePath
             objectIds.has(record.data.objectId)) &&
           (!record.data.objectId || objectIds.has(record.data.objectId)))
     );
+    // Include parent and availability dependencies without pulling unrelated objects into the scope.
+    const byId = new Map(state.records.map((record) => [record.id, record]));
+    const include = (record) => {
+      if (record && !records.includes(record)) records.push(record);
+    };
+    for (let index = 0; index < records.length; index++) {
+      const { data } = records[index];
+      if (data.worldId) includedWorlds.add(data.worldId);
+      for (const worldId of data.worldIds ?? []) includedWorlds.add(worldId);
+      for (const worldId of includedWorlds)
+        include(
+          state.records.find((record) => record.kind === 'world' && record.data.worldId === worldId)
+        );
+      for (const key of ['campaignId', 'genreId', 'gameMasterId', 'playerId'])
+        if (data[key]) include(byId.get(data[key]));
+      for (const key of ['campaignIds', 'genreIds', 'playerIds'])
+        for (const reference of data[key] ?? []) include(byId.get(reference));
+    }
     const profileIds = new Set(type === 'profile' ? [id] : []);
     for (const { data } of records) {
       for (const key of ['gameMasterId', 'playerId']) if (data[key]) profileIds.add(data[key]);
@@ -756,18 +893,24 @@ export function exportHeroesManagement(scope = {}, filePath = heroesDatabasePath
           record.kind === 'profile' && profileIds.has(record.id) && !records.includes(record)
       )
       .forEach((record) => records.push(record));
-    // A character's campaign is a required dependency, even in a player-only collection.
     const requiredCampaigns = new Set(
-      records
-        .filter((record) => record.kind === 'character')
-        .map((record) => record.data.campaignId)
+      records.filter((record) => record.kind === 'world').map((record) => record.data.campaignId)
     );
     state.records
       .filter((record) => requiredCampaigns.has(record.id) && !records.includes(record))
       .forEach((record) => records.push(record));
+    const requiredGenres = new Set(
+      records.filter((record) => record.kind === 'campaign').map((record) => record.data.genreId)
+    );
+    state.records
+      .filter(
+        (record) =>
+          record.kind === 'genre' && requiredGenres.has(record.id) && !records.includes(record)
+      )
+      .forEach((record) => records.push(record));
     const result = {
       format: 'heros-tools-management',
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       records,
       worlds: state.worlds.filter((world) => includedWorlds.has(world.id)),
@@ -794,12 +937,37 @@ export function importHeroesManagement(source, filePath = heroesDatabasePath()) 
   return withDatabase(filePath, true, (db) => {
     if (
       source?.format !== 'heros-tools-management' ||
-      source.version !== 1 ||
+      ![1, 2].includes(source.version) ||
       !['records', 'worlds', 'objects'].every(
         (key) => Array.isArray(source[key]) && source[key].length <= MAX_IMPORTED_OBJECTS
       )
     ) {
       throw httpError(400, 'Invalid Heros Tools management collection');
+    }
+    source = structuredClone(source);
+    if (source.version === 1) {
+      // Check original identities before adding migration-generated genre/world records.
+      const originalIds = [...source.worlds, ...source.objects, ...source.records].map(
+        (item) => item?.id
+      );
+      if (
+        originalIds.some((id) => typeof id !== 'string' || !id) ||
+        new Set(originalIds).size !== originalIds.length
+      )
+        throw httpError(400, 'Missing or duplicate collection ID');
+      try {
+        source.records = migrateManagementHierarchy(
+          source.records,
+          source.worlds,
+          randomUUID,
+          source.objects
+        );
+      } catch (error) {
+        if (!(error instanceof TypeError || error instanceof RangeError)) throw error;
+        throw httpError(400, error.message);
+      }
+      if (source.records.length > MAX_IMPORTED_OBJECTS)
+        throw httpError(400, 'Migrated collection exceeds 1000 records');
     }
     const ids = new Map();
     for (const item of [...source.worlds, ...source.objects, ...source.records]) {
@@ -825,14 +993,18 @@ export function importHeroesManagement(source, filePath = heroesDatabasePath()) 
       validateReferences(object.definition, []);
       return {
         id: mapId(object.id),
-        worldId: mapId(object.worldId),
+        worldId: object.worldId ? mapId(object.worldId) : null,
         name: normalized.name,
         kind: normalized.kind,
         definition: JSON.parse(normalized.definitionJson),
         createdAt: now,
       };
     });
-    if (objects.some((object) => !worlds.some((world) => world.id === object.worldId)))
+    if (
+      objects.some(
+        (object) => object.worldId && !worlds.some((world) => world.id === object.worldId)
+      )
+    )
       throw httpError(400, 'Object world is missing');
     const records = source.records.map((record) => {
       let data;
@@ -842,9 +1014,17 @@ export function importHeroesManagement(source, filePath = heroesDatabasePath()) 
         if (!(error instanceof TypeError || error instanceof RangeError)) throw error;
         throw httpError(400, error.message);
       }
-      for (const key of ['worldId', 'gameMasterId', 'playerId', 'objectId', 'campaignId'])
+      for (const key of [
+        'worldId',
+        'gameMasterId',
+        'playerId',
+        'objectId',
+        'campaignId',
+        'genreId',
+      ])
         if (key in data) data[key] = mapId(data[key]);
-      if (data.playerIds) data.playerIds = data.playerIds.map(mapId);
+      for (const key of ['playerIds', 'genreIds', 'campaignIds', 'worldIds'])
+        if (data[key]) data[key] = data[key].map(mapId);
       return { id: mapId(record.id), kind: record.kind, data };
     });
     validateManagementState({ records, worlds, objects });

@@ -26,18 +26,40 @@ storage, and editors serve all pages. World/profile URL context is organizationa
 Per the subsequent user scope confirmation, the Admins page only explains deferred registration
 and authorization; it exposes no administrator or permission-assignment functionality.
 
+The organizational hierarchy is **Genre → Campaign → World**, per the user's correction.
+Genres are first-class records; campaigns reference one genre and configured worlds reference one
+campaign. These relationships are modeled and validated in JavaScript, not inferred in generators.
+New or edited campaigns/world links require a parent. Unconfigured or legacy-unresolved worlds remain
+available for manual configuration; missing legacy parents are explicitly flagged, not guessed.
+
 Worlds can reference a local GM or an external GM label, and subscribe local player profiles. Saved
 characters can link to a local player, external player label, or no player; external-GM characters can
-still belong to a local player's collection. Campaign links must share the character's stored world.
-GM notes require a locally assigned world GM and a subscribed player or a character in that world.
-Deleting referenced profiles/campaigns or removing subscriptions required by notes is rejected explicitly.
+still belong to a local player's collection. Character assignments select a world context and inherit
+its campaign/genre; shared characters can have separate assignments in different worlds, or no world
+context. GM notes require a locally assigned world GM and a subscribed player or an available character.
+Deleting referenced profiles/genres/campaigns or removing subscriptions required by notes is rejected explicitly.
 Deleting an object removes its assignment and character-only notes; combined player/character notes keep
 the subscribed-player note without the removed character link. World deletion removes its management
-links, campaigns, assignments, and notes, but retains profiles and the shared definition library.
+links, world-only objects, world-context assignments, and notes, but retains parent campaigns/genres,
+profiles, shared objects, and the shared definition library.
+
+Object availability records reference the same saved object from any number of genres, campaigns,
+and worlds, or make it global. Availability flows to descendant worlds. Global objects can be
+created/imported without a world; world-only objects retain existing behavior until explicitly
+assigned shared availability. Shared objects use nullable world storage, not a hidden placeholder
+world, and edits are visible through every link. Deleting the last referenced world leaves a shared
+object unassigned rather than deleting it or making it global. Availability is not authorization.
+
+Version 1 local records and imported management backups are migrated to the corrected hierarchy.
+Only unique world/campaign links are reversed; multiple old campaigns leave the world unresolved,
+with candidate names/IDs recorded for manual selection. Old genre labels become genre records and
+historical migration notes. A campaign without an old genre is flagged rather than assigned an
+invented genre. Prior character campaign assignments are preserved in historical notes and their
+world context is retained. The migration is atomic, persists once, and preserves object definitions.
 
 Management collections are additive, versioned JSON backups with remapped IDs and validated dependencies.
 World/campaign/genre/profile scopes include required context; they are not security boundaries. GM profile
-collections include their owned worlds' objects; player profiles include their assigned characters plus
+collections include objects available in their owned worlds; player profiles include their assigned characters plus
 subscribed world context, not unrelated characters. Individual object exports and existing world exports
 retain their previous format and do not include management relationships. Portable object definitions
 flatten live library references; the original reusable-definition library can be exported separately.

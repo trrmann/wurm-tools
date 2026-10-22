@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import initSqlJs from 'sql.js';
 import {
   createHeroesWorld,
   createHeroesObject,
@@ -16,6 +17,8 @@ import {
   exportHeroesManagement,
   importHeroesManagement,
   saveHeroesLibrary,
+  listHeroesObjects,
+  exportHeroesWorld,
 } from '../scripts/heroes-store.js';
 import { createServer, handleHeroes } from '../scripts/wurm-local.js';
 import { normalizeManagementRecord } from '../src/js/modules/objects/heroes/campaign-management.mjs';
@@ -34,25 +37,25 @@ async function example() {
   const gm = await save('profile', { name: 'Morgan', roles: ['game-master', 'player'] });
   const player = await save('profile', { name: 'Alex', roles: ['player'] });
   const world = await createHeroesWorld('Asterion', file);
+  const genre = await save('genre', { name: 'Fantasy Hero' });
+  const campaign = await save('campaign', {
+    name: 'Northern journey',
+    genreId: genre.id,
+    active: true,
+  });
   const worldRecord = await save('world', {
     name: 'Asterion management',
     worldId: world.id,
     gameMasterId: gm.id,
     playerIds: [player.id],
-    genres: ['Fantasy Hero'],
-  });
-  const campaign = await save('campaign', {
-    name: 'Northern journey',
-    worldId: world.id,
-    active: true,
-    genre: 'Fantasy Hero',
+    campaignId: campaign.id,
   });
   const object = await createHeroesObject(world.id, { kind: 'character', name: 'Scout' }, file);
   const assignment = await save('character', {
     name: 'Alex scout',
     objectId: object.id,
     playerId: player.id,
-    campaignId: campaign.id,
+    worldId: world.id,
   });
   const note = await save('note', {
     name: 'Session 1',
@@ -61,7 +64,7 @@ async function example() {
     objectId: object.id,
     notes: 'Found the village.',
   });
-  return { gm, player, world, worldRecord, campaign, object, assignment, note };
+  return { gm, player, world, worldRecord, genre, campaign, object, assignment, note };
 }
 
 describe('local HERO campaign records', () => {
@@ -100,7 +103,7 @@ describe('local HERO campaign records', () => {
   it('stores roles, ownership, subscriptions, campaigns, character links, and GM notes in the same database', async () => {
     const data = await example();
     const state = await listHeroesManagement(file);
-    expect(state.records).toHaveLength(6);
+    expect(state.records).toHaveLength(7);
     expect(state.records.find((record) => record.id === data.note.id).data.notes).toBe(
       'Found the village.'
     );
@@ -116,12 +119,18 @@ describe('local HERO campaign records', () => {
 
   it('permits external Game Masters, external players, and unassigned characters', async () => {
     const world = await createHeroesWorld('Remote table', file);
+    const genre = await save('genre', { name: 'Remote genre' });
+    const campaign = await save('campaign', {
+      name: 'Remote campaign',
+      genreId: genre.id,
+      active: true,
+    });
     await save('world', {
       name: 'Remote table',
       worldId: world.id,
       externalGameMaster: 'Off-system GM',
       playerIds: [],
-      genres: [],
+      campaignId: campaign.id,
     });
     for (const externalPlayer of ['Off-system player', '']) {
       const object = await createHeroesObject(
@@ -187,7 +196,7 @@ describe('local HERO campaign records', () => {
     const otherWorld = await createHeroesWorld('Other', file);
     const otherCampaign = await save('campaign', {
       name: 'Other campaign',
-      worldId: otherWorld.id,
+      genreId: campaign.data.genreId,
       active: true,
     });
     const unassigned = await createHeroesObject(
@@ -203,7 +212,7 @@ describe('local HERO campaign records', () => {
       })
     ).rejects.toMatchObject({
       status: 400,
-      message: 'Character and campaign must belong to the same world',
+      message: 'A character inherits its campaign from its world',
     });
     expect((await listHeroesManagement(file)).objects[0].kind).toBe('character');
     expect(
@@ -233,7 +242,12 @@ describe('local HERO campaign records', () => {
     );
     await deleteHeroesWorld(world.id, file);
     const state = await listHeroesManagement(file);
-    expect(state.records.map((record) => record.kind)).toEqual(['profile', 'profile']);
+    expect(state.records.map((record) => record.kind)).toEqual([
+      'profile',
+      'profile',
+      'genre',
+      'campaign',
+    ]);
     expect(state.objects).toEqual([]);
     expect((await exportHeroesManagement({}, file)).worlds).toEqual([]);
   });
@@ -253,7 +267,7 @@ describe('portable campaign collections', () => {
       worldId: externalWorld.id,
       externalGameMaster: 'Remote GM',
       playerIds: [player.id],
-      genres: ['Star Hero'],
+      campaignId: campaign.id,
     });
     const externalCharacter = await createHeroesObject(
       externalWorld.id,
@@ -275,10 +289,14 @@ describe('portable campaign collections', () => {
       { type: 'campaign', id: campaign.id },
       file
     );
-    expect(campaignExport.objects.map((object) => object.name)).toEqual(['Scout']);
+    expect(campaignExport.objects.map((object) => object.name).sort()).toEqual([
+      'Other player character',
+      'Scout',
+      'Space scout',
+    ]);
     const emptyCampaign = await save('campaign', {
       name: 'Empty',
-      worldId: world.id,
+      genreId: campaign.data.genreId,
       active: false,
     });
     const emptyExport = await exportHeroesManagement(
@@ -291,13 +309,13 @@ describe('portable campaign collections', () => {
   it.each(['all', 'profile', 'world', 'campaign', 'genre', 'record'])(
     'round-trips %s collections with remapped identities and relationships',
     async (type) => {
-      const { gm, world, campaign, assignment } = await example();
+      const { gm, world, campaign, genre, assignment } = await example();
       const id = {
         all: '',
         profile: gm.id,
         world: world.id,
         campaign: campaign.id,
-        genre: 'Fantasy Hero',
+        genre: genre.id,
         record: assignment.id,
       }[type];
       const exported = await exportHeroesManagement({ type, id }, file);
@@ -314,9 +332,12 @@ describe('portable campaign collections', () => {
         expect(sourceIds.has(item.id)).toBe(false);
       const character = restored.records.find((record) => record.kind === 'character');
       expect(character.data.objectId).toBe(restored.objects[0].id);
-      expect(restored.records.find((record) => record.id === character.data.campaignId)?.kind).toBe(
-        'campaign'
-      );
+      expect(
+        restored.records.find(
+          (record) =>
+            record.id === restored.records.find((record) => record.kind === 'world').data.campaignId
+        )?.kind
+      ).toBe('campaign');
       await exportHeroesManagement({}, importedFile);
     }
   );
@@ -343,7 +364,7 @@ describe('portable campaign collections', () => {
     const exported = await exportHeroesManagement({}, file);
     for (const mutate of [
       (data) => {
-        data.version = 2;
+        data.version = 3;
       },
       (data) => {
         data.worlds.push(data.worlds[0]);
@@ -370,10 +391,287 @@ describe('portable campaign collections', () => {
   });
 });
 
+function legacyCollection(collection) {
+  const legacy = structuredClone(collection);
+  legacy.version = 1;
+  const genreNames = new Map(
+    legacy.records
+      .filter((record) => record.kind === 'genre')
+      .map((record) => [record.id, record.data.name])
+  );
+  const world = legacy.records.find((record) => record.kind === 'world');
+  const campaign = legacy.records.find((record) => record.kind === 'campaign');
+  world.data.genres = [genreNames.get(campaign.data.genreId)];
+  delete world.data.campaignId;
+  campaign.data.genre = genreNames.get(campaign.data.genreId);
+  campaign.data.worldId = world.data.worldId;
+  delete campaign.data.genreId;
+  for (const record of legacy.records.filter((record) => record.kind === 'character')) {
+    record.data.campaignId = campaign.id;
+    delete record.data.worldId;
+  }
+  legacy.records = legacy.records.filter((record) => record.kind !== 'genre');
+  return legacy;
+}
+
+describe('Genre -> Campaign -> World hierarchy', () => {
+  it('requires parent selections, validates references and protects parent deletion', async () => {
+    const { genre, campaign, worldRecord } = await example();
+    await expect(async () =>
+      save('campaign', { name: 'Missing parent', active: true })
+    ).rejects.toMatchObject({
+      status: 400,
+    });
+    await expect(
+      save('campaign', { name: 'Bad parent', genreId: 'missing', active: true })
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(async () =>
+      save('world', { ...worldRecord.data, campaignId: '' }, worldRecord.id)
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      save('world', { ...worldRecord.data, campaignId: 'missing' }, worldRecord.id)
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(deleteHeroesManagement(genre.id, file)).rejects.toMatchObject({ status: 400 });
+    await expect(deleteHeroesManagement(campaign.id, file)).rejects.toMatchObject({ status: 400 });
+    const otherGenre = await save('genre', { name: 'Science fiction' });
+    await save('campaign', { ...campaign.data, genreId: otherGenre.id }, campaign.id);
+    const exported = await exportHeroesManagement({ type: 'genre', id: otherGenre.id }, file);
+    expect(exported.worlds).toHaveLength(1);
+    expect(exported.objects).toHaveLength(1);
+    const oldGenre = await exportHeroesManagement({ type: 'genre', id: genre.id }, file);
+    expect(oldGenre.worlds).toEqual([]);
+    expect(oldGenre.objects).toEqual([]);
+  });
+
+  it('imports version 1 backups, reverses unique links and flags ambiguous worlds without losing objects', async () => {
+    await example();
+    const legacy = legacyCollection(await exportHeroesManagement({}, file));
+    const uniqueFile = path.join(root, 'unique.db');
+    await importHeroesManagement(legacy, uniqueFile);
+    const unique = await listHeroesManagement(uniqueFile);
+    const world = unique.records.find((record) => record.kind === 'world');
+    const campaign = unique.records.find((record) => record.kind === 'campaign');
+    expect(world.data.campaignId).toBe(campaign.id);
+    expect(campaign.data.worldId).toBeUndefined();
+    expect(unique.records.find((record) => record.id === campaign.data.genreId).data.name).toBe(
+      'Fantasy Hero'
+    );
+    expect(unique.objects).toHaveLength(1);
+    const second = structuredClone(legacy.records.find((record) => record.kind === 'campaign'));
+    second.id = 'second-campaign';
+    second.data.name = 'Second campaign';
+    second.data.genre = '';
+    legacy.records.push(second);
+    const ambiguousFile = path.join(root, 'ambiguous.db');
+    await importHeroesManagement(legacy, ambiguousFile);
+    const ambiguous = await listHeroesManagement(ambiguousFile);
+    const unresolved = ambiguous.records.find((record) => record.kind === 'world');
+    expect(unresolved.data.campaignId).toBe('');
+    expect(unresolved.data.migrationNotes).toContain('Multiple legacy campaigns');
+    expect(ambiguous.records.filter((record) => record.kind === 'campaign')).toHaveLength(2);
+    expect(
+      ambiguous.records.find((record) => record.data.name === 'Second campaign').data.migrationNotes
+    ).toContain('no genre');
+    expect(ambiguous.objects[0].definition).toEqual(legacy.objects[0].definition);
+    const corrected = ambiguous.records.find(
+      (record) => record.kind === 'campaign' && record.data.genreId
+    );
+    await saveHeroesManagement(
+      { kind: 'world', data: { ...unresolved.data, campaignId: corrected.id } },
+      unresolved.id,
+      ambiguousFile
+    );
+    await exportHeroesManagement({}, ambiguousFile);
+  });
+
+  it('persists an idempotent migration of the old SQLite schema on first read', async () => {
+    await example();
+    const original = await exportHeroesManagement({}, file);
+    const legacy = legacyCollection(original);
+    const SQL = await initSqlJs();
+    const db = new SQL.Database(fs.readFileSync(file));
+    try {
+      db.run('DELETE FROM heroes_metadata; DELETE FROM heroes_management;');
+      for (const record of legacy.records)
+        db.run('INSERT INTO heroes_management VALUES (?, ?, ?)', [
+          record.id,
+          record.kind,
+          JSON.stringify(record.data),
+        ]);
+      db.run(`
+        ALTER TABLE heroes_objects RENAME TO objects_new;
+        CREATE TABLE heroes_objects (
+          id TEXT PRIMARY KEY, world_id TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL,
+          definition_json TEXT NOT NULL, created_at TEXT NOT NULL,
+          FOREIGN KEY (world_id) REFERENCES heroes_worlds(id) ON DELETE CASCADE
+        );
+        INSERT INTO heroes_objects SELECT * FROM objects_new;
+        DROP TABLE objects_new;
+      `);
+      fs.writeFileSync(file, db.export());
+    } finally {
+      db.close();
+    }
+    const migrated = await listHeroesManagement(file);
+    const bytes = fs.readFileSync(file);
+    expect(migrated.objects).toEqual(original.objects);
+    expect(migrated.records.find((record) => record.kind === 'world').data.campaignId).toBe(
+      migrated.records.find((record) => record.kind === 'campaign').id
+    );
+    expect(await listHeroesManagement(file)).toEqual(migrated);
+    expect(fs.readFileSync(file)).toEqual(bytes);
+    const global = await createHeroesObject(
+      null,
+      { name: 'Global after migration', kind: 'equipment' },
+      file
+    );
+    expect(global.worldId).toBeNull();
+  });
+});
+
+describe('shared object availability', () => {
+  it('links one object to multiple hierarchy scopes, inherits availability and preserves edits everywhere', async () => {
+    const { genre, campaign, world, object } = await example();
+    const secondWorld = await createHeroesWorld('Second world', file);
+    await save('world', {
+      name: 'Second world',
+      worldId: secondWorld.id,
+      campaignId: campaign.id,
+      playerIds: [],
+    });
+    const otherGenre = await save('genre', { name: 'Other genre' });
+    const otherCampaign = await save('campaign', {
+      name: 'Other campaign',
+      genreId: otherGenre.id,
+      active: true,
+    });
+    const thirdWorld = await createHeroesWorld('Third world', file);
+    await save('world', {
+      name: 'Third world',
+      worldId: thirdWorld.id,
+      campaignId: otherCampaign.id,
+      playerIds: [],
+    });
+    const availability = await save('object-scope', {
+      name: 'Shared Scout',
+      objectId: object.id,
+      global: false,
+      genreIds: [genre.id],
+      campaignIds: [otherCampaign.id],
+      worldIds: [world.id],
+    });
+    for (const worldId of [world.id, secondWorld.id, thirdWorld.id])
+      expect((await listHeroesObjects(worldId, file)).map((object) => object.id)).toContain(
+        object.id
+      );
+    await updateHeroesObject(object.id, { name: 'Updated shared Scout', kind: 'character' }, file);
+    expect((await listHeroesObjects(secondWorld.id, file))[0].name).toBe('Updated shared Scout');
+    expect((await listHeroesManagement(file)).objects).toHaveLength(1);
+    await expect(
+      save('object-scope', { ...availability.data, genreIds: ['missing'] }, availability.id)
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(save('object-scope', availability.data)).rejects.toMatchObject({ status: 400 });
+    await expect(deleteHeroesManagement(genre.id, file)).rejects.toMatchObject({ status: 400 });
+    await expect(
+      save(
+        'object-scope',
+        { ...availability.data, genreIds: [], campaignIds: [], worldIds: [] },
+        availability.id
+      )
+    ).rejects.toMatchObject({ status: 400 });
+    await save('character', {
+      name: 'Scout in second world',
+      objectId: object.id,
+      worldId: secondWorld.id,
+    });
+    const backup = await exportHeroesManagement({ type: 'world', id: world.id }, file);
+    expect(backup.objects).toHaveLength(1);
+    const restoredFile = path.join(root, 'shared.db');
+    await importHeroesManagement(backup, restoredFile);
+    const restored = await listHeroesManagement(restoredFile);
+    const scope = restored.records.find((record) => record.kind === 'object-scope');
+    expect(scope.data.objectId).toBe(restored.objects[0].id);
+    expect(scope.data.genreIds[0]).not.toBe(genre.id);
+    expect(scope.data.campaignIds[0]).not.toBe(otherCampaign.id);
+    await exportHeroesManagement({}, restoredFile);
+    expect((await exportHeroesWorld(world.id, file)).objects).toHaveLength(1);
+    await deleteHeroesWorld(world.id, file);
+    expect((await listHeroesObjects(secondWorld.id, file))[0].id).toBe(object.id);
+    expect(
+      (await listHeroesManagement(file)).records.some(
+        (record) => record.kind === 'campaign' && record.id === campaign.id
+      )
+    ).toBe(true);
+  });
+
+  it('creates global objects without worlds, includes them in scoped backups and leaves detached objects unassigned', async () => {
+    const global = await createHeroesObject(
+      null,
+      { name: 'Global equipment', kind: 'equipment' },
+      file
+    );
+    expect((await listHeroesObjects(null, file)).map((object) => object.id)).toEqual([global.id]);
+    const genre = await save('genre', { name: 'No worlds yet' });
+    const campaign = await save('campaign', {
+      name: 'No worlds campaign',
+      genreId: genre.id,
+      active: true,
+    });
+    for (const [type, id] of [
+      ['all', ''],
+      ['genre', genre.id],
+      ['campaign', campaign.id],
+    ]) {
+      const exported = await exportHeroesManagement({ type, id }, file);
+      expect(exported.objects[0].id).toBe(global.id);
+      await importHeroesManagement(exported, path.join(root, `${type}-global.db`));
+    }
+    const world = await createHeroesWorld('World', file);
+    expect((await listHeroesObjects(world.id, file))[0].id).toBe(global.id);
+    const scope = (await listHeroesManagement(file)).records.find(
+      (record) => record.kind === 'object-scope'
+    );
+    await save('object-scope', { ...scope.data, global: false, worldIds: [world.id] }, scope.id);
+    await deleteHeroesWorld(world.id, file);
+    const retained = await listHeroesManagement(file);
+    expect(retained.objects[0].id).toBe(global.id);
+    expect(retained.records.find((record) => record.id === scope.id).data).toMatchObject({
+      global: false,
+      worldIds: [],
+    });
+    const nextWorld = await createHeroesWorld('New world', file);
+    expect(await listHeroesObjects(nextWorld.id, file)).toEqual([]);
+    await deleteHeroesObject(global.id, file);
+    expect(
+      (await listHeroesManagement(file)).records.some((record) => record.kind === 'object-scope')
+    ).toBe(false);
+  });
+});
+
 describe('paired helper management routes', () => {
   const req = (method, data) =>
     Object.assign(Readable.from([Buffer.from(JSON.stringify(data))]), { method });
   const url = (route) => new URL(`http://localhost/heroes/management${route}`);
+  it('creates, lists and imports global objects without a world through paired HERO routes', async () => {
+    const route = (suffix = '') => new URL(`http://localhost/heroes/objects${suffix}`);
+    const created = await handleHeroes(
+      req('POST', { name: 'Global route object', kind: 'equipment' }),
+      route(),
+      file
+    );
+    expect(created.statusCode).toBe(201);
+    expect(created.body.object.worldId).toBeNull();
+    const exported = await handleHeroes(
+      { method: 'GET' },
+      route(`/${created.body.object.id}/export`),
+      file
+    );
+    const imported = await handleHeroes(req('POST', exported), route('/import'), file);
+    expect(imported.body.object.id).not.toBe(created.body.object.id);
+    expect(imported.body.object.worldId).toBeNull();
+    const listed = await handleHeroes({ method: 'GET' }, route(), file);
+    expect(listed.objects).toHaveLength(2);
+  });
   it('supports create/list/update/export/import/delete and explicit route errors', async () => {
     const created = await handleHeroes(
       req('POST', { kind: 'profile', data: { name: 'GM', roles: ['game-master'] } }),

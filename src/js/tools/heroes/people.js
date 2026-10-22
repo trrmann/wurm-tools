@@ -6,6 +6,11 @@ import {
   heroesPageHref,
   updateHeroesContext,
 } from '../../modules/pages/heroes-navigation.js';
+import {
+  getWorldCampaign,
+  getCampaignGenre,
+  isObjectAvailableInWorld,
+} from '../../modules/objects/heroes/campaign-management.mjs';
 
 const sections = [
   ['profile', 'People'],
@@ -13,6 +18,7 @@ const sections = [
   ['campaign', 'Campaigns'],
   ['genre', 'Genres'],
   ['object', 'Objects'],
+  ['object-scope', 'Object availability'],
   ['character', 'Characters'],
   ['note', 'GM notes'],
 ];
@@ -82,7 +88,7 @@ export function mountHeroesPeople(
   const editorLink = (worldId, object = null) => {
     const link = node('a', 'Open world editor', 'btn btn-secondary');
     const query = new URLSearchParams(window.location.search);
-    query.set('world', worldId);
+    query.set('world', worldId || 'all');
     if (object) query.set('object', object.id);
     link.href = heroesPageHref(object ? getHeroesObjectPage(object) : HEROES_PAGES[0], query);
     if (object) {
@@ -100,8 +106,15 @@ export function mountHeroesPeople(
   const profileName = (id) =>
     state.records.find((record) => record.id === id)?.data.name || 'Unassigned';
   const worldName = (id) => state.worlds.find((world) => world.id === id)?.name || 'Missing world';
+  const campaignName = (worldId) =>
+    getWorldCampaign(state.records, worldId)?.data.name || 'Unassigned campaign';
+  const genreName = (campaignId) =>
+    getCampaignGenre(state.records, campaignId)?.data.name || 'Unassigned genre';
+  const recordsOfKind = (kind) => state.records.filter((record) => record.kind === kind);
+  const recordName = (id) =>
+    state.records.find((record) => record.id === id)?.data.name || 'Missing record';
   const objectName = (id) =>
-    state.objects.find((object) => object.id === id)?.name || 'Missing character';
+    state.objects.find((object) => object.id === id)?.name || 'Missing object';
   const options = (select, items, value = '', empty = 'Unassigned') => {
     select.replaceChildren(new Option(empty, ''));
     for (const [id, name] of items)
@@ -132,7 +145,9 @@ export function mountHeroesPeople(
           (record) => record.kind === 'character' && record.data.playerId === profileSelect.value
         )
         .map(
-          (record) => state.objects.find((object) => object.id === record.data.objectId)?.worldId
+          (record) =>
+            record.data.worldId ||
+            state.objects.find((object) => object.id === record.data.objectId)?.worldId
         ),
       ...(!profileSelect.value ? state.worlds.map((world) => world.id) : []),
     ]);
@@ -163,10 +178,30 @@ export function mountHeroesPeople(
               world.data.gameMasterId === profileSelect.value &&
               state.objects.some(
                 (object) =>
-                  object.id === record.data.objectId && object.worldId === world.data.worldId
+                  object.id === record.data.objectId &&
+                  (record.data.worldId || object.worldId) === world.data.worldId
               )
           )
         );
+      if (section === 'campaign')
+        return worldLinks().some(
+          (world) => visibleWorlds().has(world.data.worldId) && world.data.campaignId === record.id
+        );
+      if (section === 'genre')
+        return worldLinks().some(
+          (world) =>
+            visibleWorlds().has(world.data.worldId) &&
+            getWorldCampaign(state.records, world.data.worldId)?.data.genreId === record.id
+        );
+      if (section === 'object-scope') {
+        const object = state.objects.find((object) => object.id === record.data.objectId);
+        return (
+          object &&
+          [...visibleWorlds()].some((worldId) =>
+            isObjectAvailableInWorld(object, worldId, state.records)
+          )
+        );
+      }
       return visibleWorlds().has(record.data.worldId);
     });
   async function reload() {
@@ -179,7 +214,7 @@ export function mountHeroesPeople(
       element('import-world'),
       state.worlds.map((world) => [world.id, world.name]),
       element('import-world').value,
-      'Select a world'
+      'Global (no world)'
     );
     element('pair').hidden = true;
     updateProfileUrl();
@@ -217,9 +252,11 @@ export function mountHeroesPeople(
   function drawForm(record = null) {
     editingId = record?.id || null;
     form.replaceChildren();
-    form.hidden = ['genre', 'object'].includes(section);
+    form.hidden = section === 'object';
     if (form.hidden) return;
     const data = record?.data || {};
+    if (data.migrationNotes)
+      form.append(node('p', data.migrationNotes, 'heroes-management-notice'));
     form.append(
       node('h3', `${record ? 'Edit' : 'Add'} ${sections.find(([kind]) => kind === section)[1]}`)
     );
@@ -235,14 +272,14 @@ export function mountHeroesPeople(
       }
       field('Profile notes (visible to all paired clients)', 'notes', data.notes, 'textarea');
     }
-    if (['world', 'campaign', 'note'].includes(section)) {
+    if (['world', 'character', 'note'].includes(section)) {
       field(
         'Stored world',
         'worldId',
         data.worldId,
         'text',
         state.worlds.map((world) => [world.id, world.name])
-      ).required = true;
+      ).required = section !== 'character';
     }
     if (section === 'world') {
       field(
@@ -256,7 +293,13 @@ export function mountHeroesPeople(
         recordOptions(profiles('game-master'))
       );
       field('Or external Game Master', 'externalGameMaster', data.externalGameMaster);
-      field('Genres (one per line)', 'genres', data.genres?.join('\n'), 'textarea');
+      field(
+        'Parent campaign',
+        'campaignId',
+        data.campaignId,
+        'text',
+        recordOptions(recordsOfKind('campaign'))
+      ).required = true;
       const players = field(
         'Subscribed players (Ctrl/Cmd-click to select multiple)',
         'playerIds',
@@ -271,9 +314,45 @@ export function mountHeroesPeople(
       });
     }
     if (section === 'campaign') {
-      field('Genre', 'genre', data.genre);
+      field(
+        'Parent genre',
+        'genreId',
+        data.genreId,
+        'text',
+        recordOptions(recordsOfKind('genre'))
+      ).required = true;
       field('Active campaign', 'active', 'active', 'checkbox').checked = data.active ?? true;
       field('Campaign notes', 'notes', data.notes, 'textarea');
+    }
+    if (section === 'genre')
+      field('Genre notes (organizational only)', 'notes', data.notes, 'textarea');
+    if (section === 'object-scope') {
+      field(
+        'Saved object',
+        'objectId',
+        data.objectId,
+        'text',
+        state.objects.map((object) => [object.id, object.name])
+      ).required = true;
+      field('Available globally', 'global', 'global', 'checkbox').checked = data.global ?? false;
+      for (const [key, label, items] of [
+        ['genreIds', 'Genres', recordOptions(recordsOfKind('genre'))],
+        ['campaignIds', 'Campaigns', recordOptions(recordsOfKind('campaign'))],
+        ['worldIds', 'Worlds', state.worlds.map((world) => [world.id, world.name])],
+      ]) {
+        const select = field(`${label} (select multiple)`, key, '', 'text', items);
+        select.multiple = true;
+        select.size = Math.min(Math.max(items.length, 2), 6);
+        [...select.options].forEach((option) => {
+          option.selected = data[key]?.includes(option.value) || false;
+        });
+      }
+      form.append(
+        node(
+          'p',
+          'All scopes link the same object: edits affect every use. Genre and campaign availability includes descendant worlds. Empty scopes leave a shared object unassigned, not global. These are availability links, not permissions.'
+        )
+      );
     }
     if (['character', 'note'].includes(section)) {
       field(
@@ -305,12 +384,11 @@ export function mountHeroesPeople(
         'externalGameMaster',
         data.externalGameMaster
       );
-      field(
-        'Campaign (must share the character world)',
-        'campaignId',
-        data.campaignId,
-        'text',
-        recordOptions(state.records.filter((item) => item.kind === 'campaign'))
+      form.append(
+        node(
+          'p',
+          'The character inherits its campaign and genre from the selected world. Leave the world empty for a shared character without world context.'
+        )
       );
     }
     if (section === 'note') {
@@ -345,22 +423,7 @@ export function mountHeroesPeople(
       row.append(buttons);
       list.append(row);
     };
-    if (section === 'genre') {
-      const genres = new Set(
-        state.records.flatMap((record) =>
-          visibleWorlds().has(record.data.worldId)
-            ? (record.data.genres || [record.data.genre]).filter(Boolean)
-            : []
-        )
-      );
-      [...genres]
-        .sort()
-        .forEach((genre) =>
-          append(genre, 'Organizational genre label; does not enable genre-specific rules.', [
-            button('Export genre', () => exportCollection('genre', genre)),
-          ])
-        );
-    } else if (section === 'object') {
+    if (section === 'object') {
       state.objects
         .filter((object) => visibleWorlds().has(object.worldId))
         .forEach((object) =>
@@ -384,13 +447,18 @@ export function mountHeroesPeople(
         if (section === 'profile')
           details = `${data.roles.map((role) => (role === 'game-master' ? 'Game Master' : 'Player')).join(' / ')}. ${details}`;
         if (section === 'world')
-          details = `${worldName(data.worldId)} - GM: ${data.externalGameMaster || profileName(data.gameMasterId)}; players: ${data.playerIds.map(profileName).join(', ') || 'none'}; genres: ${data.genres.join(', ') || 'none'}`;
+          details = `${worldName(data.worldId)} - ${campaignName(data.worldId)} / ${genreName(data.campaignId)}; GM: ${data.externalGameMaster || profileName(data.gameMasterId)}; players: ${data.playerIds.map(profileName).join(', ') || 'none'}${!data.campaignId ? '; ACTION REQUIRED: select a parent campaign.' : ''}`;
         if (section === 'campaign')
-          details = `${worldName(data.worldId)} - ${data.active ? 'Active' : 'Inactive'} - ${data.genre}. ${details}`;
+          details = `${genreName(record.id)} - ${data.active ? 'Active' : 'Inactive'}. ${details}${!data.genreId ? ' ACTION REQUIRED: select a parent genre.' : ''}`;
+        if (section === 'genre')
+          details = `Organizational genre; does not enable genre-specific rules. ${details}`;
+        if (section === 'object-scope')
+          details = `${objectName(data.objectId)}; ${data.global ? 'Global' : 'Selected scopes'}; genres: ${data.genreIds.map(recordName).join(', ') || 'none'}; campaigns: ${data.campaignIds.map(recordName).join(', ') || 'none'}; worlds: ${data.worldIds.map(worldName).join(', ') || 'none'}. All uses share one editable definition.`;
         if (section === 'character')
-          details = `${objectName(data.objectId)} - ${data.externalPlayer || profileName(data.playerId)}${data.externalGameMaster ? `; external GM: ${data.externalGameMaster}` : ''}`;
+          details = `${objectName(data.objectId)} - ${data.externalPlayer || profileName(data.playerId)}${data.externalGameMaster ? `; external GM: ${data.externalGameMaster}` : ''}; ${data.worldId ? `${worldName(data.worldId)} / ${campaignName(data.worldId)}` : 'No world context'}`;
         if (section === 'note')
           details = `${worldName(data.worldId)} - ${data.playerId ? profileName(data.playerId) : objectName(data.objectId)}: ${details}`;
+        if (data.migrationNotes) details += `\nMigration: ${data.migrationNotes}`;
         const actions = [
           button('Edit', () => {
             drawForm(record);
@@ -415,13 +483,14 @@ export function mountHeroesPeople(
             exportCollection(
               section === 'world'
                 ? 'world'
-                : section === 'character' || section === 'note'
+                : section === 'character' || section === 'note' || section === 'object-scope'
                   ? 'record'
                   : section,
               section === 'world' ? data.worldId : record.id
             )
           ),
         ];
+        if (section === 'object-scope') actions.splice(1, 1);
         if (section === 'profile')
           actions.unshift(
             button('Open workspace', () => {
@@ -437,7 +506,7 @@ export function mountHeroesPeople(
         if (section === 'world') actions.unshift(editorLink(data.worldId));
         if (section === 'character') {
           const object = state.objects.find((object) => object.id === data.objectId);
-          if (object) actions.unshift(editorLink(object.worldId, object));
+          if (object) actions.unshift(editorLink(data.worldId || object.worldId || '', object));
         }
         append(data.name, details, actions);
       }
@@ -445,15 +514,41 @@ export function mountHeroesPeople(
         for (const world of state.worlds.filter(
           (world) => !worldLinks().some((record) => record.data.worldId === world.id)
         )) {
-          append(world.name, 'No management record yet.', [
-            editorLink(world.id),
-            button('Configure world', () => {
-              drawForm();
-              form.elements.name.value = world.name;
-              form.elements.worldId.value = world.id;
-            }),
-            button('Export world', () => exportCollection('world', world.id)),
-          ]);
+          append(
+            world.name,
+            'No management record yet. Select a parent campaign when configuring this world.',
+            [
+              editorLink(world.id),
+              button('Configure world', () => {
+                drawForm();
+                form.elements.name.value = world.name;
+                form.elements.worldId.value = world.id;
+              }),
+              button('Export world', () => exportCollection('world', world.id)),
+            ]
+          );
+        }
+      }
+      if (section === 'object-scope' && !profileSelect.value) {
+        for (const object of state.objects.filter(
+          (object) =>
+            !recordsOfKind('object-scope').some((record) => record.data.objectId === object.id)
+        )) {
+          append(
+            object.name,
+            object.worldId
+              ? `World-only: ${worldName(object.worldId)}`
+              : 'Unassigned shared object',
+            [
+              button('Configure availability', () => {
+                drawForm();
+                form.elements.name.value = `${object.name} availability`.slice(0, 120);
+                form.elements.objectId.value = object.id;
+                for (const option of form.elements.worldIds.options)
+                  option.selected = option.value === object.worldId;
+              }),
+            ]
+          );
         }
       }
     }
@@ -469,10 +564,11 @@ export function mountHeroesPeople(
       data.roles = ['game-master', 'player'].filter((role) => values.has(role));
     if (section === 'world') {
       data.playerIds = values.getAll('playerIds').filter(Boolean);
-      data.genres = data.genres
-        .split('\n')
-        .map((genre) => genre.trim())
-        .filter(Boolean);
+    }
+    if (section === 'object-scope') {
+      data.global = values.has('global');
+      for (const key of ['genreIds', 'campaignIds', 'worldIds'])
+        data[key] = values.getAll(key).filter(Boolean);
     }
     if (section === 'campaign') data.active = values.has('active');
     const id = editingId;
@@ -509,9 +605,9 @@ export function mountHeroesPeople(
       let route = '/heroes/management/import';
       if (data.format === 'wurm-tools-heroes-world') route = '/heroes/worlds/import';
       if (data.format === 'wurm-tools-heroes-object') {
-        if (!element('import-world').value)
-          throw new Error('Select a destination world for the object import');
-        route = `/heroes/worlds/${encodeURIComponent(element('import-world').value)}/objects/import`;
+        route = element('import-world').value
+          ? `/heroes/worlds/${encodeURIComponent(element('import-world').value)}/objects/import`
+          : '/heroes/objects/import';
       }
       await request(route, { method: 'POST', body: JSON.stringify(data) });
       await reload();

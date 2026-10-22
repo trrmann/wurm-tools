@@ -28,6 +28,12 @@ export const HEROES_PAGES = [
     section: 'character',
   },
   {
+    href: '/site/heroes/object-availability/',
+    title: 'Object availability',
+    group: 'worlds',
+    section: 'object-scope',
+  },
+  {
     href: '/site/heroes/library/',
     title: 'Shared definition library',
     group: 'worlds',

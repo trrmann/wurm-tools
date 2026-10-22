@@ -276,14 +276,33 @@ allow it for the Render site.
   profile's worlds/characters; the profile ID in the URL preserves that workspace across reloads.
   The upper menu switches between Worlds & objects and Game Masters & players. Each has a distinct
   sidebar, not a duplicate of the upper menu. The world sidebar opens dedicated Worlds, Genres,
-  Campaigns, Objects, Non-player characters, Player characters, Character assignments, and Shared
+  Campaigns, Objects, Non-player characters, Player characters, Character assignments, Object availability, and Shared
   definition library pages. Objects contains every model-defined kind other than explicit PC/NPC
   kinds (including generic Characters); no data is reclassified or migrated. World rows open the
   correct object editor. The people sidebar opens Game Masters, Players, Admins, and GM notes.
   Selected world/profile context follows sidebar and upper-menu links and survives reload.
-  Create worlds and configure ownership/subscriptions/genres on Worlds; use Character assignments
-  for player/campaign links. Unconfigured worlds also appear in the all-records Worlds list.
+  Create Genres, create Campaigns with a parent genre, then configure each World's parent campaign,
+  ownership, and subscriptions. Character assignments inherit campaign/genre through their selected
+  world context; they do not choose an independent campaign. Unconfigured worlds appear in the all-records Worlds list.
   External GMs/players can be named without creating profiles, and characters may remain unowned.
+- **Shared object availability:** `/site/heroes/object-availability/` links the same saved object to
+  multiple genres, campaigns, and worlds, or marks it global. Genre/campaign availability includes
+  descendant worlds. These links share one definition: editing changes every use, not copies.
+  Select **All scopes (new objects are global)** in an object editor to create/import objects
+  without a world, or select a world to create a world-only object. Configure availability to move
+  a world-only object into shared storage and select its scopes. Empty scopes mean unassigned, not
+  global; all stored objects remain accessible in All scopes. World deletion removes world-only
+  objects and world-context assignments/notes, but retains shared objects and parent campaigns/genres.
+  Removing an object's last world link leaves it unassigned. Deleting an object removes all its uses.
+  References required by assignments/notes cannot be removed without clearing those records first.
+- **Hierarchy migration:** after backing up `heroes.db`, restart the helper to apply
+  Genre → Campaign → World. Unique old world/campaign links are reversed automatically on first
+  database access. Worlds with multiple old campaigns remain unassigned and show migration notes
+  listing the candidates; choose the correct campaign on Worlds. Old campaigns without a genre
+  are flagged for a parent-genre selection on Campaigns. All campaigns, worlds, objects, profiles,
+  notes, and previous world-genre labels are retained. Migration is persisted atomically and is not
+  repeated on reload. Existing character campaign links become historical notes; campaign membership
+  now comes from the character's world.
 - **Local profiles are not accounts:** the existing helper pairing protects every management
   endpoint, but anyone paired with that helper can read/change all profiles and notes. Profile
   selection is neither authentication nor administrator impersonation. Do not store passwords or
@@ -294,13 +313,16 @@ allow it for the Render site.
 - **Campaign backups:** export all management data, a profile collection, or individual
   world/campaign/genre collections from the corresponding management pages. Object editor lists export
   individual objects. JSON imports accept these collections plus existing world/object exports;
-  select a destination world when importing an individual object. Imports validate the whole
+  select a destination world or Global when importing an individual object. Imports validate the whole
   collection before persistence and create independent copies with new IDs, never overwrite/merge
-  existing records. Collections include required profile/world/campaign dependencies and GM notes
+  existing records. Version 2 collections include required genre/campaign/world, availability, and profile dependencies and GM notes
   as readable JSON. A player collection includes that player's characters, not other characters
-  merely sharing their worlds; a GM collection includes all objects in the GM's owned worlds.
-  A genre includes worlds tagged with that genre and characters assigned to matching campaigns.
-  Genre labels are organizational metadata, not implemented genre rules. Exports flatten library
+  merely sharing their worlds; a GM collection includes objects available in the GM's owned worlds.
+  Campaign and genre collections include their descendant worlds and available objects, including
+  global and directly scoped objects even without descendant worlds. Required context for shared
+  availability links is included without copying unrelated objects. Version 1 management backups
+  are accepted and migrated with the same unique/ambiguous-link handling.
+  Genres are organizational records, not implemented genre rules. Exports flatten library
   references; back up the standalone reusable-definition library separately if its original entries
   are also needed. Limits are 1,000 records, worlds, and objects per collection and 64 MB per import.
   Data lives in the same local `heroes.db`, not a hosted account database. Restart the helper once

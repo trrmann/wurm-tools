@@ -405,6 +405,28 @@ export async function handleMap(req, url, serverDir = findInstall(TARGETS.server
 
 export async function handleHeroes(req, url, filePath = heroesDatabasePath()) {
   const parts = url.pathname.split('/').filter(Boolean).slice(1).map(decodeURIComponent);
+  if (
+    parts.length === 2 &&
+    parts[0] === 'objects' &&
+    parts[1] === 'import' &&
+    req.method === 'POST'
+  )
+    return {
+      statusCode: 201,
+      body: {
+        object: await importHeroesObject(null, await readJsonBody(req, 300 * 1024), filePath),
+      },
+    };
+  if (parts.length === 1 && parts[0] === 'objects') {
+    if (req.method === 'GET') return { objects: await listHeroesObjects(null, filePath) };
+    if (req.method === 'POST')
+      return {
+        statusCode: 201,
+        body: {
+          object: await createHeroesObject(null, await readJsonBody(req, 256 * 1024), filePath),
+        },
+      };
+  }
   if (parts[0] === 'management') {
     if (parts.length === 1 && req.method === 'GET') return listHeroesManagement(filePath);
     if (parts.length === 1 && req.method === 'POST')

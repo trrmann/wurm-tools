@@ -59,7 +59,7 @@ export function mount(container, { page = null } = {}) {
       ? 'Author and reuse shared anatomy and object templates across worlds.'
       : worldsOnly
         ? 'Create, import, and manage worlds; open objects on their dedicated pages.'
-        : 'Build and edit this category in the selected world. Other categories have separate pages.';
+        : 'Build and edit this category in a world or across all scopes. New objects in All scopes are global. Object availability links the same definition to genres, campaigns, and worlds; edits affect every use.';
     container.querySelector('#heroes-library').hidden = !libraryOnly;
     container.querySelector('.heroes-workspace-grid').hidden = libraryOnly;
     container.querySelector('.heroes-editor-panel').hidden = worldsOnly;
@@ -249,9 +249,9 @@ export function mount(container, { page = null } = {}) {
     worldExportButton.disabled = !enabled || !activeWorldId;
     worldDeleteButton.disabled = !enabled || !activeWorldId;
     worldImportInput.disabled = !enabled;
-    objectImportInput.disabled = !enabled || !activeWorldId;
+    objectImportInput.disabled = !enabled;
     objectForm.querySelectorAll('input, select, textarea, button').forEach((control) => {
-      control.disabled = !enabled || !activeWorldId;
+      control.disabled = !enabled;
     });
   }
 
@@ -336,7 +336,8 @@ export function mount(container, { page = null } = {}) {
       objectBodyShapeSelect.value = shapeDefinition?.type ?? '';
       const equation = generatedCharacter.equation;
       equationReadout.textContent = `Advantages ${equation.advantagesValue} + points ${equation.pointsValue} = disadvantages ${equation.disadvantagesValue}${equation.isBalanced ? ' (balanced)' : ` (difference ${equation.difference})`}`;
-      element('#heroes-object-form button[type="submit"]').disabled = !activeWorldId;
+      element('#heroes-object-form button[type="submit"]').disabled =
+        !localStorage.getItem(HELPER_TOKEN_KEY);
     } catch (error) {
       generatedCharacter = null;
       equationReadout.textContent =
@@ -1199,11 +1200,9 @@ export function mount(container, { page = null } = {}) {
 
   async function loadObjects(worldId) {
     objectList.replaceChildren();
-    if (!worldId) {
-      objectCount.value = '0';
-      return;
-    }
-    const result = await request(`/heroes/worlds/${encodeURIComponent(worldId)}/objects`);
+    const result = await request(
+      worldId ? `/heroes/worlds/${encodeURIComponent(worldId)}/objects` : '/heroes/objects'
+    );
     const objects = result.objects.filter((object) => !page || isObjectForHeroesPage(object, page));
     objectCount.value = String(objects.length);
     if (!objects.length) {
@@ -1240,7 +1239,7 @@ export function mount(container, { page = null } = {}) {
       edit.setAttribute('aria-label', `Edit ${object.name}`);
       if (page?.editor === 'worlds') {
         const query = new URLSearchParams(window.location.search);
-        query.set('world', worldId);
+        query.set('world', worldId || 'all');
         const url = new URL(
           heroesPageHref(getHeroesObjectPage(object), query),
           window.location.origin
@@ -1291,6 +1290,8 @@ export function mount(container, { page = null } = {}) {
         }
       });
       remove.addEventListener('click', async () => {
+        if (!window.confirm(`Delete ${object.name} and all of its shared uses and assignments?`))
+          return;
         try {
           await request(`/heroes/objects/${encodeURIComponent(object.id)}`, { method: 'DELETE' });
           if (editingObjectId === object.id) resetEditor();
@@ -1320,7 +1321,7 @@ export function mount(container, { page = null } = {}) {
     worldSelect.replaceChildren();
     const placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = worlds.length ? 'Choose a world' : 'Create a world to begin';
+    placeholder.textContent = 'All scopes (new objects are global)';
     worldSelect.append(placeholder);
     for (const world of worlds) {
       const option = document.createElement('option');
@@ -1330,16 +1331,16 @@ export function mount(container, { page = null } = {}) {
     }
     const requestedId =
       selectedId || activeWorldId || new URLSearchParams(window.location.search).get('world');
-    const selected = worlds.find((world) => world.id === requestedId) || worlds[0];
+    const selected = worlds.find((world) => world.id === requestedId);
     worldSelect.value = selected?.id || '';
     activeWorldId = selected?.id || null;
-    updateHeroesContext({ world: activeWorldId });
+    updateHeroesContext({ world: activeWorldId || 'all' });
     setEditorEnabled(true);
     await loadObjects(activeWorldId);
     setState(
       selected
         ? `Connected. ${worlds.length} world(s) stored locally.`
-        : 'Connected. Create a world to begin.'
+        : 'Connected. All scopes shown. New objects are global; use Object availability to assign genres, campaigns, or worlds.'
     );
   }
 
@@ -1393,7 +1394,7 @@ export function mount(container, { page = null } = {}) {
   worldSelect.addEventListener('change', async () => {
     resetEditor();
     activeWorldId = worldSelect.value || null;
-    updateHeroesContext({ world: activeWorldId, object: null });
+    updateHeroesContext({ world: activeWorldId || 'all', object: null });
     setEditorEnabled(true);
     await loadObjects(activeWorldId);
   });
@@ -1411,7 +1412,13 @@ export function mount(container, { page = null } = {}) {
 
   worldDeleteButton.addEventListener('click', async () => {
     const worldName = worldSelect.selectedOptions[0]?.textContent;
-    if (!activeWorldId || !window.confirm(`Delete ${worldName} and all of its objects?`)) return;
+    if (
+      !activeWorldId ||
+      !window.confirm(
+        `Delete ${worldName} and its world-only objects? Shared objects and parent campaigns/genres are retained.`
+      )
+    )
+      return;
     try {
       const result = await request(`/heroes/worlds/${encodeURIComponent(activeWorldId)}`, {
         method: 'DELETE',
@@ -1447,17 +1454,19 @@ export function mount(container, { page = null } = {}) {
   objectImportInput.addEventListener('change', async () => {
     const [file] = objectImportInput.files || [];
     objectImportInput.value = '';
-    if (!file || !activeWorldId) return;
+    if (!file) return;
     try {
       const backup = JSON.parse(await file.text());
       const { object } = await request(
-        `/heroes/worlds/${encodeURIComponent(activeWorldId)}/objects/import`,
+        activeWorldId
+          ? `/heroes/worlds/${encodeURIComponent(activeWorldId)}/objects/import`
+          : '/heroes/objects/import',
         { method: 'POST', body: JSON.stringify(backup) }
       );
       await loadObjects(activeWorldId);
       const destination = getHeroesObjectPage(object);
       setState(
-        `Imported ${object.name} into ${worldSelect.selectedOptions[0].textContent}.${page && !isObjectForHeroesPage(object, page) ? ` Open ${destination.title} in the sidebar to edit it.` : ''}`
+        `Imported ${object.name} into ${activeWorldId ? worldSelect.selectedOptions[0].textContent : 'global availability'}.${page && !isObjectForHeroesPage(object, page) ? ` Open ${destination.title} in the sidebar to edit it.` : ''}`
       );
     } catch (error) {
       setState(
@@ -1791,7 +1800,6 @@ export function mount(container, { page = null } = {}) {
   }
   objectForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!activeWorldId) return;
     const values = new FormData(objectForm);
     try {
       validateBodyShapeChanges();
@@ -1863,7 +1871,9 @@ export function mount(container, { page = null } = {}) {
       }));
       const route = editingObjectId
         ? `/heroes/objects/${encodeURIComponent(editingObjectId)}`
-        : `/heroes/worlds/${encodeURIComponent(activeWorldId)}/objects`;
+        : activeWorldId
+          ? `/heroes/worlds/${encodeURIComponent(activeWorldId)}/objects`
+          : '/heroes/objects';
       const { object } = await request(route, {
         method: editingObjectId ? 'PUT' : 'POST',
         body: JSON.stringify(definition),
