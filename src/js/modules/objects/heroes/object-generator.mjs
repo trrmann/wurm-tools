@@ -16,7 +16,7 @@ import {
 import {
   generateHerosCharacter,
   getHerosCharacterElementTypes,
-  withHerosObjectBodyShape,
+  withHerosObjectElements,
 } from './character-generator.mjs';
 
 const objectTypes = new Map([
@@ -80,7 +80,7 @@ export function generateHerosObject(definition = {}) {
   const objectTypeDefinition = objectTypes.get(objectType);
   if (!objectTypeDefinition) throw new RangeError(`Unsupported HERO object type: ${objectType}`);
   const edition = normalizeHerosEdition(definition.edition);
-  const typedElements = withHerosObjectBodyShape(
+  const typedElements = withHerosObjectElements(
     definition.typedElements,
     objectTypeDefinition.Type.ObjectClass
   );

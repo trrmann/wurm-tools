@@ -18,7 +18,6 @@ export class Character extends PhysicalLivingMobileSentientObject {
       maxDisadvantagePoints: maxDisadvantagePoints,
       maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage,
     });
-    this.Add(Character.createDefaultBodyShape());
   }
 }
 /** @extends {Collection<Character>} */

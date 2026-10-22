@@ -8,7 +8,6 @@ namespace Heros.Base
     public class CharacterElement : Base.HerosValue
     {
         // Encapsulated backing fields mirroring private JS fields (#points, #name, #shortName)
-        private readonly MixedNumber _points;
         private readonly string _name;
         private readonly string _shortName;
 
@@ -20,22 +19,12 @@ namespace Heros.Base
             options ??= new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
             // Extract option flags with default structural fallback rules matching the JS source
-            object pointsOption = options.ContainsKey("Points") ? options["Points"] : 0;
             string nameOption = options.ContainsKey("Name") ? options["Name"]?.ToString() : "Character Element";
             string shortNameOption = options.ContainsKey("ShortName") ? options["ShortName"]?.ToString() : "CELE";
 
             // Immutable structural assignment
-            this._points = MixedNumber.From(pointsOption);
             this._name = nameOption;
             this._shortName = shortNameOption;
-        }
-
-        /// <summary>
-        /// Gets the raw fractional point pool assigned to this element.
-        /// </summary>
-        public MixedNumber Points
-        {
-            get => this._points;
         }
 
         /// <summary>

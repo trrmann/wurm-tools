@@ -15,7 +15,7 @@ namespace Heros.Base
         /// </summary>
         public Common.Base.Collection<CharacterElement> Get(string elementName)
         {
-            return this.Filter((element, index, collection) => 
+            return this.Filter((element, index, collection) =>
                 element.Name == elementName || element.ShortName == elementName
             );
         }

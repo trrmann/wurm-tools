@@ -4,6 +4,13 @@ import { Defense } from '../elements/characteristics/figured-characteristics/def
 import { Collection } from '../../../collection.mjs';
 import { RectangularParallelepiped } from '../elements/body-shapes/rectangular-parallelepiped-shapes.mjs';
 export class PhysicalObject extends GameObject {
+  static get defaultElements() {
+    return [
+      ...super.defaultElements,
+      { Type: Body },
+      { Type: Defense, options: { Composition: 0 } },
+    ];
+  }
   static createDefaultBodyShape() {
     return new RectangularParallelepiped();
   }
@@ -35,9 +42,6 @@ export class PhysicalObject extends GameObject {
       maxDisadvantagePoints: maxDisadvantagePoints,
       maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage,
     });
-    this.Add(new Body({ points: 0 }));
-    this.Add(new Defense({ points: 0 }));
-    this.Add(PhysicalObject.createDefaultBodyShape());
     this.sizePower = 0; // Scale and volume metric
   }
   takeDamage({ damage } = {}) {

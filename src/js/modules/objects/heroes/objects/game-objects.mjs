@@ -2,6 +2,7 @@ import { Collection } from '../../../collection.mjs';
 import { Characteristics } from '../elements/characteristics/characteristics.mjs';
 import { Ellipsoid } from '../elements/body-shapes/ellipsoid-shapes.mjs';
 import { PrimaryCharacteristics } from '../elements/characteristics/primary-characteristcs/primary-characteristics.mjs';
+import { PrimaryCharacteristic } from '../elements/characteristics/primary-characteristcs/primary-characteristics.mjs';
 import { FiguredCharacteristics } from '../elements/characteristics/figured-characteristics/figured-characteristics.mjs';
 import { Comeliness } from '../elements/characteristics/primary-characteristcs/comeliness-characteristics.mjs';
 import { Presence } from '../elements/characteristics/primary-characteristcs/presence-characteristics.mjs';
@@ -13,8 +14,13 @@ import { Talents } from '../elements/talents/talents.mjs';
 import { Disadvantages } from '../elements/disadvantages/disadvantages.mjs';
 import { CharacterElement, CharacterElements } from '../elements/character-elements.mjs';
 import { BodyShape } from '../elements/body-shapes/body-shapes.mjs';
+import { Defense } from '../elements/characteristics/figured-characteristics/defense-characteristics.mjs';
 // TODO - need to add special effects - (this should be defined as a heros object called special effect with a collection of them called special effects)
 export class GameObject {
+  static get defaultElements() {
+    return [{ Type: Comeliness }, { Type: Presence }];
+  }
+
   static createDefaultBodyShape() {
     return new Ellipsoid();
   }
@@ -36,9 +42,16 @@ export class GameObject {
     this.#maxDisadvantagePoints = maxDisadvantagePoints;
     this.#maxPointsFromAnyOneTypeOfDisadvantage = maxPointsFromAnyOneTypeOfDisadvantage;
     this.#characterElements = new CharacterElements();
-    this.Add(new Comeliness({ points: 0 }));
-    this.Add(new Presence({ points: 0 }));
-    this.Add(GameObject.createDefaultBodyShape());
+    const definitions = [
+      ...new Map(new.target.defaultElements.map((entry) => [entry.Type, entry])).values(),
+    ].sort((left, right) => Number(left.Type === Defense) - Number(right.Type === Defense));
+    for (const primary of [true, false]) {
+      for (const { Type, options } of definitions) {
+        if (Type.prototype instanceof PrimaryCharacteristic !== primary) continue;
+        this.Add(new Type({ ...options, characterElements: this.#characterElements }));
+      }
+    }
+    this.Add(new.target.createDefaultBodyShape());
     //this.Add(new Size({points: 0}));
     this.position = { x: 0, y: 0, z: 0 };
   }

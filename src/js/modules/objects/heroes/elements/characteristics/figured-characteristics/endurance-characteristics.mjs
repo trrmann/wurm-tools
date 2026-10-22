@@ -1,6 +1,7 @@
 import { FiguredCharacteristic } from '../../figured-characteristics.mjs';
 import { Constitution } from '../primary-characteristics/constitution-characteristics.mjs';
 import { CharacterElements } from '../../../character-element.mjs';
+import { MixedNumber } from '../../../../mixed-numbers.mjs';
 export class Endurance extends FiguredCharacteristic {
   static Filter(characterElements) {
     if (characterElements instanceof CharacterElements === false) {
@@ -8,7 +9,7 @@ export class Endurance extends FiguredCharacteristic {
     }
     return characterElements.filter((element) => element instanceof Endurance);
   }
-  constructor({ Points = 0, characterElements = null } = {}) {
+  constructor({ Points = 0, characterElements = null, BaseValue } = {}) {
     super({
       Points: Points,
       AbsoluteMinValue: '0',
@@ -17,14 +18,15 @@ export class Endurance extends FiguredCharacteristic {
       MaxValue: '50',
       OverMaxValueRate: '2',
       ValueRate: '1/2',
-      BaseValue: '0',
+      BaseValue,
       BaseValueFunction: ({ characterElements = null }) => {
         if (characterElements instanceof CharacterElements) {
           const ConstitutionCharacteristic = Constitution.Filter(characterElements)[0] || null;
           if (ConstitutionCharacteristic instanceof Constitution) {
-            return ConstitutionCharacteristic.Value() * 2;
+            return MixedNumber.from(ConstitutionCharacteristic.Value()).multiply(2);
           }
         }
+        if (BaseValue != null) return BaseValue;
         throw new Error('Endurance Base Value requires a valid Constitution characteristic');
       },
       Name: 'Endurance',

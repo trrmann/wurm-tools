@@ -533,6 +533,25 @@ export function withHerosObjectBodyShape(elements, ObjectClass) {
   return typedElements;
 }
 
+export function withHerosObjectElements(elements, ObjectClass) {
+  const typedElements = withHerosObjectBodyShape(elements, ObjectClass);
+  for (const { Type, options = {} } of ObjectClass.defaultElements) {
+    const entry = [...elementTypes.values()].find((entry) => entry.elementClass === Type);
+    if (!entry) throw new RangeError(`Unregistered inherited element class: ${Type.name}`);
+    if (typedElements.some((item) => item.type === entry.type)) continue;
+    typedElements.push({
+      type: entry.type,
+      name: entry.label,
+      value: String(options.Points ?? 0),
+      ...(options.BaseValue == null ? {} : { baseValue: options.BaseValue }),
+      ...(options.Composition == null ? {} : { composition: options.Composition }),
+      isBase: true,
+      isHierarchyDefault: true,
+    });
+  }
+  return typedElements;
+}
+
 /** Build a class-backed HERO character while retaining its serialized typed-element definitions. */
 export function generateHerosCharacter(definition = {}) {
   if (definition == null || typeof definition !== 'object' || Array.isArray(definition)) {

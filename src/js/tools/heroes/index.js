@@ -10,10 +10,14 @@ import {
   HerosPointLevelClassification,
 } from '../../modules/objects/heroes.mjs';
 import { MixedNumber } from '../../modules/objects/mixed-numbers.mjs';
+import {
+  getHerosSheetEntries,
+  getHerosSheetLayout,
+  getHerosSheetSection,
+} from '../../modules/objects/heroes/sheet-layout.mjs';
 
 const HELPER_URL = 'http://127.0.0.1:5180';
 const HELPER_TOKEN_KEY = 'wurm-tools-helper-token-v1';
-const SHEET_CHARACTERISTIC_ORDER = ['STR', 'DEX', 'CON', 'BODY', 'INT', 'EGO', 'PRE', 'COM'];
 const CHARACTERISTIC_SHORT_NAMES = new Map([
   ['strength', 'STR'],
   ['dexterity', 'DEX'],
@@ -300,55 +304,21 @@ export function mount(container) {
 
   function typedElementSheetSection(item, objectType, generatedElement) {
     const definition = characterElementTypeById.get(item.type);
-    const typeName = item.type.split('#').at(-1).toLowerCase();
-    const shortName = String(
-      item.shortName ?? generatedElement?.ShortName ?? item.name ?? ''
-    ).toUpperCase();
-    const isCharacter = ['character', 'player-character', 'non-player-character'].includes(
-      objectType
-    );
-
-    if (objectType === 'base') {
-      if (item.type === 'description') return 'description';
-      if (definition?.group === 'characteristics') return 'characteristics';
-      if (definition?.group === 'advantages') return 'abilities';
-      return 'other';
-    }
-    if (!isCharacter) {
-      if (definition?.group === 'characteristics') return 'characteristics';
-      if (definition?.group === 'disadvantages') return 'disadvantages';
-      if (definition?.group === 'advantages') return 'abilities';
-      return 'other';
-    }
-    if (['description', 'event', 'specialEffect'].includes(item.type)) {
-      return 'identity';
-    }
-    if (item.type === 'action' || /maneuver/i.test(typeName)) return 'combat-maneuvers';
-    if (
-      definition?.group === 'characteristics' &&
-      (['OCV', 'DCV', 'END', 'DEF'].includes(shortName) || /combatvalue/i.test(typeName))
-    ) {
-      return 'combat';
-    }
-    if (definition?.group === 'characteristics') return 'characteristics';
-    if (definition?.group === 'disadvantages') return 'disadvantages';
-    if (/skill|talent|perk/i.test(typeName)) return 'skills';
-    if (definition?.group === 'advantages') return 'powers';
-    return 'other';
+    return getHerosSheetSection(item, objectType, definition, generatedElement);
   }
 
   function characteristicShortName(item, generatedElement) {
-    const provided = item.shortName ?? generatedElement?.ShortName;
+    if (characterElementTypeById.get(item.type)?.group !== 'characteristics') {
+      const shortName = generatedElement?.shortName;
+      return String(item.shortName ?? (shortName && shortName !== 'CELE' ? shortName : item.name));
+    }
+    const provided = item.shortName ?? generatedElement?.shortName ?? generatedElement?.ShortName;
     if (provided) return String(provided).toUpperCase();
     const className = item.type.split('#').at(-1);
     const canonicalName = CHARACTERISTIC_SHORT_NAMES.get(
       String(className ?? item.name).toLowerCase()
     );
     return canonicalName ?? String(item.name);
-  }
-
-  function characteristicOrderKey(item, generatedElement) {
-    return characteristicShortName(item, generatedElement).toUpperCase();
   }
 
   function bodyShapeDefinitions() {
@@ -647,63 +617,31 @@ export function mount(container) {
     const isCharacter = ['character', 'player-character', 'non-player-character'].includes(
       objectType
     );
-    const sections = isBase
-      ? [
-          { id: 'description', title: 'Narrative description' },
-          { id: 'characteristics', title: 'Characteristics' },
-          { id: 'abilities', title: 'Abilities & equipment' },
-          { id: 'costs', title: 'Construction & acquisition costs' },
-          { id: 'other', title: 'Other model entries' },
-        ]
-      : isCharacter
-        ? [
-            { id: 'identity', title: 'Identity & character/campaign information' },
-            { id: 'characteristics', title: 'Characteristics' },
-            { id: 'combat', title: 'Combat information' },
-            { id: 'combat-maneuvers', title: 'Combat maneuvers' },
-            { id: 'skills', title: 'Skills, perks & talents' },
-            { id: 'powers', title: 'Powers & equipment' },
-            { id: 'disadvantages', title: 'Disadvantages' },
-            { id: 'other', title: 'Other model entries' },
-            { id: 'totals', title: 'Totals' },
-          ]
-        : [
-            { id: 'characteristics', title: 'Characteristics' },
-            { id: 'abilities', title: 'Advantages & abilities' },
-            { id: 'disadvantages', title: 'Disadvantages' },
-            { id: 'other', title: 'Other model entries' },
-            { id: 'totals', title: 'Totals' },
-          ];
+    const layout = getHerosSheetLayout(objectType);
+    const sections = layout.sections.map(([id, title]) => ({ id, title }));
+    const reference = document.createElement('p');
+    reference.className = 'heroes-sheet-summary';
+    reference.textContent = layout.reference;
+    typedElementList.append(reference);
     element('#heroes-model-entry-title').textContent = isBase
       ? 'Add base model entries'
       : isCharacter
         ? 'Add character model entries'
         : 'Add model entries';
     const groupedElements = new Map(sections.map(({ id }) => [id, []]));
-    const generatedIndexes = new Map();
-    typedElements.forEach((item, index) => {
-      const generatedIndex = generatedIndexes.get(item.type) ?? 0;
-      generatedIndexes.set(item.type, generatedIndex + 1);
-      const generatedElement = generatedCharacter?.generatedElements.get(item.type)?.[
-        generatedIndex
-      ];
-      if (characterElementTypeById.get(item.type)?.group === 'body-shapes') return;
+    const entries = getHerosSheetEntries(
+      generatedCharacter ?? {
+        objectType,
+        typedElements,
+        generatedElements: new Map(),
+      },
+      characterElementTypes
+    );
+    entries.forEach(({ item, index, generatedIndex, generatedElement }) => {
       const section = typedElementSheetSection(item, objectType, generatedElement);
       if (!groupedElements.has(section)) groupedElements.set(section, []);
       groupedElements.get(section).push({ item, index, generatedIndex, generatedElement });
     });
-    const characteristicOrder = new Map(
-      SHEET_CHARACTERISTIC_ORDER.map((shortName, index) => [shortName, index])
-    );
-    if (isCharacter) {
-      groupedElements.get('characteristics')?.sort((left, right) => {
-        const leftName = characteristicOrderKey(left.item, left.generatedElement);
-        const rightName = characteristicOrderKey(right.item, right.generatedElement);
-        const leftOrder = characteristicOrder.get(leftName) ?? Number.MAX_SAFE_INTEGER;
-        const rightOrder = characteristicOrder.get(rightName) ?? Number.MAX_SAFE_INTEGER;
-        return leftOrder - rightOrder || left.index - right.index;
-      });
-    }
 
     for (const section of sections) {
       const panel = document.createElement('section');
@@ -833,12 +771,13 @@ export function mount(container) {
           });
           valueCell.append(desiredValueInput);
         } else {
-          valueCell.textContent =
+          const value =
             generatedElement == null
               ? '—'
               : (generatedElement.UnroundedValue?.toString?.() ??
                 generatedElement.Value?.() ??
                 generatedElement.toString());
+          valueCell.textContent = `${value}${generatedElement?.valueUnit ?? ''}`;
         }
 
         const pointsCell = document.createElement('td');

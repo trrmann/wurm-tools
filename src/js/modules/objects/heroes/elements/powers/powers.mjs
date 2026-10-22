@@ -23,6 +23,10 @@ export class Power extends CharacterElement {
     BaseValueFunction,
     OptionFlagCollection,
     ValueFunction,
+    Name,
+    ShortName,
+    characterElements,
+    RoundingMode,
   } = {}) {
     super({
       Points: Points,
@@ -37,6 +41,10 @@ export class Power extends CharacterElement {
       BaseValueFunction: BaseValueFunction,
       OptionFlagCollection: OptionFlagCollection,
       ValueFunction: ValueFunction,
+      Name,
+      ShortName,
+      characterElements,
+      RoundingMode,
     });
     this.#modifiers = new PowerModifiers();
   }

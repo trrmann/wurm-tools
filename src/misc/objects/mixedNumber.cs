@@ -109,6 +109,13 @@ namespace Common.Base
             throw new TypeErrorException("Value must be a MixedNumber, finite number, BigInt, or string");
         }
 
+        protected void SetValue(MixedNumber value)
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            _numerator = value._numerator;
+            _denominator = value._denominator;
+        }
+
         public static MixedNumber FromImproper(object numerator, object denominator = null)
         {
             denominator ??= 1;

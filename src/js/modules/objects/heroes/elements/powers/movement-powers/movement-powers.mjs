@@ -21,6 +21,10 @@ export class MovementPower extends Power {
     BaseValueFunction,
     OptionFlagCollection,
     ValueFunction,
+    Name,
+    ShortName,
+    characterElements,
+    RoundingMode,
   } = {}) {
     super({
       Points: Points,
@@ -35,6 +39,10 @@ export class MovementPower extends Power {
       BaseValueFunction: BaseValueFunction,
       OptionFlagCollection: OptionFlagCollection,
       ValueFunction: ValueFunction,
+      Name,
+      ShortName,
+      characterElements,
+      RoundingMode,
     });
   }
 }

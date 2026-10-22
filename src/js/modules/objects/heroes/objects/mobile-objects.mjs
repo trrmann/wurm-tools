@@ -1,7 +1,6 @@
 import { GameObject } from './game-objects.mjs';
 import { Strength } from '../elements/characteristics/primary-characteristcs/strength-characteristics.mjs';
 import { Dexterity } from '../elements/characteristics/primary-characteristcs/dexterity-characteristics.mjs';
-import { Presence } from '../elements/characteristics/primary-characteristcs/presence-characteristics.mjs';
 import { Speed } from '../elements/characteristics/figured-characteristics/speed-characteristics.mjs';
 import { Endurance } from '../elements/characteristics/figured-characteristics/endurance-characteristics.mjs';
 import { OffensiveCombatValue } from '../elements/characteristics/figured-characteristics/offensive-combat-values.mjs';
@@ -17,6 +16,23 @@ import { Collection } from '../../../collection.mjs';
 import { Running } from '../elements/powers/movement-powers/running-powers.mjs';
 import { Leaping } from '../elements/powers/movement-powers/leaping-powers.mjs';
 export class MobileObject extends GameObject {
+  static get defaultElements() {
+    return [
+      ...super.defaultElements,
+      ...[
+        Strength,
+        Dexterity,
+        Speed,
+        OffensiveCombatValue,
+        DefensiveCombatValue,
+        PhysicalDefense,
+        Running,
+        Swimming,
+        Leaping,
+      ].map((Type) => ({ Type })),
+      { Type: Endurance, options: { BaseValue: 0 } },
+    ];
+  }
   static createDefaultBodyShape() {
     return new RectangularParallelepiped();
   }
@@ -32,18 +48,6 @@ export class MobileObject extends GameObject {
       maxDisadvantagePoints: maxDisadvantagePoints,
       maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage,
     });
-    this.Add(new Strength({ points: 0 }));
-    this.Add(new Dexterity({ points: 0 }));
-    this.Add(new Presence({ points: 0 }));
-    this.Add(new Speed({ points: 0 }));
-    this.Add(new Endurance({ points: 0 }));
-    this.Add(new OffensiveCombatValue({ points: 0 }));
-    this.Add(new DefensiveCombatValue({ points: 0 }));
-    this.Add(new PhysicalDefense({ points: 0 }));
-    this.Add(new Running({ points: 0 }));
-    this.Add(new Swimming({ points: 0 }));
-    this.Add(new Leaping({ points: 0 }));
-    this.Add(MobileObject.createDefaultBodyShape());
     this.velocity = { x: 0, y: 0, z: 0 };
   }
   get maxLiftingCapacity() {

@@ -127,6 +127,47 @@ npm run build
 
 The compiled, optimized production files will be placed into the `dist/` directory.
 
+### Standalone C# HERO Model (Future Blazor and Desktop Work)
+
+**On hold as of 2026-10-22:** all C#, Blazor, desktop, and other non-web development is paused until the user explicitly resumes it. The boundaries below are retained for future reference, not authorization to implement them. Current development is limited to the JavaScript web tools.
+
+The [HERO domain library](./src/misc/Heros.Domain.csproj) is a separate .NET 10 class library for future Blazor integration. It is **not connected to the current website**, Vite, the local helper, or deployment. No Blazor application, API endpoint, browser interop, or persistence integration is enabled.
+
+With the .NET 10 SDK installed, run:
+
+```powershell
+dotnet build src\misc\Heros.Domain.csproj
+dotnet run --project tests\Heros.Domain.Tests\Heros.Domain.Tests.csproj
+```
+
+The second command runs dependency-free C# regression checks and exits nonzero on failure; it is separate from the JavaScript/Vitest suite. The library explicitly includes the numeric/collection foundations, validation result, HERO value, characteristic, and talent classes. Other C# experiments under `src/misc` (including IAM, names, and pips) are outside this project's build scope; this is not a completed migration of the entire tree.
+
+Characteristic constructors calculate from copied options before initialization. Named roll methods such as `StrengthRoll()` return integer **targets**, not outcomes; use `CheckRoll(diceTotal)` to evaluate supplied 3d6 totals against the effective target. `RollTarget` is unadjusted and `EffectiveRollTarget` includes transient adjustments. Intelligence provides separate base/effective perception checks. Numeric values preserve rational precision without private-field reflection. Construction is a calculation snapshot: changing dependencies or point properties later does not automatically recalculate the model.
+
+Talent rules and other unfinished mechanics remain WIP; successful compilation and regression checks do not certify complete rulebook implementation. The website's JavaScript model remains independent.
+
+#### Host-Neutral Blazor and Desktop Boundaries
+
+The future desktop implementation remains **host-neutral**: no MAUI, WPF, WinForms, Electron, or other desktop framework has been selected. The current domain library needs no desktop-specific target framework or UI dependencies.
+
+Available desktop test environments are **Windows and Fedora Linux with KDE**. No Mac is available for testing. Treat Fedora/KDE as an explicit desktop target when evaluating frameworks, including native integration, packaging, and any embedded web-view requirements; do not choose a Windows/macOS-only approach by default. macOS support remains unverified unless a suitable test environment becomes available. Record the actual OS, Fedora/KDE versions, and display session used when desktop testing begins rather than assuming distribution or Wayland/X11 compatibility.
+
+Use these boundaries when that implementation begins:
+
+| Layer                           | Responsibility                                                                                              | Dependency boundary                                                                                      |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Existing `Heros.Domain` library | Numeric values, elements, calculations, and domain validation                                               | No Razor, browser, desktop UI, filesystem, database, or host-service dependencies                        |
+| Future shared application layer | Use cases and contracts for loading/saving worlds and objects, import/export, and other external operations | References the domain; defines host-neutral contracts as actual use cases require them                   |
+| Future Razor Class Library      | Reusable Blazor components, sheet presentation, forms, and interaction state                                | Uses application contracts/domain data; does not access native APIs or assume a browser-only environment |
+| Future Blazor host              | Web startup, dependency injection, navigation, and web-specific service adapters                            | Composes the shared application/UI layers; server versus browser execution remains undecided             |
+| Future desktop host             | Window/application lifecycle, dependency injection, native dialogs, and desktop service adapters            | Composes the same shared layers; framework choice remains deferred                                       |
+
+Keep file selection, storage paths, persistence, credential storage, networking, clipboard access, and other platform operations behind application contracts implemented by each host. Domain and shared UI code must not depend directly on browser `localStorage`, the current loopback helper, desktop window types, or operating-system paths. Pass imported/exported content through host-neutral data or streams; hosts handle file dialogs and storage locations. Define persistence/serialization DTOs explicitly rather than attempting to serialize calculation delegates and runtime object graphs.
+
+Do not put environment-specific behavior into the model or add speculative interfaces before a concrete use case needs them. Keep domain checks runnable without a browser, desktop workload, or native window. When application contracts and Razor components exist, add shared tests and adapter-specific checks for both hosts. If desktop trimming or AOT is later selected, review the remaining reflection-based characteristic lookups and verify that publishing mode explicitly; current checks do not certify trimming/AOT support.
+
+This is preparation only: no desktop executable, shared Razor project, native integration, or deployment is enabled. The existing website remains unchanged.
+
 ### 6. Preview Production Build
 
 ```bash
@@ -210,6 +251,11 @@ connections. Both Windows and Fedora `deploy -dev` / `deploy -preview` flows use
 commands, so no separate helper setup is required. If a browser asks for local network access,
 allow it for the Render site.
 
+- **Local site ports:** development uses `http://localhost:3000` and preview uses
+  `http://localhost:4173` (their `127.0.0.1` equivalents are also allowed). Both commands fail if
+  their port is occupied instead of silently switching to an origin the helper rejects. If
+  preview reports that 4173 is in use, reuse the existing preview or stop it in its own terminal
+  before restarting. A page at `http://localhost:4174` cannot pair with the default helper.
 - **HERO Worlds pairing:** the HERO Worlds page also stores data through this local helper. In a
   cloned Wurm Tools project, run `npm install` once to install the project dependencies, including
   the bundled `sql.js` SQLite module. There is no separate SQLite server or PIN. Start `npm run dev`

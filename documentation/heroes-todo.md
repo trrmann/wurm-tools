@@ -1,13 +1,19 @@
 # HERO System — Development Todo & Roadmap
 
+## Development Hold (2026-10-22)
+
+All non-web development, including C#, Blazor, desktop hosts, native integrations, and engine migration, is **on hold until further notice from the user**. Preserve existing work; do not continue implementation, framework evaluation, or scaffolding in those areas. Only the current JavaScript HERO web tools and their supporting tests/documentation are active.
+
 ## Maximum Priority - Regression
 
 - **Sheet-order acceptance criterion for task-208:** Match section order and element order within each section to the applicable HERO 5th Edition rules sheet for that object type (character, base, equipment, vehicle, and other available type-specific sheets). Do not apply character-sheet ordering universally. Consult and document the relevant sheet references; flag missing references rather than inventing an order. Ordering must arrange the actual inherited and added object elements, not introduce a hardcoded element list. Verify ordering for each type and after type switching and save/reload.
 
-- [ ] **CRITICAL: Restore dynamic inherited-element display for every object type.** Source the sheet from the actual object's complete element list, including all elements inherited through that specific type's own class hierarchy/inheritance list plus explicitly added elements. Do not hardcode character elements or a common default list across object types. When both PD and ED are displayed, suppress DEF. Preserve the single authoritative body shape. Verify distinct inherited lists for every selectable type, type switching, inline editing, and save/reload. The current empty sheet sections are a regression; this supersedes the prior explicit-elements-only characteristic display decision. Persistent task: `task-208`. Captured only at the user's request on 2026-10-20; implementation not started.
+- [x] **CRITICAL: Restore dynamic inherited-element display for every object type.** The sheet now uses class-owned inherited elements plus added elements, with one authoritative body shape. DEF is suppressed only when both PD and ED are displayed. All selectable types, identity, JSON round trips, inline investments, and referenced sheet ordering are covered by regression checks; browser checks cover type switching and mocked-storage save/edit. Equipment and other missing sheet references are explicitly flagged instead of inventing an order. This supersedes the prior explicit-elements-only characteristic display decision. Persistent task: `task-208`; completed 2026-10-22.
 
 ## Completed
 
+- [x] Keep element catalog labels and defense dependency priorities stable in minified production builds by using module export names instead of runtime class names; verify body-shape names and replacement in production preview.
+- [x] Separate primary and figured characteristics on character sheets using class metadata; keep combat values in combat information and preserve non-character sheet grouping. Correct Running/Swimming/Leaping names, researched 5th Edition baselines and point rates, game-inch display, and Strength-based forward Leaping.
 - [x] Use shared Thing names with classification, specification, and categorization names; model person, place, event, action, and description names from that shared parent.
 - [x] Represent special effects as descriptions and model edition-aware advantages, disadvantages/complications, modifiers, characteristics, skills, talents, perks, powers, everyman skills, package deals, frameworks, and variable power pools.
 - [x] Derive figured characteristics from points and primary characteristics; retain exact point values and calculate advantages + points = disadvantages.
@@ -53,7 +59,7 @@ Calculations remain limited to existing, researched 5th Edition rules; labels do
 - [ ] the specifications of the listed components need to be identified better in the OOP model, and retained in the OOP model nothing hardcoded outside the model. all the external hardcoded items need to be brought into the model withthe swiches for thier proper use.
 - [ ] the customization capability needs to be expanded such as the ability to add more specifications to the different tiers of skills or even generic. these should be stored outsie a character for resuse in a world or campaigns in general.
 - [x] Keep exactly one concrete body-shape element per generated object, sourced from its object-type class hierarchy; replace the previous element when the editor selects another shape. Preserve concrete anatomy classes on save/reload and replay linked changes from the unchanged baseline.
-- [x] Display only the characteristics explicitly added to the object's element list; do not inject a competing hierarchy-default characteristic list.
+- [x] Display characteristics from the actual object list, including its class-owned inheritance and explicit additions; do not maintain a competing generator default-element table.
 - [ ] Model powers that refer to characteristics or skills as relationships to those same element instances rather than detached copies.
 - [ ] Allow one power instance to belong to multiple power categories without duplicating the power.
 - [ ] Model rulebook-defined skill specifications as OOP elements and allow custom skill specifications in characters and other objects.
@@ -75,8 +81,12 @@ Calculations remain limited to existing, researched 5th Edition rules; labels do
 - [ ] Add genre models and player/Game Master assistance after object interactions are rulebook-aligned. Let Game Masters configure house rules and players use the selected Game Master's rules.
 - [ ] Implement genres in order: Fantasy Hero, Western Hero, Star Hero, Pulp Fiction Hero, then Champions superheroic worlds that can build on the other genres.
 
-### Engine Evolution
+### Engine Evolution - ON HOLD Until Further Notice
 
+- [x] Establish a standalone, independently buildable C# domain subset with regression checks, without connecting it to the website.
+- [x] Document host-neutral boundaries for future Blazor and desktop reuse; defer desktop framework selection and keep UI/platform dependencies outside the domain.
+- [ ] Evaluate desktop hosts against the available **Windows and Fedora Linux/KDE** test environments. Fedora/KDE support must be considered explicitly, including packaging, native integration, and embedded web-view requirements. No Mac is available; do not claim tested macOS support. Record actual platform versions and display sessions during validation.
+- [ ] When implementation begins, introduce shared application contracts and a Razor Class Library for actual use cases, then compose them from separate Blazor and desktop hosts. Select the desktop framework explicitly before scaffolding; keep storage, file dialogs, credentials, and native services in host adapters. Test shared behavior and each adapter independently. See the host-neutral boundaries in `README.md`.
 - [ ] After object interactions and genre models are complete and rulebook-aligned, assess, plan, and implement migration of the OOP model and functionality to C#.
 - [ ] After the C# implementation, assess turning the model into an object/character/world engine and integrating it with game engines such as Unreal.
 - [ ] Keep HERO game-management behavior rule-compliant while exploring a separate game-design mode for scientifically grounded, realism-oriented rates and related concepts.

@@ -18,7 +18,6 @@ export class Animal extends PhysicalLivingMobileObject {
       maxDisadvantagePoints: maxDisadvantagePoints,
       maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage,
     });
-    this.Add(Animal.createDefaultBodyShape());
   }
 }
 

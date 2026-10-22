@@ -65,7 +65,7 @@ describe('HERO character generator', () => {
     expect(character.equation.disadvantagesValue.toString()).toBe('3');
   });
 
-  it('uses object-type body-shape defaults without injecting character elements', () => {
+  it('uses each object class inherited elements and exactly one body shape', () => {
     const characteristicTypes = getHerosCharacterElementTypes().filter(
       (definition) => definition.isCharacterElement && definition.group === 'characteristics'
     );
@@ -91,12 +91,24 @@ describe('HERO character generator', () => {
     };
     for (const { type: objectType } of getHerosObjectTypes()) {
       const object = generateHerosObject({ objectType });
-      expect(
-        object.typedElements.filter((item) =>
-          characteristicTypes.some((definition) => definition.type === item.type)
-        )
-      ).toHaveLength(0);
-      expect(object.generatedElements.has(strengthType.type)).toBe(false);
+      const expectedTypes = new Set(
+        object.constructor.ObjectClass.defaultElements.map(({ Type }) => Type)
+      );
+      const inherited = object.elementObjects.filter((element) => !(element instanceof BodyShape));
+      expect(new Set(inherited.map((element) => element.constructor))).toEqual(expectedTypes);
+      expect(inherited).toHaveLength(expectedTypes.size);
+      const actual = new object.constructor.ObjectClass();
+      expect(new Set(actual.characterElements.map((element) => element.constructor))).toEqual(
+        new Set(object.elementObjects.map((element) => element.constructor))
+      );
+      for (const item of object.typedElements.filter(
+        (item) => !item.type.includes('body-shapes/')
+      )) {
+        expect(item).toMatchObject({ isBase: true, isHierarchyDefault: true, value: '0' });
+        const generated = object.generatedElements.get(item.type);
+        expect(generated).toHaveLength(1);
+        expect(object.elementObjects).toContain(generated[0]);
+      }
       const shapes = object.elementObjects.filter((element) => element instanceof BodyShape);
       expect(shapes).toHaveLength(1);
       expect(object.bodyShape).toBe(shapes[0]);
@@ -119,6 +131,10 @@ describe('HERO character generator', () => {
       });
       expect(restored.bodyShape.constructor).toBe(object.bodyShape.constructor);
       expect(restored.bodyShape.toJSON()).toEqual(object.bodyShape.toJSON());
+      expect(restored.typedElements).toEqual(object.typedElements);
+      expect(restored.elementObjects.map((element) => element.Value())).toEqual(
+        object.elementObjects.map((element) => element.Value())
+      );
       expect(
         restored.elementObjects.filter((element) => element instanceof BodyShape)
       ).toHaveLength(1);
@@ -251,7 +267,7 @@ describe('HERO character generator', () => {
     }
   });
 
-  it('generates character elements only from each object typed-element list', () => {
+  it('uses supplied definitions instead of duplicating inherited element types', () => {
     const strengthType = getHerosCharacterElementTypes().find((definition) =>
       definition.type.endsWith('#Strength')
     );
@@ -669,7 +685,9 @@ describe('HERO character generator', () => {
         typedElements: [{ type: entry.type, name: entry.defaultName }],
       });
       expect(object.bodyShape).toBeInstanceOf(entry.elementClass);
-      expect(object.elementObjects).toHaveLength(1);
+      expect(object.elementObjects.filter((element) => element instanceof BodyShape)).toHaveLength(
+        1
+      );
     }
   });
 

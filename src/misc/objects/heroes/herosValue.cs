@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Numerics;
 using Common.Base;
 
@@ -62,13 +61,15 @@ namespace Heros.Base
         {
             options ??= new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
-            Func<string[], object> getAltKey = (keys) => {
+            Func<string[], object> getAltKey = (keys) =>
+            {
                 foreach (var k in keys) if (options.ContainsKey(k)) return options[k];
                 return null;
             };
 
             // Setup default callback if none was injected
-            Func<IDictionary<string, object>, object> calculateValue = (parameters) => {
+            Func<IDictionary<string, object>, object> calculateValue = (parameters) =>
+            {
                 var bv = parameters["BaseValue"] as Common.Base.MixedNumber;
                 var pts = parameters["Points"] as Common.Base.MixedNumber;
                 var vr = parameters["ValueRate"] as Common.Base.MixedNumber;
@@ -77,7 +78,7 @@ namespace Heros.Base
 
             if (options.ContainsKey("ValueFunction") && options["ValueFunction"] != null)
             {
-                calculateValue = options["ValueFunction"] as Func<IDictionary<string, object>, object> 
+                calculateValue = options["ValueFunction"] as Func<IDictionary<string, object>, object>
                     ?? throw new InvalidCastException("ValueFunction must be a valid functional delegate.");
             }
 
@@ -108,7 +109,7 @@ namespace Heros.Base
             this.MaxValue = OptionalMixedNumber(getAltKey(new[] { "MaxValue" }));
             this.UnderMinValueRate = OptionalMixedNumber(getAltKey(new[] { "UnderMinValueRate" }));
             this.OverMaxValueRate = OptionalMixedNumber(getAltKey(new[] { "OverMaxValueRate" }));
-            this.ValueRate = OptionalMixedNumber(getAltKey(new[] { "ValueRate" })) ?? Common.Base.MixedNumber.From(0);
+            this.ValueRate = OptionalMixedNumber(getAltKey(new[] { "ValueRate" }));
             this.BaseValue = OptionalMixedNumber(getAltKey(new[] { "BaseValue" })) ?? Common.Base.MixedNumber.From(0);
             this.Points = Common.Base.MixedNumber.From(options.ContainsKey("Points") ? options["Points"] : 0);
             this.OptionFlagCollection = flags;
@@ -138,27 +139,19 @@ namespace Heros.Base
             // Execute the base modifier pipeline if bounded
             if (this.BaseValueFunction != null)
             {
-                var readOnlyParams = new ReadOnlyDictionary<string, object>(parameters);
+                var readOnlyParams = new System.Collections.ObjectModel.ReadOnlyDictionary<string, object>(parameters);
                 this.BaseValue = Common.Base.MixedNumber.From(this.BaseValueFunction(readOnlyParams));
                 parameters["BaseValue"] = this.BaseValue;
             }
 
-            var runtimeParams = new ReadOnlyDictionary<string, object>(parameters);
+            var runtimeParams = new System.Collections.ObjectModel.ReadOnlyDictionary<string, object>(parameters);
             var result = Common.Base.MixedNumber.From(this.ValueFunction(runtimeParams));
             this.UnroundedValue = result;
 
             // Complete downstream rounding execution shifts
             var roundedResult = RoundValue(result, this.RoundingMode);
 
-            // Access private fields of MixedNumber base via structural reflection mechanics
-            var numField = typeof(Common.Base.MixedNumber).GetField("_numerator", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var denField = typeof(Common.Base.MixedNumber).GetField("_denominator", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            
-            if (numField != null && denField != null)
-            {
-                numField.SetValue(this.BaseValue, roundedResult.WholeBigInt);
-                denField.SetValue(this.BaseValue, roundedResult.DenominatorBigInt);
-            }
+            SetValue(roundedResult);
         }
     }
 }

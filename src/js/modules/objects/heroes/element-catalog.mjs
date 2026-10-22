@@ -37,8 +37,8 @@ function inheritsFrom(Type, Base) {
   return Type === Base || Type.prototype instanceof Base;
 }
 
-function labelFor(Type) {
-  return Type.name.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+function labelFor(exportName) {
+  return exportName.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
 }
 
 function groupFor(Type) {
@@ -76,7 +76,7 @@ function createElementFactory(Type) {
         : undefined;
     return new Type({
       Points: item.value ?? 0,
-      BaseValue: item.baseValue ?? 0,
+      BaseValue: item.baseValue,
       BaseValueFunction: baseValueFunction,
       ValueRate: item.valueRate,
       Name: item.name,
@@ -105,7 +105,7 @@ for (const [modulePath, exports] of Object.entries(moduleCatalog)) {
     const isPower = inheritsFrom(Type, Power);
     const type = makeTypeId(modulePath, exportName);
     registerHerosCharacterElementType(type, {
-      label: labelFor(Type),
+      label: labelFor(exportName),
       group,
       field: inheritsFrom(Type, BodyShape) ? 'bodyShapes' : null,
       priced: group !== null && group !== 'body-shapes',
@@ -118,7 +118,7 @@ for (const [modulePath, exports] of Object.entries(moduleCatalog)) {
       defaultDefinition: Type.defaultDefinition,
       elementClass: Type,
       isPrimaryCharacteristic: inheritsFrom(Type, PrimaryCharacteristic),
-      constructionPriority: ['PhysicalDefense', 'EnergyDefense'].includes(Type.name) ? 1 : 0,
+      constructionPriority: ['PhysicalDefense', 'EnergyDefense'].includes(exportName) ? 1 : 0,
     });
     registeredClasses.add(Type);
   }

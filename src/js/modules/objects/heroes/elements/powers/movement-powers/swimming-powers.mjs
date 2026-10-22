@@ -9,33 +9,22 @@ export class Swimming extends MovementPower {
     return characterElements.filter((element) => element instanceof Swimming);
   }
   constructor({
-    Points = 0,
-    AbsoluteMinValue,
-    AbsoluteMaxValue,
-    MinValue,
-    UnderMinValueRate,
-    MaxValue,
-    OverMaxValueRate,
-    ValueRate,
-    BaseValue,
-    BaseValueFunction,
-    OptionFlagCollection,
-    ValueFunction,
+    BaseValue = 2,
+    ValueRate = 1,
+    Name = 'Swimming',
+    ShortName = 'Swimming',
+    ...options
   } = {}) {
     super({
-      Points: Points,
-      AbsoluteMinValue: AbsoluteMinValue,
-      AbsoluteMaxValue: AbsoluteMaxValue,
-      MinValue: MinValue,
-      UnderMinValueRate: UnderMinValueRate,
-      MaxValue: MaxValue,
-      OverMaxValueRate: OverMaxValueRate,
-      ValueRate: ValueRate,
-      BaseValue: BaseValue,
-      BaseValueFunction: BaseValueFunction,
-      OptionFlagCollection: OptionFlagCollection,
-      ValueFunction: ValueFunction,
+      ...options,
+      BaseValue,
+      ValueRate,
+      Name,
+      ShortName,
     });
+  }
+  get valueUnit() {
+    return '"';
   }
 }
 /** @extends {Collection<Swimming>} */

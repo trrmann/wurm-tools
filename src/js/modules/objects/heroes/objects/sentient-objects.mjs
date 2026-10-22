@@ -8,6 +8,14 @@ import { Collection } from '../../../collection.mjs';
 // TODO - track effective current Ego (allowing push, etc.)
 
 export class SentientObject extends MentalObject {
+  static get defaultElements() {
+    return [
+      ...super.defaultElements,
+      { Type: Ego },
+      { Type: EgoCombatValue },
+      { Type: MentalDefense },
+    ];
+  }
   constructor({
     points = 0,
     basePoints = 0,
@@ -20,9 +28,6 @@ export class SentientObject extends MentalObject {
       maxDisadvantagePoints: maxDisadvantagePoints,
       maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage,
     });
-    this.Add(new Ego({ points: 10 }));
-    this.Add(new EgoCombatValue({ points: 0 }));
-    this.Add(new MentalDefense({ points: 0 }));
   }
 }
 /** @extends {Collection<SentientObject>} */

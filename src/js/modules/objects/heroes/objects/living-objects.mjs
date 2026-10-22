@@ -6,6 +6,14 @@ import { Collection } from '../../../collection.mjs';
 // TODO - review the rules on alive as tied to constitution and if physical then also body
 // TODO - track effective current Constitution (allowing push, etc.)
 export class LivingObject extends GameObject {
+  static get defaultElements() {
+    return [
+      ...super.defaultElements,
+      { Type: Constitution },
+      { Type: EnergyDefense },
+      { Type: Recovery },
+    ];
+  }
   constructor({
     points = 0,
     basePoints = 0,
@@ -18,9 +26,6 @@ export class LivingObject extends GameObject {
       maxDisadvantagePoints: maxDisadvantagePoints,
       maxPointsFromAnyOneTypeOfDisadvantage: maxPointsFromAnyOneTypeOfDisadvantage,
     });
-    this.Add(new Constitution({ points: 0 }));
-    this.Add(new EnergyDefense({ points: 0 }));
-    this.Add(new Recovery({ points: 0 }));
   }
 }
 

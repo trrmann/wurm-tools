@@ -1,6 +1,8 @@
 import { Collection } from '../../../../collection.mjs';
 import { MovementPower } from '../movement-powers.mjs';
 import { CharacterElements } from '../../../character-element.mjs';
+import { Strength } from '../../characteristics/primary-characteristics/strength-characteristics.mjs';
+import { MixedNumber } from '../../../../mixed-numbers.mjs';
 export class Leaping extends MovementPower {
   static Filter(characterElements) {
     if (characterElements instanceof CharacterElements === false) {
@@ -9,33 +11,33 @@ export class Leaping extends MovementPower {
     return characterElements.filter((element) => element instanceof Leaping);
   }
   constructor({
-    Points = 0,
-    AbsoluteMinValue,
-    AbsoluteMaxValue,
-    MinValue,
-    UnderMinValueRate,
-    MaxValue,
-    OverMaxValueRate,
-    ValueRate,
     BaseValue,
-    BaseValueFunction,
-    OptionFlagCollection,
-    ValueFunction,
+    ValueRate = 1,
+    Name = 'Leaping',
+    ShortName = 'Leaping',
+    BaseValueFunction = ({ characterElements }) => {
+      if (BaseValue != null) return BaseValue;
+      if (characterElements instanceof CharacterElements) {
+        const strength = Strength.Filter(characterElements)[0];
+        if (strength instanceof Strength) {
+          return MixedNumber.from(strength.Value()).divide(5);
+        }
+      }
+      throw new Error('Leaping Base Value requires a valid Strength characteristic');
+    },
+    ...options
   } = {}) {
     super({
-      Points: Points,
-      AbsoluteMinValue: AbsoluteMinValue,
-      AbsoluteMaxValue: AbsoluteMaxValue,
-      MinValue: MinValue,
-      UnderMinValueRate: UnderMinValueRate,
-      MaxValue: MaxValue,
-      OverMaxValueRate: OverMaxValueRate,
-      ValueRate: ValueRate,
-      BaseValue: BaseValue,
-      BaseValueFunction: BaseValueFunction,
-      OptionFlagCollection: OptionFlagCollection,
-      ValueFunction: ValueFunction,
+      ...options,
+      BaseValue,
+      ValueRate,
+      Name,
+      ShortName,
+      BaseValueFunction,
     });
+  }
+  get valueUnit() {
+    return '"';
   }
 }
 /** @extends {Collection<Leaping>} */
