@@ -4,6 +4,18 @@ A fast, modern, and modular companion suite for **Wurm Online** and **Wurm Unlim
 
 ![Wurm Tools Preview](public/images/favicon.svg)
 
+## Site entry and branding
+
+The main URL `/` is the **Heros Tools login-only page**, without a dashboard, tool navigation,
+or Wurm branding. Registration and first-time setup links are available immediately, even
+when the local helper is offline.
+When the helper reports that setup is incomplete, the registration link becomes
+**Register first administrator** and opens setup instead of visitor registration.
+The existing Wurm dashboard lives at `/site/wurm/`; authorized accounts reach it through
+**Wurm Tools** in the Heros menu. Wurm pages keep their own Wurm titles and branding, and still
+require system-administrator access or explicit Wurm delegation. Local Wurm APIs also require
+browser pairing.
+
 ---
 
 ## Features (Starter Suite)
@@ -53,7 +65,7 @@ A fast, modern, and modular companion suite for **Wurm Online** and **Wurm Unlim
 
 ```text
 WurmTools/
-├── index.html                     # Primary SPA entry point
+├── index.html                     # Heros login-only entry point
 ├── site/                          # Site page folders for Vite & Render
 │   └── concepts/index.html        # Comprehensive concepts & roadmap page
 ├── public/                        # Static assets served at root
@@ -362,6 +374,10 @@ allow it for the Render site.
   Administrator account lists can be searched by display name or username, filtered by account
   status, and paged independently per role (ten accounts per page). These display filters do not
   change permissions or the available account-edit and ACL targets.
+  On Genres, Game Masters and system administrators have a prominent **Create genre** action.
+  New genres are organizational records, not genre-specific rules. Creation clears an active
+  workspace-profile filter so the new genre remains visible before campaigns/worlds are linked.
+  **Show all accessible genres** clears only that display filter; it never grants permissions.
 - **Personal names:** Account & security lets users optionally save structured personal names using
   the shared PersonName model and a selectable culture. System administrators configure each
   culture's name ordering and add selectable cultures in the expandable
@@ -370,12 +386,49 @@ allow it for the Render site.
   saved names remain selectable when upgrading. No family name is required. Preferred names take
   precedence over the composed full name for display. Display names appear alongside the unchanged
   sign-in username in the main header, sidebar, account headings and administrator account lists.
-  Names are not published to other users or included in game-data exports. Each signed-in user
+  Names are not listed for other users by default or included in game-data exports. Opting into
+  the Game Master directory shares the display name and username with Player accounts; sending
+  a play request shares them with the addressed GM. Relationship names are visible only to their
+  participants. Each signed-in user
   edits only their own name; permanent self-deletion removes it and retained-account recovery
   preserves it.
   If an older running helper returns "Unknown identity action", restart from the updated project
   folder with `npm run helper:stop`, then `npm run helper`, and reload the page. Unknown
   name/configuration routes now show this instruction instead of an unexplained error.
+- **Player–Game Master relationships:** In **Account & security**, Game Masters can opt into
+  **List my name for players seeking a Game Master**. This is **off by default**. Only opted-in,
+  active GMs appear in the Player dropdown, identified by display name and username. Players
+  select a listed GM and submit a play request; doing so shares their display name and username
+  with that GM. Only the addressed GM can approve/reject it. Players can cancel pending requests;
+  either participant can end an approved relationship. Rejected, cancelled, or ended pairs can
+  request again while the GM is listed. **Refresh play relationships** reloads the directory and
+  request statuses. Unlisting blocks new requests but leaves existing relationships visible to
+  their participants. Accounts with both roles can play under each other, but not themselves.
+  Approval establishes only an account relationship: world subscriptions, organizational profiles,
+  object submission/approval, sharing consent, and resource ACLs remain separate and unchanged.
+  Disabling, removing a required role, or retained closure cancels pending requests and ends active
+  relationships; a GM must opt in again after restoration. Permanent closure removes related
+  requests/relationships. They stay in the identity store, outside portable game backups.
+- **Visitor role requests:** In **Account & security**, Visitors can request Player, Game Master,
+  or both roles without an invitation. The latest request's status remains visible there; a pending
+  request can be cancelled, and a rejected/cancelled request can be resubmitted. On **Admins**,
+  system administrators approve all requested roles or reject the request. Approval replaces Visitor
+  status and revokes the requester's sessions; sign in again to use the approved roles. Approval
+  does not join a game or grant access to existing resources. Rejection leaves access unchanged.
+  Manual account edits, disabling, or retained account closure cancel pending requests so stale
+  approvals cannot undo later account-management decisions. Permanent closure removes the request.
+  Only fully authenticated system administrators can review requests; Administrator is never a
+  requestable role. Restart an older helper to enable this workflow.
+- **Administrator invitations:** On Admins, choose one or more approved roles and select
+  **Create invitation**. Copy the private code shown once and send it only to the intended recipient.
+  On **Register**, using the same helper, the recipient enters that code and chooses their own
+  username and password. Leaving the code blank registers a Visitor as before. Codes expire after
+  24 hours, work once, and are stored only as hashes. Pending invitations list roles and expiry
+  without revealing codes; administrators can revoke them. Disabling, demoting, or closing the
+  issuing administrator's account invalidates their unused invitations. Invited administrators
+  must still enroll in TOTP after sign-in. Roles do not share existing game data; explicit resource
+  ACLs remain necessary. No email delivery or public invitation link is configured. Restart an older
+  helper with `npm run helper:stop`, then `npm run helper`, to enable invitation support.
 - **Self-service account closure:** Account & security offers three choices, requiring the current
   password and exact username confirmation. **Retain** deactivates the account with identity,
   ownership, and game data preserved; a system administrator may restore it after verifying identity.
@@ -433,7 +486,32 @@ allow it for the Render site.
 - The Database Explorer reads the server's SQLite databases read-only (via `sql.js`) through `/db/...` endpoints. On the Fedora laptop, both Adventure and Creative worlds are detected. Player identity/power/kingdom, skill records, and item coordinates are available in separate tables, with live positions in the `POSITION` table (joined into the players view). Skill and inventory views join by `OWNER`/`PARENTID`.
 - **World Map Explorer** lists positioned characters, captures all five map layers for the entire world or a custom width × height around a selected character, and lets you display the surface, rock, cave, resources, or flags layer. Selecting a tile shows terrain, surface/rock corner altitudes, cave floor/ceiling, resource IDs and flags. Each baseline stores the original five 4-byte map layers (20 bytes per tile; the whole Adventure world is about 54 MB). Baselines can be exported to a re-importable JSON file, imported, or deleted (one or all for a world); these actions touch only this local file in a separate local SQLite file: `~/.local/share/wurm-tools/map-baseline.db` on Fedora/Linux, `%LOCALAPPDATA%\wurm-tools\map-baseline.db` on Windows, or `~/Library/Application Support/wurm-tools/map-baseline.db` on macOS. Set `WURM_MAP_BASELINE_PATH` to choose another file. Game database and map files are only read. Ore availability and locations are decoded from the cave layer into the baseline (`GET /map/snapshots/<id>/ores`); quantities read as unrolled until a tile is first mined. The Underground resources layer colors each ore type, lists per-ore counts, unrolled/rolled state, quantity and a derived quality ceiling, and shows ore, quantity and quality for the selected tile. Quality is the server's per-tile ceiling (`20 + Random((x + y*worldSize)*789221).nextInt(80)`, derived from the decompiled server); actual mined quality also depends on the miner's skill and tool, and it needs the world size (known for whole-world or newly captured baselines).
 - The map helper endpoints are local-use only, like the other `/db/...` endpoints; the deployed Render site generally cannot reach the user's localhost helper.
-- On first use from Render, run `npm run helper:pair-code` locally and enter the 8-digit, 10-minute code in the Server page. Each browser gets its own bearer token; `/status`, `/db/...`, and `/start/...` require pairing. `npm run helper:unpair` revokes all browser tokens. Use `npm run helper:startup:remove` to stop a login-managed helper.
+- **HERO route visibility:** The helper's authenticated `/heroes/access` response derives workspace
+  routes from the same filtered resource/context/library ACL checks used for data reads. Sidebars,
+  upper menus, footer links, and management cross-links omit unavailable destinations entirely.
+  Group links lead to the first permitted page, not an inaccessible landing page. A direct unavailable
+  workspace URL opens Account & security with an explanation instead of mounting its tools.
+  Accounts retain pages where their role permits creation even when no records exist yet; for
+  example, Game Masters can create new genres and Players can create objects. Visitors with no
+  resource grants see account controls only. These UI checks do not replace server-side resource
+  authorization. Role/ACL changes revoke affected sessions; sign in again to refresh route access.
+  Restart an older helper to enable the route-list endpoint.
+- **Wurm account authorization:** Wurm pages (including calculators, map, server status and roadmap)
+  require a fully signed-in HERO system administrator by default. On **Admins**, use **Save Wurm tools
+  delegation** to grant/revoke all Wurm features for another account, including local server/client
+  launch. Player/Game Master roles and HERO resource ACLs do not grant Wurm access. Delegation
+  changes revoke the affected account's sessions; sign in again afterward. Unauthorized accounts
+  have no Wurm link in HERO navigation, and direct Wurm URLs show account guidance instead of tools.
+  This also means the helper must be reachable for the initial Wurm page access check; cached/offline
+  pages do not bypass authorization. Static client code is not confidential or encrypted.
+- Wurm helper APIs require **both** an authorized complete HERO account session (`X-Heroes-Session`)
+  and browser pairing (`Authorization: Bearer ...`). `/status`, `/db/...`, `/map/...` and
+  `/start/...` enforce both checks on every request; pairing/unpairing also requires account
+  authorization. `/health` remains public for readiness checks. Existing pairing tokens alone no
+  longer provide Wurm access. Restart an older helper after updating.
+- After account sign-in, run `npm run helper:pair-code` locally and enter the 8-digit, 10-minute code
+  in the Server page. Each browser gets its own bearer token. `npm run helper:unpair` revokes all
+  browser tokens. Use `npm run helper:startup:remove` to stop a login-managed helper.
 - Database routes remain read-only, and database contents are never uploaded. The helper binds only to `127.0.0.1`; auth hashes are stored under the current user's config directory, while browser tokens stay in that browser's local storage.
 - CORS allows the exact Render origin and local `localhost`/`127.0.0.1` dev/preview origins. `WURM_ALLOWED_ORIGINS` adds exact origins only; wildcard origins are ignored. `WURM_HELPER_PORT` changes the port.
 - Login startup is opt-in: `npm run helper:startup:install` registers a Windows logon task or Fedora/Linux systemd user service; `npm run helper:startup:remove` removes it. Fedora setup also accepts `scripts/setup.sh --helper-service`.
@@ -488,7 +566,7 @@ WurmTools/
 │   └── deploy               # Linux executable wrapper
 ├── tests/
 │   └── calculators.test.js  # Vitest unit test suite
-├── index.html               # Main application HTML entry point
+├── index.html               # Heros login-only entry point (Wurm home: site/wurm/index.html)
 ├── package.json             # NPM project manifest & scripts
 ├── render.yaml              # Render Blueprint deployment configuration
 ├── vite.config.js           # Vite build configuration

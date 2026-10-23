@@ -18,7 +18,7 @@ export function heroesSessionToken() {
 export async function identityRequest(action, data) {
   const headers = {};
   const token = heroesSessionToken();
-  if (token && !['status', 'setup', 'register', 'login'].includes(action))
+  if (token && !['status', 'setup', 'register', 'login', 'invite/redeem'].includes(action))
     headers['X-Heroes-Session'] = token;
   if (data !== undefined) headers['Content-Type'] = 'application/json';
   const response = await fetch(`http://127.0.0.1:5180/heroes/auth/${action}`, {
@@ -39,7 +39,24 @@ export async function identityRequest(action, data) {
   if (!response.ok) {
     const unsupported =
       response.status === 404 &&
-      ['profile/name', 'name-config', 'admin/name-config', 'closure/status'].includes(action);
+      [
+        'profile/name',
+        'name-config',
+        'admin/name-config',
+        'closure/status',
+        'admin/invite',
+        'admin/invite/revoke',
+        'invite/redeem',
+        'roles/request',
+        'roles/cancel',
+        'admin/roles/review',
+        'play/status',
+        'play/listing',
+        'play/request',
+        'play/respond',
+        'wurm/access',
+        'admin/wurm-access',
+      ].includes(action);
     const error = new Error(
       unsupported
         ? 'The running helper does not support this account feature. From your updated WurmTools folder run npm run helper:stop, then npm run helper. Reload this page afterward. Your data has not been changed by this request.'

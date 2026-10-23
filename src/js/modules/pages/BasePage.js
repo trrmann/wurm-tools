@@ -1,4 +1,6 @@
 // Base Page Object Model for Wurm Tools
+import { identityRequest } from '../../tools/heroes/session.js';
+
 export class BasePage {
   static pageAppID = 'page-app'; // Override in derived page classes
   static initPage() {
@@ -28,6 +30,34 @@ export class BasePage {
     this.container = container;
     this.isMounted = true;
     this.updateDocumentTitle();
+    if (this.brand === 'Wurm Tools') {
+      const status = document.createElement('p');
+      status.setAttribute('role', 'status');
+      status.textContent = 'Checking your account access to Wurm tools...';
+      container.replaceChildren(status);
+      this.accessReady = identityRequest('wurm/access')
+        .then((access) => {
+          if (access.allowed !== true) throw new Error('The helper did not confirm Wurm access');
+          if (!this.isMounted) return;
+          this.render();
+          this.bindEvents();
+        })
+        .catch((error) => {
+          if (!this.isMounted) return;
+          status.textContent = `${error.message}. Wurm tools require an authorized account; local helper features also require browser pairing.`;
+          for (const [label, href] of [
+            ['Sign in', '/site/heroes/login/'],
+            ['Account & security', '/site/heroes/account/'],
+            ['First-time helper setup', '/site/heroes/setup/'],
+          ]) {
+            const link = document.createElement('a');
+            link.textContent = label;
+            link.href = href;
+            container.append(link);
+          }
+        });
+      return;
+    }
     this.render();
     this.bindEvents();
   }

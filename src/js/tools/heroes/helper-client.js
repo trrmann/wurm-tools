@@ -29,7 +29,7 @@ export function createHeroesClient({ signal, onUnauthorized = () => {} } = {}) {
       }
       if (
         response.status === 404 &&
-        ['/heroes/library', '/heroes/management'].includes(route) &&
+        ['/heroes/library', '/heroes/management', '/heroes/access'].includes(route) &&
         !options.method
       ) {
         throw new Error(

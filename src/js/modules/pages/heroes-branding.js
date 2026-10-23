@@ -1,5 +1,5 @@
 import {
-  HEROES_NAVIGATION,
+  heroesNavigationLinks,
   getHeroesPage,
   heroesPageHref,
   heroesAccessPages,
@@ -40,11 +40,16 @@ export function applyHeroesBranding(container, access = null) {
   const menu = container.querySelector('#nav-menu');
   if (menu) {
     menu.replaceChildren();
-    const navigation =
-      access && access.stage !== 'ready'
-        ? heroesAccessPages(access).map((page) => [page.title, page.href])
-        : HEROES_NAVIGATION;
+    const navigation = heroesNavigationLinks(access || { stage: 'checking' });
     for (const [label, href] of navigation) {
+      if (
+        href === '/site/wurm/' &&
+        !(
+          access?.stage === 'ready' &&
+          (access.user.roles.includes('admin') || access.user.wurmAccess)
+        )
+      )
+        continue;
       const item = document.createElement('li');
       const link = document.createElement('a');
       link.textContent = label;
@@ -52,8 +57,10 @@ export function applyHeroesBranding(container, access = null) {
       link.href = heroesPageHref({ href }, window.location.search);
       const current = getHeroesPage(window.location.pathname);
       if (
-        (href === '/site/heroes/' && current.group === 'worlds') ||
-        (href === '/site/heroes/people/' && current.group === 'people') ||
+        (href.startsWith('/site/heroes/') &&
+          getHeroesPage(href).group === 'worlds' &&
+          current.group === 'worlds') ||
+        (getHeroesPage(href).group === 'people' && current.group === 'people') ||
         (href === '/site/heroes/account/' &&
           current.group === 'account' &&
           !current.account.startsWith('logout'))
@@ -70,7 +77,7 @@ export function applyHeroesBranding(container, access = null) {
     roadmap.textContent = 'Game Masters & players';
     roadmap.href = '/site/heroes/people/';
   }
-  const dashboard = container.querySelector('.footer-links a[href="/"]');
+  const dashboard = container.querySelector('.footer-links a[href="/site/wurm/"]');
   if (dashboard) {
     dashboard.textContent = 'Heros Worlds';
     dashboard.href = '/site/heroes/';
@@ -81,10 +88,7 @@ export function applyHeroesBranding(container, access = null) {
       links.replaceChildren();
       const pages =
         access.stage === 'ready'
-          ? [
-              ['Heros Worlds', '/site/heroes/'],
-              ['Account & security', '/site/heroes/account/'],
-            ]
+          ? heroesNavigationLinks(access).filter(([, href]) => href !== '/site/heroes/logout/')
           : heroesAccessPages(access).map((page) => [page.title, page.href]);
       for (const [label, href] of pages) {
         const link = document.createElement('a');

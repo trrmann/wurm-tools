@@ -17,6 +17,34 @@ function mockRequest(body, status = 200) {
 }
 
 describe('HERO identity helper compatibility', () => {
+  it.each([
+    [{ stage: 'ready', user: { roles: ['player'] } }, false],
+    [{ stage: 'ready', user: { roles: ['admin'] } }, true],
+    [{ stage: 'ready', user: { roles: ['visitor'], wurmAccess: true } }, true],
+    [{ stage: 'mfa', user: { roles: ['admin'] } }, false],
+  ])('hides the Wurm route unless the complete account has access: %j', (access, expected) => {
+    const makeNode = () => ({
+      children: [],
+      append(child) {
+        this.children.push(child);
+      },
+      setAttribute() {},
+    });
+    const menu = {
+      ...makeNode(),
+      replaceChildren() {
+        this.children = [];
+      },
+    };
+    vi.stubGlobal('document', { documentElement: { dataset: {} }, createElement: makeNode });
+    vi.stubGlobal('window', { location: { pathname: '/site/heroes/account/', search: '' } });
+    applyHeroesBranding(
+      { querySelector: (selector) => (selector === '#nav-menu' ? menu : null) },
+      access
+    );
+    expect(menu.children.some((item) => item.children[0].href === '/site/wurm/')).toBe(expected);
+  });
+
   it('keeps the workspace visible and explains a rejected action when a session is revoked', async () => {
     const removeItem = vi.fn();
     vi.stubGlobal('sessionStorage', { getItem: () => 'revoked', removeItem });
@@ -73,13 +101,24 @@ describe('HERO identity helper compatibility', () => {
     expect(identity.hidden).toBe(true);
   });
 
-  it.each(['profile/name', 'name-config', 'admin/name-config', 'closure/status'])(
-    'explains an outdated helper when %s is unknown',
-    async (action) => {
-      mockRequest({ error: 'Unknown identity action' }, 404);
-      await expect(identityRequest(action)).rejects.toThrow('npm run helper:stop');
-    }
-  );
+  it.each([
+    'profile/name',
+    'name-config',
+    'admin/name-config',
+    'closure/status',
+    'roles/request',
+    'roles/cancel',
+    'admin/roles/review',
+    'play/status',
+    'play/listing',
+    'play/request',
+    'play/respond',
+    'wurm/access',
+    'admin/wurm-access',
+  ])('explains an outdated helper when %s is unknown', async (action) => {
+    mockRequest({ error: 'Unknown identity action' }, 404);
+    await expect(identityRequest(action)).rejects.toThrow('npm run helper:stop');
+  });
 
   it.each(['status', 'setup', 'register', 'login'])(
     'does not send session credentials for public %s requests',

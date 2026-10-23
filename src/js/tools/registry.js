@@ -7,7 +7,7 @@ import * as playerNotes from './player-notes/index.js';
 export const TOOLS_LIST = [deedCalc, actionTimers, distanceCalc, playerNotes];
 
 export const PRIMARY_NAVIGATION = [
-  { id: 'dashboard', name: 'Dashboard', href: '/' },
+  { id: 'dashboard', name: 'Wurm Home', href: '/site/wurm/' },
   { id: 'concepts', name: 'Concepts', href: '/site/concepts/' },
   { id: 'server-status', name: 'Server', href: '/site/server-status/' },
   { id: 'map-explorer', name: 'World Map', href: '/site/map-explorer/' },

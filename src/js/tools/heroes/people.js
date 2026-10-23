@@ -25,17 +25,28 @@ const sections = [
 
 export function mountHeroesPeople(
   container,
-  { section = 'profile', role = '', title = 'People' } = {}
+  { section = 'profile', role = '', title = 'People', accountRoles = [], routes = [] } = {}
 ) {
   if (!sections.some(([kind]) => kind === section))
     throw new RangeError(`Unknown management section: ${section}`);
   const controller = new AbortController();
   const { signal } = controller;
   container.innerHTML = template;
+  const routeAllowed = (href) => accountRoles.includes('admin') || routes.includes(href);
+  for (const link of container.querySelectorAll('a[href^="/site/heroes/"]')) {
+    if (!routeAllowed(link.getAttribute('href')))
+      link.replaceWith(document.createTextNode(link.textContent));
+  }
   const element = (id) => container.querySelector(`#management-${id}`);
   const form = element('form');
   const status = element('state');
   const profileSelect = element('profile');
+  const canCreateGenre = accountRoles.some((role) => ['admin', 'game-master'].includes(role));
+  if (section === 'genre') {
+    element('genre-actions').hidden = false;
+    element('create-genre').hidden = !canCreateGenre;
+    element('list').before(form);
+  }
   container.querySelector('#management-heading').textContent = title;
   element('section-heading').textContent = title;
   container.querySelector('#management-heading + p').textContent =
@@ -81,6 +92,8 @@ export function mountHeroesPeople(
     return result;
   };
   const editorLink = (worldId, object = null) => {
+    const destination = object ? getHeroesObjectPage(object) : HEROES_PAGES[0];
+    if (!routeAllowed(destination.href)) return null;
     const link = node('a', 'Open world editor', 'btn btn-secondary');
     const query = new URLSearchParams(window.location.search);
     query.set('world', worldId || 'all');
@@ -246,13 +259,20 @@ export function mountHeroesPeople(
   function drawForm(record = null) {
     editingId = record?.id || null;
     form.replaceChildren();
-    form.hidden = section === 'object';
+    form.hidden = section === 'object' || (section === 'genre' && !record && !canCreateGenre);
     if (form.hidden) return;
     const data = record?.data || {};
     if (data.migrationNotes)
       form.append(node('p', data.migrationNotes, 'heroes-management-notice'));
     form.append(
-      node('h3', `${record ? 'Edit' : 'Add'} ${sections.find(([kind]) => kind === section)[1]}`)
+      node(
+        'h3',
+        section === 'genre'
+          ? record
+            ? 'Edit genre'
+            : 'Create genre'
+          : `${record ? 'Edit' : 'Add'} ${sections.find(([kind]) => kind === section)[1]}`
+      )
     );
     field('Name / label', 'name', data.name).required = true;
     if (section === 'profile') {
@@ -318,8 +338,15 @@ export function mountHeroesPeople(
       field('Active campaign', 'active', 'active', 'checkbox').checked = data.active ?? true;
       field('Campaign notes', 'notes', data.notes, 'textarea');
     }
-    if (section === 'genre')
+    if (section === 'genre') {
+      form.append(
+        node(
+          'p',
+          'Create an organizational genre first, then link campaigns to it. Creating a genre does not enable genre-specific rules or share it with other accounts.'
+        )
+      );
       field('Genre notes (organizational only)', 'notes', data.notes, 'textarea');
+    }
     if (section === 'object-scope') {
       field(
         'Saved object',
@@ -394,11 +421,18 @@ export function mountHeroesPeople(
       );
       field('GM note', 'notes', data.notes, 'textarea').required = true;
     }
-    const submit = node('button', record ? 'Save changes' : 'Add record', 'btn btn-primary');
+    const submit = node(
+      'button',
+      record ? 'Save changes' : section === 'genre' ? 'Save new genre' : 'Add record',
+      'btn btn-primary'
+    );
     submit.type = 'submit';
     form.append(
       submit,
-      button('Cancel / new record', () => drawForm())
+      button(
+        section === 'genre' ? (record ? 'Cancel editing' : 'Clear form') : 'Cancel / new record',
+        () => drawForm()
+      )
     );
   }
   function draw() {
@@ -406,14 +440,17 @@ export function mountHeroesPeople(
     element('roster-field').hidden = section !== 'profile' || Boolean(role);
     element('workspace-description').textContent = profileSelect.value
       ? `${profileName(profileSelect.value)} workspace - profiles are records, not signed-in users.`
-      : 'Showing all local records.';
+      : 'Showing all accessible records.';
+    if (section === 'genre' && profileSelect.value)
+      element('workspace-description').textContent +=
+        " Only genres linked through this profile's worlds are listed. Select Show all accessible genres to include new genres without campaigns or worlds.";
     const list = element('list');
     list.replaceChildren();
     const append = (title, details, actions) => {
       const row = node('article', '', 'heroes-management-row');
       row.append(node('h4', title), node('p', details));
       const buttons = node('div', '', 'heroes-world-actions');
-      buttons.append(...actions);
+      buttons.append(...actions.filter(Boolean));
       row.append(buttons);
       list.append(row);
     };
@@ -438,7 +475,14 @@ export function mountHeroesPeople(
       for (const record of currentRecords()) {
         const data = record.data;
         let details = data.notes || '';
-        if (section === 'profile')
+        const workspace =
+          section === 'profile'
+            ? HEROES_PAGES.find(
+                (page) =>
+                  page.section === (data.roles.includes('game-master') ? 'world' : 'character')
+              )
+            : null;
+        if (workspace && routeAllowed(workspace.href))
           details = `${data.roles.map((role) => (role === 'game-master' ? 'Game Master' : 'Player')).join(' / ')}. ${details}`;
         if (section === 'world')
           details = `${worldName(data.worldId)} - ${campaignName(data.worldId)} / ${genreName(data.campaignId)}; GM: ${data.externalGameMaster || profileName(data.gameMasterId)}; players: ${data.playerIds.map(profileName).join(', ') || 'none'}${!data.campaignId ? '; ACTION REQUIRED: select a parent campaign.' : ''}`;
@@ -490,11 +534,7 @@ export function mountHeroesPeople(
             button('Open workspace', () => {
               profileSelect.value = record.id;
               updateProfileUrl();
-              const destination = HEROES_PAGES.find(
-                (page) =>
-                  page.section === (data.roles.includes('game-master') ? 'world' : 'character')
-              );
-              window.location.assign(heroesPageHref(destination, window.location.search));
+              window.location.assign(heroesPageHref(workspace, window.location.search));
             })
           );
         if (section === 'world') actions.unshift(editorLink(data.worldId));
@@ -567,17 +607,42 @@ export function mountHeroesPeople(
     if (section === 'campaign') data.active = values.has('active');
     const id = editingId;
     run(async () => {
+      report(
+        id
+          ? 'Saving changes...'
+          : section === 'genre'
+            ? 'Creating your genre...'
+            : 'Saving record...'
+      );
       await request(`/heroes/management${id ? `/${encodeURIComponent(id)}` : ''}`, {
         method: id ? 'PUT' : 'POST',
         body: JSON.stringify({ kind: section, data }),
       });
+      const clearedProfile = section === 'genre' && !id && Boolean(profileSelect.value);
+      if (section === 'genre' && !id) profileSelect.value = '';
       await reload();
-      report('Record saved locally.');
+      report(
+        section === 'genre'
+          ? `${id ? 'Genre updated' : 'Genre created'}. ${clearedProfile ? 'Workspace profile filter cleared so the new genre stays visible. ' : ''}You can now select this genre as a campaign parent. Other accounts still need explicit permissions.`
+          : 'Record saved locally.'
+      );
     });
   });
   on(profileSelect, 'change', () => {
     updateProfileUrl();
     draw();
+  });
+  on(element('create-genre'), 'click', () => {
+    drawForm();
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    form.elements.name.focus();
+    report('Enter a genre name and optional notes, then select Save new genre.');
+  });
+  on(element('all-genres'), 'click', () => {
+    profileSelect.value = '';
+    updateProfileUrl();
+    draw();
+    report('Showing all genres your signed-in account can access. Permissions are unchanged.');
   });
   on(element('roster-role'), 'change', draw);
   on(element('refresh'), 'click', () =>

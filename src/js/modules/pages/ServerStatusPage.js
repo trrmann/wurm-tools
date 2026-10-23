@@ -3,6 +3,7 @@ import { BasePage } from './BasePage.js';
 import statusTemplate from '../../../../site/partials/server-status.html?raw';
 import { fill, getShell, getTemplate } from '../template.js';
 import { renderShell, setHeader, initSidebar } from '../shell.js';
+import { heroesSessionToken } from '../../tools/heroes/session.js';
 
 export const HELPER_URL = 'http://127.0.0.1:5180';
 const HELPER_TOKEN_KEY = 'wurm-tools-helper-token-v1';
@@ -89,22 +90,34 @@ export class ServerStatusPage extends BasePage {
       state.textContent = `Helper connected (${status.platform}) — checked ${new Date(
         status.checkedAt
       ).toLocaleTimeString()}`;
-    } catch {
+    } catch (error) {
       cards.innerHTML = '';
       pairPanel.hidden = true;
       unpairButton.hidden = true;
       this.setDatabaseControlsEnabled(false);
-      state.textContent =
-        'Helper not reachable. Restart the local site or run "npm run helper" to start it.';
+      state.textContent = `Unable to load Wurm status: ${error.message}. Check your account access, browser pairing, and running helper.`;
     }
   }
 
   async request(path, options = {}, authenticated = true) {
     const headers = new Headers(options.headers || {});
+    const session = heroesSessionToken();
+    if (session) headers.set('X-Heroes-Session', session);
     if (authenticated && this.authToken) headers.set('Authorization', `Bearer ${this.authToken}`);
     const response = await fetch(`${HELPER_URL}${path}`, { ...options, headers });
-    if (authenticated && response.status === 401) {
-      this.showPairingRequired('This browser is no longer paired. Pair it again to continue.');
+    if (response.status === 401 || response.status === 403) {
+      const body = await response.clone().json();
+      if (
+        response.status === 401 &&
+        body.error === 'Pair this browser with the local helper first'
+      ) {
+        this.showPairingRequired('This browser is no longer paired. Pair it again to continue.');
+        return response;
+      }
+      throw new Error(
+        body.error ||
+          'Account access denied. Sign in to an authorized account and check browser pairing.'
+      );
     }
     return response;
   }
@@ -267,8 +280,9 @@ export class ServerStatusPage extends BasePage {
       const res = await this.request(`/start/${key}`, { method: 'POST' });
       if (!res.ok) throw new Error(String(res.status));
       setTimeout(() => this.refresh(), 5000);
-    } catch {
-      this.viewport.querySelector('#helper-state').textContent = `Could not start ${key}.`;
+    } catch (error) {
+      this.viewport.querySelector('#helper-state').textContent =
+        `Could not start ${key}: ${error.message}`;
     }
   }
 

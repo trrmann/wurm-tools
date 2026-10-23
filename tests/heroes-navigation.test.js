@@ -12,9 +12,105 @@ import {
   updateHeroesContext,
   heroesAccessPages,
   heroesAccessRedirect,
+  heroesWorkspaceRoutes,
+  heroesNavigationLinks,
 } from '../src/js/modules/pages/heroes-navigation.js';
 
 describe('Heros contextual pages', () => {
+  it('uses Heros login at the root and builds a separate Wurm home', () => {
+    expect(getHeroesPage('/').account).toBe('login');
+    expect(getHeroesPage('/index.html').account).toBe('login');
+    const root = readFileSync(config.build.rollupOptions.input.login, 'utf8');
+    const wurm = readFileSync(config.build.rollupOptions.input.dashboard, 'utf8');
+    expect(root).toContain('<title>Login — Heros Tools</title>');
+    const description = root.match(/name="description"\s+content="([^"]+)"/)?.[1];
+    expect(description).toBeDefined();
+    expect(description.length).toBeGreaterThanOrEqual(30);
+    expect(root).toContain('id="heroes-app"');
+    expect(root).not.toContain('dashboard-app');
+    expect(wurm).toContain('id="dashboard-app"');
+    expect(wurm).toContain('https://wurm-tools.onrender.com/site/wurm/');
+    expect(config.build.rollupOptions.input.dashboard).toMatch(/site\/wurm\/index\.html$/);
+  });
+
+  it('hides every unauthorized workspace route from sidebars, grouped menus and direct URLs', () => {
+    const access = { stage: 'ready', user: { roles: ['visitor'] }, routes: [] };
+    expect(heroesAccessPages(access).map((page) => page.account)).toEqual(['account', 'logout']);
+    expect(heroesNavigationLinks(access)).toEqual([
+      ['Account / Login', '/site/heroes/account/'],
+      ['Logout', '/site/heroes/logout/'],
+    ]);
+    for (const page of HEROES_PAGES.filter((page) => !page.account))
+      expect(heroesAccessRedirect(page, access)).toBe('/site/heroes/account/?notice=route-denied');
+    expect(heroesAccessRedirect(getHeroesPage('/site/heroes/people/admins/'), access)).toBe(
+      '/site/heroes/account/?notice=route-denied'
+    );
+    access.routes = ['/site/heroes/player-characters/', '/site/heroes/people/players/'];
+    expect(heroesNavigationLinks(access)).toContainEqual([
+      'Worlds & objects',
+      '/site/heroes/player-characters/',
+    ]);
+    expect(heroesNavigationLinks(access)).toContainEqual([
+      'Game Masters & players',
+      '/site/heroes/people/players/',
+    ]);
+    expect(
+      heroesAccessRedirect(getHeroesPage('/site/heroes/player-characters/'), access)
+    ).toBeNull();
+    const links = [];
+    vi.stubGlobal('window', {
+      location: { pathname: '/site/heroes/player-characters/', search: '' },
+    });
+    vi.stubGlobal('document', { createElement: () => ({ setAttribute() {} }) });
+    try {
+      renderHeroesNavigation(
+        {
+          replaceChildren() {
+            links.length = 0;
+          },
+          append(link) {
+            links.push(link);
+          },
+        },
+        '',
+        access
+      );
+      expect(links.map((link) => link.href)).toEqual(['/site/heroes/player-characters/']);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps role-authorized creation routes and derives read-only routes from permitted resource kinds', () => {
+    const empty = { worlds: [], objects: [], records: [] };
+    expect(heroesWorkspaceRoutes(['visitor'], empty, [])).toEqual([]);
+    const player = heroesWorkspaceRoutes(['player'], empty, []);
+    expect(player).toContain('/site/heroes/player-characters/');
+    expect(player).toContain('/site/heroes/objects/');
+    expect(player).not.toContain('/site/heroes/genres/');
+    expect(player).not.toContain('/site/heroes/people/notes/');
+    expect(heroesWorkspaceRoutes(['game-master'], empty, [])).toEqual(
+      HEROES_PAGES.filter((page) => !page.account).map((page) => page.href)
+    );
+    const resources = {
+      worlds: [],
+      objects: [{ kind: 'player-character' }],
+      records: [
+        { kind: 'profile', data: { roles: ['player'] } },
+        { kind: 'note', data: {} },
+      ],
+    };
+    expect(heroesWorkspaceRoutes(['visitor'], resources, [])).toEqual([
+      '/site/heroes/player-characters/',
+      '/site/heroes/people/players/',
+      '/site/heroes/people/notes/',
+    ]);
+    expect(heroesWorkspaceRoutes(['visitor'], empty, [{}])).toEqual(['/site/heroes/library/']);
+    expect(heroesWorkspaceRoutes(['admin'], empty, [])).toEqual(
+      HEROES_PAGES.filter((page) => !page.account).map((page) => page.href)
+    );
+  });
+
   it('offers only setup until the first administrator exists, even for direct URLs', () => {
     expect(heroesAccessPages({ stage: 'checking' })).toEqual([]);
     const access = { stage: 'setup' };

@@ -611,6 +611,22 @@ export function createServer({ env = process.env } = {}) {
       if (req.method === 'GET' && url.pathname === '/health') {
         return send(200, { ok: true });
       }
+      if (
+        ['/pair', '/unpair', '/status'].includes(url.pathname) ||
+        ['/db/', '/map/', '/start/'].some((prefix) => url.pathname.startsWith(prefix))
+      ) {
+        if (!origin) throw httpError(403, 'An approved app origin is required for Wurm accounts');
+        const principal = heroesPrincipal(
+          req.headers['x-heroes-session'] || '',
+          origin,
+          heroesIdentityPath(env)
+        );
+        if (!principal.roles.includes('admin') && !principal.wurmAccess)
+          throw httpError(
+            403,
+            'Wurm tools require system-administrator access or explicit delegation'
+          );
+      }
       if (req.method === 'POST' && url.pathname === '/pair') {
         if (!origin || !originOk) return send(403, { error: 'An approved app origin is required' });
         const attemptKey = req.socket.remoteAddress || 'local';
@@ -655,9 +671,15 @@ export function createServer({ env = process.env } = {}) {
           const bearer = req.headers['x-heroes-session'] || '';
           if (url.pathname.startsWith('/heroes/auth/')) {
             const action = url.pathname.slice('/heroes/auth/'.length);
-            const get = ['status', 'me', 'admin/list', 'closure/status', 'name-config'].includes(
-              action
-            );
+            const get = [
+              'status',
+              'me',
+              'admin/list',
+              'closure/status',
+              'name-config',
+              'play/status',
+              'wurm/access',
+            ].includes(action);
             if (req.method !== (get ? 'GET' : 'POST')) throw httpError(405, 'Method not allowed');
             const body = get ? {} : await readJsonBody(req, 16 * 1024);
             if (action === 'admin/grant') {

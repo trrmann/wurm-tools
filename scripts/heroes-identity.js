@@ -37,6 +37,8 @@ function read(file) {
     throw new Error('Invalid HERO identity store; restore its matching encryption key and backup');
   state.ownership ||= [];
   state.transfers ||= [];
+  state.invitations ||= [];
+  state.playRelationships ||= [];
   return state;
 }
 
@@ -160,11 +162,37 @@ function publicUser(user, state) {
     createdAt: user.createdAt,
     lastLoginAt: user.lastLoginAt || null,
     closure: user.closure || null,
+    roleRequest: user.roleRequest || null,
+    listedAsGameMaster: user.listedAsGameMaster === true,
+    wurmAccess: user.wurmAccess === true,
     personalName: user.personalName || null,
     displayName: user.personalName
       ? accountDisplayName(user.personalName, state?.nameCultures || DEFAULT_NAME_CULTURES)
       : '',
   };
+}
+
+function cancelPendingRoleRequest(user) {
+  if (user.roleRequest?.status === 'pending') {
+    user.roleRequest.status = 'cancelled';
+    user.roleRequest.resolvedAt = new Date().toISOString();
+  }
+}
+
+function invalidatePlayRelationships(state, user) {
+  for (const relationship of state.playRelationships) {
+    if (
+      (relationship.playerId === user.id && (user.disabled || !user.roles.includes('player'))) ||
+      (relationship.gameMasterId === user.id &&
+        (user.disabled || !user.roles.includes('game-master')))
+    ) {
+      if (['pending', 'approved'].includes(relationship.status)) {
+        relationship.status = relationship.status === 'pending' ? 'cancelled' : 'ended';
+        relationship.resolvedAt = new Date().toISOString();
+      }
+    }
+  }
+  if (user.disabled || !user.roles.includes('game-master')) user.listedAsGameMaster = false;
 }
 
 function session(state, bearer, origin, complete = true) {
@@ -249,13 +277,36 @@ export async function heroesIdentityAction(action, body, context) {
       return {
         setupRequired: !state.users.some((user) => user.roles.includes('admin')),
         providers: HEROES_IDENTITY_CAPABILITIES,
-        accountFeatures: { personalNames: true, nameConfiguration: true, accountClosure: true },
+        accountFeatures: {
+          personalNames: true,
+          nameConfiguration: true,
+          accountClosure: true,
+          invitations: true,
+          roleRequests: true,
+          playRelationships: true,
+          wurmAccess: true,
+        },
       };
-    if (['register', 'setup', 'login'].includes(action)) {
+    if (['register', 'setup', 'login', 'invite/redeem'].includes(action)) {
       const blocked = throttle(state, `public:${remote}`, 30);
       if (blocked) return blocked;
     }
-    if (action === 'register' || action === 'setup') {
+    if (['register', 'setup', 'invite/redeem'].includes(action)) {
+      let invitation;
+      if (action === 'invite/redeem') {
+        invitation = state.invitations.find(
+          (item) =>
+            typeof body.code === 'string' &&
+            body.code.length <= 256 &&
+            equal(item.hash, hash(body.code.trim())) &&
+            item.expiresAt > Date.now() &&
+            state.users.some(
+              (issuer) =>
+                issuer.id === item.createdBy && !issuer.disabled && issuer.roles.includes('admin')
+            )
+        );
+        if (!invitation) return httpError(403, 'Invitation code is invalid, expired, or revoked');
+      }
       if (
         action === 'setup' &&
         (state.users.some((user) => user.roles.includes('admin')) ||
@@ -276,12 +327,13 @@ export async function heroesIdentityAction(action, body, context) {
         provider: 'local',
         salt,
         passwordHash: await passwordHash(body.password, salt),
-        roles: action === 'setup' ? ['admin'] : ['visitor'],
+        roles: invitation ? [...invitation.roles] : action === 'setup' ? ['admin'] : ['visitor'],
         disabled: false,
         createdAt: new Date().toISOString(),
       };
       key(file);
       state.users.push(user);
+      if (invitation) state.invitations = state.invitations.filter((item) => item !== invitation);
       if (action === 'setup') delete state.setup;
       return { user: publicUser(user, state), message: 'Account created. Sign in to continue.' };
     }
@@ -374,6 +426,148 @@ export async function heroesIdentityAction(action, body, context) {
       return { user: publicUser(user, state) };
     }
     session(state, bearer, origin);
+    if (action === 'wurm/access') {
+      if (!user.roles.includes('admin') && user.wurmAccess !== true)
+        throw httpError(
+          403,
+          'Wurm tools require system-administrator access or explicit delegation'
+        );
+      return { allowed: true };
+    }
+    if (action === 'play/status') {
+      const label = (id) => {
+        const { username, displayName } = publicUser(
+          state.users.find((item) => item.id === id),
+          state
+        );
+        return { username, displayName };
+      };
+      const directory = user.roles.includes('player')
+        ? state.users
+            .filter(
+              (account) =>
+                account.id !== user.id &&
+                !account.disabled &&
+                account.roles.includes('game-master') &&
+                account.listedAsGameMaster === true
+            )
+            .map((account) => label(account.id))
+            .sort((left, right) => left.username.localeCompare(right.username))
+        : [];
+      return {
+        directory,
+        relationships: state.playRelationships
+          .filter((item) => item.playerId === user.id || item.gameMasterId === user.id)
+          .map((item) => ({
+            ...item,
+            player: label(item.playerId),
+            gameMaster: label(item.gameMasterId),
+          })),
+      };
+    }
+    if (action === 'play/listing') {
+      if (!user.roles.includes('game-master')) throw httpError(403, 'Game Master role required');
+      if (typeof body.visible !== 'boolean')
+        throw httpError(400, 'Choose whether to list your Game Master name');
+      user.listedAsGameMaster = body.visible;
+      return { user: publicUser(user, state) };
+    }
+    if (action === 'play/request') {
+      if (!user.roles.includes('player')) throw httpError(403, 'Player role required');
+      const gm = state.users.find(
+        (account) =>
+          account.username === body.username &&
+          account.id !== user.id &&
+          !account.disabled &&
+          account.roles.includes('game-master') &&
+          account.listedAsGameMaster === true
+      );
+      if (!gm)
+        throw httpError(
+          404,
+          'This Game Master is no longer listed. Refresh the available Game Masters.'
+        );
+      const previous = state.playRelationships.find(
+        (item) => item.playerId === user.id && item.gameMasterId === gm.id
+      );
+      if (previous && ['pending', 'approved'].includes(previous.status))
+        throw httpError(
+          409,
+          'You already have a pending or approved relationship with this Game Master'
+        );
+      state.playRelationships = state.playRelationships.filter((item) => item !== previous);
+      const relationship = {
+        id: crypto.randomUUID(),
+        playerId: user.id,
+        gameMasterId: gm.id,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
+      state.playRelationships.push(relationship);
+      return { relationship };
+    }
+    if (action === 'play/respond') {
+      const relationship = state.playRelationships.find(
+        (item) =>
+          item.id === body.id && (item.playerId === user.id || item.gameMasterId === user.id)
+      );
+      if (!relationship) throw httpError(404, 'Play relationship not found');
+      const player = state.users.find((account) => account.id === relationship.playerId);
+      const gm = state.users.find((account) => account.id === relationship.gameMasterId);
+      if (body.decision === 'cancel') {
+        if (relationship.playerId !== user.id || relationship.status !== 'pending')
+          throw httpError(409, 'Only the requesting player can cancel a pending request');
+        relationship.status = 'cancelled';
+      } else if (body.decision === 'end') {
+        if (relationship.status !== 'approved')
+          throw httpError(409, 'Only an approved relationship can be ended');
+        relationship.status = 'ended';
+      } else if (['approve', 'reject'].includes(body.decision)) {
+        if (relationship.gameMasterId !== user.id || !user.roles.includes('game-master'))
+          throw httpError(403, 'Only the addressed Game Master can review this request');
+        if (
+          relationship.status !== 'pending' ||
+          player.disabled ||
+          gm.disabled ||
+          !player.roles.includes('player') ||
+          !gm.roles.includes('game-master')
+        )
+          throw httpError(
+            409,
+            'This play request is no longer pending or its participants are unavailable'
+          );
+        relationship.status = body.decision === 'approve' ? 'approved' : 'rejected';
+      } else throw httpError(400, 'Choose approve, reject, cancel, or end');
+      relationship.resolvedAt = new Date().toISOString();
+      return { relationship };
+    }
+    if (action === 'roles/request') {
+      if (!user.roles.includes('visitor') || user.roles.includes('admin'))
+        throw httpError(403, 'Only Visitor accounts can request Player or Game Master roles');
+      if (
+        !Array.isArray(body.roles) ||
+        !body.roles.length ||
+        body.roles.some(
+          (role) => !['player', 'game-master'].includes(role) || user.roles.includes(role)
+        )
+      )
+        throw httpError(400, 'Select Player and/or Game Master roles you do not already have');
+      if (user.roleRequest?.status === 'pending')
+        throw httpError(409, 'Cancel your pending role request before submitting another');
+      user.roleRequest = {
+        id: crypto.randomUUID(),
+        roles: [...new Set(body.roles)],
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
+      return { user: publicUser(user, state) };
+    }
+    if (action === 'roles/cancel') {
+      if (user.roleRequest?.status !== 'pending' || user.roleRequest.id !== body.requestId)
+        throw httpError(409, 'This role request is no longer pending. Refresh Account & security.');
+      cancelPendingRoleRequest(user);
+      return { user: publicUser(user, state) };
+    }
     if (action === 'name-config') return { cultures: state.nameCultures || DEFAULT_NAME_CULTURES };
     if (action === 'admin/name-config') {
       if (!user.roles.includes('admin')) throw httpError(403, 'Administrator access required');
@@ -426,6 +620,11 @@ export async function heroesIdentityAction(action, body, context) {
     };
     const removeAccount = (target) => {
       target.disabled = true;
+      state.playRelationships = state.playRelationships.filter(
+        (item) => item.playerId !== target.id && item.gameMasterId !== target.id
+      );
+      delete target.roleRequest;
+      state.invitations = state.invitations.filter((item) => item.createdBy !== target.id);
       target.closure = 'deleted';
       target.username = `deleted-${target.id}`;
       target.roles = [];
@@ -527,6 +726,9 @@ export async function heroesIdentityAction(action, body, context) {
       }
       if (body.choice === 'retain') {
         user.disabled = true;
+        invalidatePlayRelationships(state, user);
+        cancelPendingRoleRequest(user);
+        state.invitations = state.invitations.filter((item) => item.createdBy !== user.id);
         user.closure = 'retained';
         state.sessions = state.sessions.filter((item) => item.userId !== user.id);
         state.transfers = state.transfers.filter(
@@ -574,11 +776,82 @@ export async function heroesIdentityAction(action, body, context) {
       return { changed: true };
     }
     if (!user.roles.includes('admin')) throw httpError(403, 'Administrator access required');
+    if (action === 'admin/wurm-access') {
+      const target = state.users.find(
+        (account) => account.id === body.userId && account.closure !== 'deleted'
+      );
+      if (!target) throw httpError(404, 'Account not found');
+      if (typeof body.allowed !== 'boolean')
+        throw httpError(400, 'Choose whether to delegate Wurm tools');
+      target.wurmAccess = body.allowed;
+      state.sessions = state.sessions.filter((item) => item.userId !== target.id);
+      return { user: publicUser(target, state) };
+    }
+    if (action === 'admin/roles/review') {
+      if (!['approve', 'reject'].includes(body.decision))
+        throw httpError(400, 'Choose approve or reject for the pending role request');
+      const target = state.users.find((account) => account.id === body.userId);
+      if (!target || target.disabled || target.closure === 'deleted')
+        throw httpError(409, 'The requesting account is unavailable. Refresh the account lists.');
+      const request = target.roleRequest;
+      if (request?.status !== 'pending' || request.id !== body.requestId)
+        throw httpError(409, 'This role request is no longer pending. Refresh the account lists.');
+      if (body.decision === 'approve') {
+        target.roles = [
+          ...new Set([...target.roles.filter((role) => role !== 'visitor'), ...request.roles]),
+        ];
+        state.sessions = state.sessions.filter((item) => item.userId !== target.id);
+      }
+      request.status = body.decision === 'approve' ? 'approved' : 'rejected';
+      request.resolvedAt = new Date().toISOString();
+      return { user: publicUser(target, state) };
+    }
     if (action === 'admin/list')
       return {
         users: state.users.map((account) => publicUser(account, state)),
         grants: state.grants,
+        invitations: state.invitations
+          .filter(
+            (item) =>
+              item.expiresAt > Date.now() &&
+              state.users.some(
+                (issuer) =>
+                  issuer.id === item.createdBy && !issuer.disabled && issuer.roles.includes('admin')
+              )
+          )
+          .map(({ id, roles, createdAt, expiresAt }) => ({ id, roles, createdAt, expiresAt })),
       };
+    if (action === 'admin/invite') {
+      if (
+        !Array.isArray(body.roles) ||
+        !body.roles.length ||
+        body.roles.some((role) => !roles.has(role))
+      )
+        throw httpError(400, 'Select at least one valid invitation role');
+      state.invitations = state.invitations.filter((item) => item.expiresAt > Date.now());
+      if (state.invitations.length >= 100)
+        throw httpError(400, 'Revoke unused invitations before creating more (maximum 100)');
+      const code = token();
+      const invitation = {
+        id: crypto.randomUUID(),
+        hash: hash(code),
+        roles: [...new Set(body.roles)],
+        createdBy: user.id,
+        createdAt: new Date().toISOString(),
+        expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+      };
+      state.invitations.push(invitation);
+      return {
+        code,
+        invitation: { id: invitation.id, roles: invitation.roles, expiresAt: invitation.expiresAt },
+      };
+    }
+    if (action === 'admin/invite/revoke') {
+      if (!state.invitations.some((item) => item.id === body.invitationId))
+        throw httpError(404, 'Invitation not found; it may already have been used or revoked');
+      state.invitations = state.invitations.filter((item) => item.id !== body.invitationId);
+      return { revoked: true };
+    }
     if (action === 'admin/user') {
       const target = state.users.find((item) => item.id === body.userId);
       if (!target) throw httpError(404, 'Account not found');
@@ -601,6 +874,10 @@ export async function heroesIdentityAction(action, body, context) {
         throw httpError(400, 'Cannot disable or demote the last administrator');
       target.roles = [...new Set(body.roles)];
       target.disabled = body.disabled;
+      invalidatePlayRelationships(state, target);
+      cancelPendingRoleRequest(target);
+      if (target.disabled || !target.roles.includes('admin'))
+        state.invitations = state.invitations.filter((item) => item.createdBy !== target.id);
       if (!body.disabled) delete target.closure;
       state.sessions = state.sessions.filter((item) => item.userId !== target.id);
       return { user: publicUser(target, state) };
@@ -647,6 +924,7 @@ export function heroesPrincipal(bearer, origin, file = heroesIdentityPath()) {
     id: user.id,
     roles: [...user.roles],
     grants: state.grants.filter((grant) => grant.userId === user.id),
+    wurmAccess: user.wurmAccess === true,
   };
 }
 

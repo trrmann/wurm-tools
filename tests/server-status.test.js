@@ -12,7 +12,12 @@ import {
   stopDetachedHelper,
 } from '../scripts/wurm-local.js';
 import { systemdUnitContent, windowsTaskCreateArgs } from '../scripts/helper-startup.js';
-import { describeTarget } from '../src/js/modules/pages/ServerStatusPage.js';
+import { describeTarget, ServerStatusPage } from '../src/js/modules/pages/ServerStatusPage.js';
+import {
+  createHeroesSetupCode,
+  heroesIdentityAction,
+  totpCode,
+} from '../scripts/heroes-identity.js';
 
 describe('wurm-local helper', () => {
   it('parses Steam library paths', () => {
@@ -66,6 +71,7 @@ describe('wurm-local helper', () => {
       WURM_HELPER_PORT: '0',
       WURM_HELPER_SEMAPHORE_PATH: semaphore,
       WURM_HELPER_AUTH_FILE: path.join(temp, 'helper-auth.json'),
+      HEROES_IDENTITY_PATH: path.join(temp, 'identity.json'),
       WURM_SERVER_DIR: path.join(temp, 'missing-server'),
     };
     const run = (args = []) =>
@@ -99,6 +105,15 @@ describe('wurm-local helper', () => {
       expect(JSON.parse(fs.readFileSync(semaphore, 'utf8')).pid).toBe(firstPid);
 
       const origin = 'https://wurm-tools.onrender.com';
+      const identity = (action, body = {}, bearer = '') =>
+        heroesIdentityAction(action, body, { file: env.HEROES_IDENTITY_PATH, origin, bearer });
+      const setupCode = await createHeroesSetupCode(env.HEROES_IDENTITY_PATH);
+      const password = 'private-server-status-password';
+      await identity('setup', { setupCode, username: 'administrator', password });
+      const login = await identity('login', { username: 'administrator', password });
+      const enrollment = await identity('mfa/start', {}, login.token);
+      await identity('mfa/confirm', { code: totpCode(enrollment.secret) }, login.token);
+      const accountHeaders = { Origin: origin, 'X-Heroes-Session': login.token };
       const helperUrl = `http://127.0.0.1:${port}`;
       const unauthenticated = await fetch(`${helperUrl}/status`, { headers: { Origin: origin } });
       expect(unauthenticated.status).toBe(401);
@@ -109,13 +124,13 @@ describe('wurm-local helper', () => {
       expect(code).toBeDefined();
       const paired = await fetch(`${helperUrl}/pair`, {
         method: 'POST',
-        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        headers: { ...accountHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
       });
       expect(paired.status).toBe(200);
       const { token } = await paired.json();
       expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-      const authHeaders = { Origin: origin, Authorization: `Bearer ${token}` };
+      const authHeaders = { ...accountHeaders, Authorization: `Bearer ${token}` };
 
       const status = await fetch(`${helperUrl}/status`, { headers: authHeaders });
       expect(status.status).toBe(200);
@@ -151,7 +166,7 @@ describe('wurm-local helper', () => {
 
       const replayedCode = await fetch(`${helperUrl}/pair`, {
         method: 'POST',
-        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        headers: { ...accountHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
       });
       expect(replayedCode.status).toBe(401);
@@ -171,6 +186,34 @@ describe('wurm-local helper', () => {
 });
 
 describe('ServerStatusPage.describeTarget', () => {
+  it('sends both credentials, preserves pairing on account denial, and offers pairing again only for invalid pairing', async () => {
+    vi.stubGlobal('sessionStorage', { getItem: () => 'account-session' });
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    try {
+      const page = new ServerStatusPage();
+      page.authToken = 'paired-browser';
+      page.showPairingRequired = vi.fn();
+      fetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'Sign in to Heros Tools' }), { status: 401 })
+      );
+      await expect(page.request('/status')).rejects.toThrow('Sign in to Heros Tools');
+      expect(page.showPairingRequired).not.toHaveBeenCalled();
+      const headers = fetch.mock.calls[0][1].headers;
+      expect(headers.get('X-Heroes-Session')).toBe('account-session');
+      expect(headers.get('Authorization')).toBe('Bearer paired-browser');
+      fetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'Pair this browser with the local helper first' }), {
+          status: 401,
+        })
+      );
+      expect((await page.request('/status')).status).toBe(401);
+      expect(page.showPairingRequired).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('hides start when not installed and disables it when already running', () => {
     const missing = describeTarget('server', { label: 'S', installed: false });
     expect(missing.hidden).toBe('hidden');

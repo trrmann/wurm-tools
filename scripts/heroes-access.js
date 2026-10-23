@@ -1,6 +1,7 @@
 import { canAccess, recordHeroesResources } from './heroes-identity.js';
 import { listHeroesManagement, listHeroesLibrary } from './heroes-store.js';
 import { httpError } from './wurm-db.js';
+import { heroesWorkspaceRoutes } from '../src/js/modules/pages/heroes-navigation.js';
 
 export async function handleAuthorizedHeroes(req, url, file, principal, identityFile, dispatch) {
   const admin = principal.roles.includes('admin');
@@ -39,6 +40,15 @@ export async function handleAuthorizedHeroes(req, url, file, principal, identity
     return true;
   };
   const recordReadable = (record) => read('record', record.id) && referencesReadable(record.data);
+  const permittedLibrary = () =>
+    library.filter((entry) => read('library', entry.id) && definitionsReadable(entry.definition));
+  const permittedState = () => ({
+    records: state.records.filter(recordReadable),
+    worlds: state.worlds.filter((world) => read('world', world.id)),
+    objects: state.objects.filter(objectReadable),
+  });
+  if (req.method === 'GET' && parts[0] === 'access' && parts.length === 1)
+    return { routes: heroesWorkspaceRoutes(principal.roles, permittedState(), permittedLibrary()) };
 
   const dispatchOwned = async (request) => {
     const result = await dispatch(request, url, file);
@@ -67,21 +77,14 @@ export async function handleAuthorizedHeroes(req, url, file, principal, identity
   };
   if (admin) return dispatchOwned(req);
   if (req.method === 'GET') {
-    if (parts[0] === 'management' && parts.length === 1)
-      return {
-        records: state.records.filter(recordReadable),
-        worlds: state.worlds.filter((world) => read('world', world.id)),
-        objects: state.objects.filter(objectReadable),
-      };
+    if (parts[0] === 'management' && parts.length === 1) return permittedState();
     if (parts[0] === 'worlds' && parts.length === 1)
       return { worlds: state.worlds.filter((world) => read('world', world.id)) };
     if (parts[0] === 'objects' && parts.length === 1)
       return { objects: state.objects.filter(objectReadable) };
     if (parts[0] === 'library' && parts.length === 1)
       return {
-        entries: library.filter(
-          (entry) => read('library', entry.id) && definitionsReadable(entry.definition)
-        ),
+        entries: permittedLibrary(),
       };
     if (parts[0] === 'worlds' && parts[2] === 'objects' && parts.length === 3) {
       require(read('world', parts[1]));

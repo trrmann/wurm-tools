@@ -81,6 +81,353 @@ afterEach(() => {
 });
 
 describe('HERO account management usability', () => {
+  it('explains a denied direct route on Account & security instead of silently showing an empty workspace', async () => {
+    identityRequest.mockImplementation(async (action) => {
+      if (action === 'me')
+        return { user: { id: 'visitor', username: 'visitor', roles: ['visitor'] } };
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+      if (action === 'closure/status') return { ownedCount: 0, incoming: [], outgoing: [] };
+      throw new Error(`Unexpected action ${action}`);
+    });
+    const container = mount('account', { accessDenied: true });
+    await vi.waitFor(() =>
+      expect(
+        descendants(container).some((node) => node.textContent.includes('No workspace was opened.'))
+      ).toBe(true)
+    );
+  });
+
+  it('prefills and saves explicit Wurm delegation separately from HERO roles', async () => {
+    vi.stubGlobal(
+      'FormData',
+      class {
+        constructor(panel) {
+          return Object.entries(panel.elements).map(([name, input]) => [name, input.value || '']);
+        }
+      }
+    );
+    const delegated = {
+      id: 'delegate',
+      username: 'wurm-delegate',
+      roles: ['visitor'],
+      wurmAccess: false,
+    };
+    identityRequest.mockImplementation(async (action, data) => {
+      if (action === 'me') return { user: admin };
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+      if (action === 'admin/list')
+        return { users: [admin, delegated], grants: [], invitations: [] };
+      if (action === 'admin/wurm-access') {
+        delegated.wurmAccess = data.allowed;
+        return { user: delegated };
+      }
+      throw new Error(`Unexpected action ${action}`);
+    });
+    const container = mount('admin');
+    const findForm = () =>
+      descendants(container).find(
+        (node) =>
+          node.tag === 'form' && node.children[0].textContent === 'Save Wurm tools delegation'
+      );
+    await vi.waitFor(() => expect(findForm()).toBeDefined());
+    const panel = findForm();
+    panel.elements.userId.value = delegated.id;
+    panel.elements.userId.listeners.change();
+    expect(panel.elements.allowed.checked).toBe(false);
+    panel.elements.allowed.checked = true;
+    panel.listeners.submit({ preventDefault() {} });
+    await vi.waitFor(() =>
+      expect(
+        descendants(container).some((node) => node.textContent.includes('Wurm delegation saved.'))
+      ).toBe(true)
+    );
+    expect(identityRequest).toHaveBeenCalledWith('admin/wurm-access', {
+      userId: delegated.id,
+      allowed: true,
+    });
+    expect(delegated.roles).toEqual(['visitor']);
+    findForm().elements.userId.value = delegated.id;
+    findForm().elements.userId.listeners.change();
+    expect(findForm().elements.allowed.checked).toBe(true);
+  });
+
+  it('keeps GM listing unchecked by default, saves explicit consent and reviews incoming play requests', async () => {
+    vi.stubGlobal(
+      'FormData',
+      class {
+        constructor(panel) {
+          return Object.entries(panel.elements).map(([name, input]) => [name, input.value || '']);
+        }
+      }
+    );
+    const user = {
+      id: 'gm',
+      username: 'review-gm',
+      roles: ['game-master'],
+      listedAsGameMaster: false,
+    };
+    const relationship = {
+      id: 'play-request',
+      playerId: 'player',
+      gameMasterId: 'gm',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      player: { username: 'requesting-player', displayName: 'Player Name' },
+      gameMaster: { username: 'review-gm' },
+    };
+    identityRequest.mockImplementation(async (action, data) => {
+      if (action === 'me') return { user };
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+      if (action === 'play/status') return { directory: [], relationships: [relationship] };
+      if (action === 'closure/status') return { ownedCount: 0, outgoing: [], incoming: [] };
+      if (action === 'play/listing') {
+        user.listedAsGameMaster = data.visible;
+        return { user };
+      }
+      if (action === 'play/respond') {
+        relationship.status = 'approved';
+        return { relationship };
+      }
+      throw new Error(`Unexpected action ${action}`);
+    });
+    const container = mount('account');
+    const findForm = (label) =>
+      descendants(container).find(
+        (node) => node.tag === 'form' && node.children[0].textContent === label
+      );
+    await vi.waitFor(() => expect(findForm('Save Game Master listing')).toBeDefined());
+    const listing = findForm('Save Game Master listing');
+    expect(listing.elements.visible.checked).toBe(false);
+    listing.elements.visible.checked = true;
+    listing.listeners.submit({ preventDefault() {} });
+    await vi.waitFor(() =>
+      expect(
+        descendants(container).some(
+          (node) => node.textContent === 'Your Game Master name is now listed for Player accounts.'
+        )
+      ).toBe(true)
+    );
+    expect(identityRequest).toHaveBeenCalledWith('play/listing', { visible: true });
+    expect(findForm('Save Game Master listing').elements.visible.checked).toBe(true);
+    findForm('Approve play request: Player Name (@requesting-player)').listeners.submit({
+      preventDefault() {},
+    });
+    await vi.waitFor(() =>
+      expect(findForm('End play relationship: Player Name (@requesting-player)')).toBeDefined()
+    );
+    expect(identityRequest).toHaveBeenCalledWith('play/respond', {
+      id: 'play-request',
+      decision: 'approve',
+    });
+    expect(
+      descendants(container).some((node) =>
+        node.textContent.includes('resource ACLs are unchanged')
+      )
+    ).toBe(true);
+  });
+
+  it('offers only listed GMs, sends the selected request and lets the player cancel it', async () => {
+    vi.stubGlobal(
+      'FormData',
+      class {
+        constructor(panel) {
+          return Object.entries(panel.elements).map(([name, input]) => [name, input.value || '']);
+        }
+      }
+    );
+    const user = { id: 'player', username: 'request-player', roles: ['player'] };
+    const gm = { username: 'listed-gm', displayName: 'Visible GM' };
+    let relationships = [];
+    identityRequest.mockImplementation(async (action, data) => {
+      if (action === 'me') return { user };
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+      if (action === 'play/status') return { directory: [gm], relationships };
+      if (action === 'closure/status') return { ownedCount: 0, outgoing: [], incoming: [] };
+      if (action === 'play/request') {
+        relationships = [
+          {
+            id: 'play-request',
+            playerId: 'player',
+            gameMasterId: 'gm',
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+            player: user,
+            gameMaster: gm,
+          },
+        ];
+        return { relationship: relationships[0] };
+      }
+      if (action === 'play/respond') {
+        relationships[0].status = 'cancelled';
+        return { relationship: relationships[0] };
+      }
+      throw new Error(`Unexpected action ${action}: ${JSON.stringify(data)}`);
+    });
+    const container = mount('account');
+    const findForm = (label) =>
+      descendants(container).find(
+        (node) => node.tag === 'form' && node.children[0].textContent === label
+      );
+    await vi.waitFor(() => expect(findForm('Request to play')).toBeDefined());
+    expect(
+      findForm('Request to play').elements.username.children.map((option) => option.textContent)
+    ).toEqual(['Visible GM (@listed-gm)']);
+    findForm('Request to play').listeners.submit({ preventDefault() {} });
+    await vi.waitFor(() =>
+      expect(findForm('Cancel play request: Visible GM (@listed-gm)')).toBeDefined()
+    );
+    expect(identityRequest).toHaveBeenCalledWith('play/request', { username: 'listed-gm' });
+    expect(findForm('Request to play')).toBeUndefined();
+    findForm('Cancel play request: Visible GM (@listed-gm)').listeners.submit({
+      preventDefault() {},
+    });
+    await vi.waitFor(() => expect(findForm('Request to play')).toBeDefined());
+    expect(identityRequest).toHaveBeenCalledWith('play/respond', {
+      id: 'play-request',
+      decision: 'cancel',
+    });
+    expect(
+      descendants(container).some((node) => node.textContent.includes('cancelled. Requested'))
+    ).toBe(true);
+  });
+
+  it('lets a Visitor request both roles, view the pending request and cancel it', async () => {
+    vi.stubGlobal(
+      'FormData',
+      class {
+        constructor() {
+          return [];
+        }
+      }
+    );
+    let roleRequest = null;
+    identityRequest.mockImplementation(async (action, data) => {
+      const user = { id: 'visitor', username: 'visitor', roles: ['visitor'], roleRequest };
+      if (action === 'me') return { user };
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+      if (action === 'closure/status') return { ownedCount: 0, outgoing: [], incoming: [] };
+      if (action === 'roles/request') {
+        roleRequest = {
+          id: 'request',
+          roles: data.roles,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+        };
+        return { user: { ...user, roleRequest } };
+      }
+      if (action === 'roles/cancel') {
+        roleRequest = { ...roleRequest, status: 'cancelled', resolvedAt: new Date().toISOString() };
+        return { user: { ...user, roleRequest } };
+      }
+      throw new Error(`Unexpected action ${action}`);
+    });
+    const container = mount('account');
+    await vi.waitFor(() =>
+      expect(
+        descendants(container).some((node) => node.textContent === 'Submit role request')
+      ).toBe(true)
+    );
+    let panel = descendants(container).find(
+      (node) => node.tag === 'form' && node.children[0].textContent === 'Submit role request'
+    );
+    panel.elements.player.checked = true;
+    panel.elements['game-master'].checked = true;
+    panel.listeners.submit({ preventDefault() {} });
+    await vi.waitFor(() =>
+      expect(
+        descendants(container).some((node) => node.textContent === 'Cancel role request')
+      ).toBe(true)
+    );
+    expect(identityRequest).toHaveBeenCalledWith('roles/request', {
+      roles: ['player', 'game-master'],
+    });
+    expect(
+      descendants(container).some((node) =>
+        node.textContent.includes('Your role request: pending - Player, Game Master')
+      )
+    ).toBe(true);
+    expect(descendants(container).some((node) => node.textContent === 'Submit role request')).toBe(
+      false
+    );
+    panel = descendants(container).find(
+      (node) => node.tag === 'form' && node.children[0].textContent === 'Cancel role request'
+    );
+    panel.listeners.submit({ preventDefault() {} });
+    await vi.waitFor(() =>
+      expect(
+        descendants(container).some((node) =>
+          node.textContent.includes('Your role request: cancelled')
+        )
+      ).toBe(true)
+    );
+    expect(identityRequest).toHaveBeenCalledWith('roles/cancel', { requestId: 'request' });
+    expect(descendants(container).some((node) => node.textContent === 'Submit role request')).toBe(
+      true
+    );
+  });
+
+  it.each(['approve', 'reject'])(
+    'lets an administrator %s a specific pending role request and refreshes the queue',
+    async (decision) => {
+      vi.stubGlobal(
+        'FormData',
+        class {
+          constructor() {
+            return [];
+          }
+        }
+      );
+      const visitor = {
+        id: 'visitor',
+        username: 'waiting-user',
+        roles: ['visitor'],
+        roleRequest: {
+          id: 'pending-id',
+          roles: ['player', 'game-master'],
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+        },
+      };
+      identityRequest.mockImplementation(async (action, data) => {
+        if (action === 'me') return { user: admin };
+        if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+        if (action === 'admin/list') return { users: [admin, visitor], grants: [] };
+        if (action === 'admin/roles/review') {
+          visitor.roleRequest.status = data.decision === 'approve' ? 'approved' : 'rejected';
+          if (data.decision === 'approve') visitor.roles = ['player', 'game-master'];
+          return { user: visitor };
+        }
+        throw new Error(`Unexpected action ${action}`);
+      });
+      const container = mount('admin');
+      const label = `${decision === 'approve' ? 'Approve' : 'Reject'} role request from waiting-user`;
+      await vi.waitFor(() =>
+        expect(descendants(container).some((node) => node.textContent === label)).toBe(true)
+      );
+      const panel = descendants(container).find(
+        (node) => node.tag === 'form' && node.children[0].textContent === label
+      );
+      panel.listeners.submit({ preventDefault() {} });
+      await vi.waitFor(() =>
+        expect(
+          descendants(container).some((node) => node.textContent === 'Pending role requests (0)')
+        ).toBe(true)
+      );
+      expect(identityRequest).toHaveBeenCalledWith('admin/roles/review', {
+        userId: 'visitor',
+        requestId: 'pending-id',
+        decision,
+      });
+      expect(
+        descendants(container).some((node) =>
+          node.textContent.includes(
+            decision === 'approve' ? 'must sign in again' : 'Role request rejected'
+          )
+        )
+      ).toBe(true);
+    }
+  );
+
   it('edits optional name components, prefills existing culture, and updates signed-in identity on save', async () => {
     vi.stubGlobal(
       'FormData',
@@ -92,6 +439,7 @@ describe('HERO account management usability', () => {
     );
     const onAccessChange = vi.fn();
     identityRequest.mockImplementation(async (action, data) => {
+      if (action === 'play/status') return { directory: [], relationships: [] };
       if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
       if (action === 'me')
         return {
@@ -159,6 +507,97 @@ describe('HERO account management usability', () => {
           ? { user: admin }
           : { users: [admin, player], grants: [] }
     );
+
+  it('redeems an optional invitation on Register without sending it to normal registration', async () => {
+    vi.stubGlobal(
+      'FormData',
+      class {
+        constructor(panel) {
+          return Object.entries(panel.elements).map(([name, input]) => [name, input.value || '']);
+        }
+      }
+    );
+    identityRequest.mockImplementation(async (action) => {
+      if (action === 'status')
+        return { setupRequired: false, accountFeatures: { invitations: true } };
+      if (action === 'invite/redeem') return { message: 'Account created. Sign in to continue.' };
+      throw new Error(`Unexpected action ${action}`);
+    });
+    const container = mount('register');
+    await vi.waitFor(() =>
+      expect(descendants(container).some((node) => node.name === 'code')).toBe(true)
+    );
+    const panel = descendants(container).find((node) => node.tag === 'form');
+    expect(panel.elements.code.required).toBe(false);
+    panel.elements.username.value = 'new-user';
+    panel.elements.password.value = 'new-test-password';
+    panel.elements.code.value = 'private-code';
+    panel.listeners.submit({ preventDefault() {} });
+    await vi.waitFor(() =>
+      expect(identityRequest).toHaveBeenCalledWith('invite/redeem', {
+        username: 'new-user',
+        password: 'new-test-password',
+        code: 'private-code',
+      })
+    );
+    expect(identityRequest).not.toHaveBeenCalledWith('register', expect.anything());
+  });
+
+  it('creates invitations with selected roles, shows the code once, and refreshes revocations', async () => {
+    vi.stubGlobal(
+      'FormData',
+      class {
+        constructor() {
+          return [];
+        }
+      }
+    );
+    let pending = [];
+    identityRequest.mockImplementation(async (action, data) => {
+      if (action === 'me') return { user: admin };
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+      if (action === 'admin/list')
+        return { users: [admin, player], grants: [], invitations: pending };
+      if (action === 'admin/invite') {
+        const invitation = { id: 'invite', roles: data.roles, expiresAt: Date.now() + 86400000 };
+        pending = [invitation];
+        return { code: 'private-one-time-code', invitation };
+      }
+      if (action === 'admin/invite/revoke') {
+        pending = [];
+        return { revoked: true };
+      }
+      throw new Error(`Unexpected action ${action}`);
+    });
+    const container = mount('admin');
+    await vi.waitFor(() =>
+      expect(descendants(container).some((node) => node.textContent === 'Create invitation')).toBe(
+        true
+      )
+    );
+    const panel = descendants(container).find(
+      (node) => node.tag === 'form' && node.children[0].textContent === 'Create invitation'
+    );
+    panel.elements.player.checked = true;
+    panel.listeners.submit({ preventDefault() {} });
+    await vi.waitFor(() =>
+      expect(descendants(container).some((node) => node.value === 'private-one-time-code')).toBe(
+        true
+      )
+    );
+    expect(identityRequest).toHaveBeenCalledWith('admin/invite', { roles: ['player'] });
+    const revoke = descendants(container).find((node) => node.textContent === 'Revoke invitation');
+    revoke.listeners.click();
+    await vi.waitFor(() =>
+      expect(
+        descendants(container).some((node) => node.textContent === 'Pending invitations (0)')
+      ).toBe(true)
+    );
+    expect(identityRequest).toHaveBeenCalledWith('admin/invite/revoke', { invitationId: 'invite' });
+    expect(descendants(container).some((node) => node.value === 'private-one-time-code')).toBe(
+      false
+    );
+  });
 
   it('groups actual accounts by readable role and distinguishes them from profiles', async () => {
     configure();
@@ -479,14 +918,44 @@ describe('first-time HERO setup guidance', () => {
     expect(code.value).toBe('my-private-code');
   });
 
-  it('makes setup instructions discoverable from login even when offline', async () => {
+  it.each([true, false])(
+    'routes login registration according to setupRequired=%s',
+    async (setupRequired) => {
+      identityRequest.mockResolvedValue({ setupRequired });
+      const container = mount('login');
+      await vi.waitFor(() =>
+        expect(descendants(container).some((node) => node.type === 'submit')).toBe(true)
+      );
+      const registrationLinks = descendants(container).filter((node) =>
+        node.textContent.startsWith('Register')
+      );
+      expect(registrationLinks).toHaveLength(1);
+      expect(registrationLinks[0].href).toBe(
+        setupRequired ? '/site/heroes/setup/' : '/site/heroes/register/'
+      );
+      expect(registrationLinks[0].textContent).toBe(
+        setupRequired ? 'Register first administrator' : 'Register as visitor'
+      );
+    }
+  );
+
+  it('makes registration and setup discoverable from login immediately, even when offline', async () => {
     identityRequest.mockRejectedValue(new Error('Failed to fetch'));
     const container = mount('login');
+    expect(
+      descendants(container).some(
+        (node) =>
+          node.href === '/site/heroes/register/' && node.textContent === 'Register as visitor'
+      )
+    ).toBe(true);
     await vi.waitFor(() =>
       expect(descendants(container).some((node) => node.textContent === 'Failed to fetch')).toBe(
         true
       )
     );
     expect(descendants(container).some((node) => node.href === '/site/heroes/setup/')).toBe(true);
+    expect(
+      descendants(container).filter((node) => node.href === '/site/heroes/register/')
+    ).toHaveLength(1);
   });
 });

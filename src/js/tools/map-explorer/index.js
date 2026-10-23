@@ -9,6 +9,7 @@ import {
 } from '../../../../scripts/wurm-piles.js';
 import { MapTile } from '../../../../scripts/wurm-map-model.js';
 import { fill, getShell } from '../../modules/template.js';
+import { heroesSessionToken } from '../heroes/session.js';
 import {
   applyEditsLocal,
   deleteLocal,
@@ -198,7 +199,12 @@ export function mount(container) {
 
   function authHeaders(headers = {}) {
     const token = localStorage.getItem(HELPER_TOKEN_KEY);
-    return token ? { ...headers, Authorization: `Bearer ${token}` } : headers;
+    const session = heroesSessionToken();
+    return {
+      ...headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(session ? { 'X-Heroes-Session': session } : {}),
+    };
   }
 
   async function request(path, options = {}) {
@@ -211,7 +217,10 @@ export function mount(container) {
       ? await response.json()
       : null;
     if (!response.ok) {
-      if (response.status === 401) {
+      if (
+        response.status === 401 &&
+        body?.error === 'Pair this browser with the local helper first'
+      ) {
         localStorage.removeItem(HELPER_TOKEN_KEY);
         offline = true;
         editBox.disabled = true;

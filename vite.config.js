@@ -15,7 +15,8 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       input: {
-        dashboard: resolve(rootDir, 'index.html'),
+        login: resolve(rootDir, 'index.html'),
+        dashboard: resolve(rootDir, 'site/wurm/index.html'),
         concepts: resolve(rootDir, 'site/concepts/index.html'),
         serverStatus: resolve(rootDir, 'site/server-status/index.html'),
         mapExplorer: resolve(rootDir, 'site/map-explorer/index.html'),

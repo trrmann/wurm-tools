@@ -6,6 +6,11 @@
   min-width: 0;
 }
 
+.heroes-login-entry {
+  max-width: 36rem;
+  margin: 3rem auto;
+}
+
 :root[data-game='heroes'] .main-wrapper {
   min-width: 0;
 }
