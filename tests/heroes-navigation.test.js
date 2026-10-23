@@ -10,9 +10,45 @@ import {
   isObjectForHeroesPage,
   renderHeroesNavigation,
   updateHeroesContext,
+  heroesAccessPages,
+  heroesAccessRedirect,
 } from '../src/js/modules/pages/heroes-navigation.js';
 
 describe('Heros contextual pages', () => {
+  it('offers only setup until the first administrator exists, even for direct URLs', () => {
+    expect(heroesAccessPages({ stage: 'checking' })).toEqual([]);
+    const access = { stage: 'setup' };
+    expect(heroesAccessPages(access).map((page) => page.account)).toEqual(['setup']);
+    for (const page of HEROES_PAGES)
+      expect(heroesAccessRedirect(page, access)).toBe(
+        page.account === 'setup' ? null : '/site/heroes/setup/'
+      );
+  });
+
+  it('hides workspaces until sign-in and two-factor authentication are complete', () => {
+    expect(heroesAccessPages({ stage: 'anonymous' }).map((page) => page.account)).toEqual([
+      'login',
+      'register',
+    ]);
+    expect(heroesAccessPages({ stage: 'mfa' }).map((page) => page.account)).toEqual([
+      'account',
+      'logout',
+    ]);
+    for (const page of HEROES_PAGES) {
+      if (!['account', 'logout'].includes(page.account))
+        expect(heroesAccessRedirect(page, { stage: 'mfa' })).toBe('/site/heroes/account/');
+      if (!['login', 'register', 'logout-success', 'setup'].includes(page.account))
+        expect(heroesAccessRedirect(page, { stage: 'anonymous' })).toBe('/site/heroes/login/');
+    }
+    const player = { stage: 'ready', user: { roles: ['player'] } };
+    expect(heroesAccessPages(player).some((page) => page.account === 'admin')).toBe(false);
+    expect(heroesAccessPages(player).some((page) => page.account === 'setup')).toBe(false);
+    expect(
+      heroesAccessPages({ stage: 'ready', user: { roles: ['admin'] } }).some(
+        (page) => page.account === 'admin'
+      )
+    ).toBe(true);
+  });
   it('builds a real HTML entry for every dedicated page and supports index URLs', () => {
     const inputs = Object.values(config.build.rollupOptions.input);
     expect(new Set(HEROES_PAGES.map((page) => page.href)).size).toBe(HEROES_PAGES.length);

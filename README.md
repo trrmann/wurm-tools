@@ -80,12 +80,25 @@ WurmTools/
 
 ### 1. Prerequisites
 
-Ensure you have Node.js (v18 or newer) installed:
+Use the current [Node.js LTS installer](https://nodejs.org/en/download) (Node.js 22 or
+newer), which includes npm. On Windows, keep npm and Add to PATH selected during installation.
+Close and reopen terminals/VS Code after installation, then verify:
 
 ```bash
 node -v
 npm -v
 ```
+
+If either command is not found, repair/reinstall the official Node.js installer with npm and PATH
+enabled, then reopen your terminal. On a managed device, ask your system administrator if installs
+are blocked. If PowerShell blocks `npm.ps1`, use `npm.cmd` in place of `npm` below; do not weaken
+your execution policy.
+
+If you do not have the local JavaScript project, [download the project source ZIP](https://github.com/trrmann/wurm-tools/archive/refs/heads/main.zip)
+and fully extract it (Windows: **Extract All**). Open a terminal in the extracted `wurm-tools-main`
+folder containing `package.json` and `scripts/wurm-local.js`, not inside the ZIP or the `scripts`
+subfolder. A saved page or downloaded static website build is not the local helper. Git users can
+update an existing clone instead. Keep this project folder to run/update the helper later.
 
 ### 2. Install Dependencies
 
@@ -256,12 +269,11 @@ allow it for the Render site.
   their port is occupied instead of silently switching to an origin the helper rejects. If
   preview reports that 4173 is in use, reuse the existing preview or stop it in its own terminal
   before restarting. A page at `http://localhost:4174` cannot pair with the default helper.
-- **HERO Worlds pairing:** the HERO Worlds page also stores data through this local helper. In a
+- **HERO accounts:** HERO pages store data through this local helper. In a
   cloned Wurm Tools project, run `npm install` once to install the project dependencies, including
   the bundled `sql.js` SQLite module. There is no separate SQLite server or PIN. Start `npm run dev`
-  (which starts/reuses the helper), then run `npm run helper:pair-code` in another terminal opened
-  in the project folder and enter the displayed 8-digit code in the HERO Worlds page. The code
-  expires after 10 minutes. A static site deployed to Render cannot reach the local database unless
+  (which starts/reuses the helper). HERO now requires a separate account login, not Wurm pairing.
+  A static site deployed to Render cannot reach the local database unless
   the user has the project and local helper installed and running on their own computer.
 - **HERO reusable definitions:** `/site/heroes/library/` provides a standalone anatomy builder and shared
   local library for saved parts, shapes, and world-object templates. Save custom/compound anatomy
@@ -303,13 +315,66 @@ allow it for the Render site.
   notes, and previous world-genre labels are retained. Migration is persisted atomically and is not
   repeated on reload. Existing character campaign links become historical notes; campaign membership
   now comes from the character's world.
-- **Local profiles are not accounts:** the existing helper pairing protects every management
-  endpoint, but anyone paired with that helper can read/change all profiles and notes. Profile
-  selection is neither authentication nor administrator impersonation. Do not store passwords or
-  confidential notes. Account registration, sign-in, server-enforced role permissions, lockout,
-  and private GM notes are deferred. The Admins page explicitly documents this boundary; it does
-  not create fake administrator roles or ACL controls. Sidebar/profile filtering is not authorization.
-  No C# is exposed to or executed by the website.
+- **Registration, login, and logout:** public signup at `/site/heroes/register/` creates a local
+  Visitor account only. `/site/heroes/login/` authenticates it; `/site/heroes/account/` manages
+  password changes and authenticator setup. `/site/heroes/logout/` invalidates the server session
+  before navigating to `/site/heroes/logout-success/`; a failed request never reports success.
+  These accounts belong to this computer's helper, **not** a site-wide central service.
+  Workspace profiles remain organizational records, not authenticated identities or impersonation.
+- **First administrator:** restart the helper after updating, then run `npm run heroes:setup-code`
+  in the project folder. Open `/site/heroes/setup/`, enter the one-use code within ten minutes and
+  create an administrator with a distinct 12-256-character password. The code is shown only by the
+  local command, never by the web API; public signup cannot claim Admin/GM/Player. Log in and
+  manually add the supplied TOTP secret to an authenticator app (SHA-1, six digits, 30 seconds).
+  Confirm one code, then save the ten single-use recovery codes offline. Administrators cannot
+  access HERO data or ACL controls until two-factor authentication is complete. Other users can
+  opt into the same protection. Enrollment secrets and recovery codes are shown only to that account.
+  There is no email password-reset service or bypass for lost authenticator/recovery credentials.
+  `/site/heroes/setup/` puts **Paste setup code here** at the top, followed by three steps:
+  start the helper, get a code, paste it into the form. Expandable installation help includes
+  official Node.js/project ZIP downloads and step-by-step Windows instructions; troubleshooting
+  is separate so it does not overwhelm the main flow. The form stays visible with the helper
+  offline, but submission is disabled until **Check connection again** confirms setup is needed.
+  Account creation leads to plain-language sign-in, authenticator and recovery-code instructions.
+  Until an administrator exists, all HERO routes lead to this one setup destination, with no
+  workspace, registration, Wurm or logout navigation. After that, signed-out users see sign-in
+  and registration only; pending two-factor users see account verification and logout only.
+  Workspace links/content appear only after full authentication. Admin navigation is hidden from
+  non-admins. Completed setup hides its form and offers sign-in/account guidance instead.
+  If the command reports **already running**, it has reused the existing helper rather than
+  loading updated code. Run `npm run helper:stop`, wait for it to stop, then `npm run helper`.
+  Old helpers may reject `X-Heroes-Session` in browser CORS checks. Public account-status
+  checks omit that header and report a restart instruction when the helper lacks account support.
+- **Server ACLs:** `/site/heroes/people/admins/` lets an authenticated, MFA-verified admin grant
+  Visitor/Player/Game Master/Admin roles, disable accounts, and assign/revoke explicit Read or
+  Read-and-write access to individual worlds, objects, library definitions, and management records
+  (including GM notes). Existing data is admin-only until explicitly shared. New Visitors cannot
+  create data; Players can create objects, definitions and character/availability records;
+  GMs can also create worlds and management records. Creators receive write ACLs for their records.
+  Roles alone do not expose existing data. Grant linked world/campaign/genre/profile/library context
+  separately; records requiring hidden dependencies are omitted rather than leaking their contents.
+  Availability/global links do not grant access or ownership. Live library edits require write
+  permission over all affected definitions/objects. Bulk imports/collection backups and cascading
+  world/library deletion are admin-only; permitted individual objects can be exported. Profile
+  filtering and navigation are never authorization. Role changes, disabling and ACL changes revoke
+  affected sessions; permissions are evaluated on every request. The last admin cannot be demoted
+  or disabled. No C# is exposed to or executed by the website.
+- **Local identity security and future providers:** passwords use salted scrypt hashes; TOTP
+  secrets use AES-256-GCM encryption. Recovery codes, setup codes and bearer sessions are stored
+  as hashes, never plaintext. Sessions expire after eight hours (pending MFA after ten minutes),
+  are bound to the approved app origin and stored in browser session storage, separate from Wurm
+  pairing. Login/MFA/signup attempts are throttled; account creation and last successful login
+  timestamps provide local account tracking, not anonymous visitor analytics. The default identity
+  store is `<heroes.db path>.identity`; `HEROES_IDENTITY_PATH` can override it. Its `.key` file
+  must be protected and backed up separately using OS access controls; POSIX files use mode 0600.
+  Local encryption does not defend against an attacker controlling the same OS user or both files.
+  Ordinary HERO JSON backups exclude all identities, credentials, sessions and ACLs. Keep the
+  identity store and key confidential, never commit them or place them in exported game collections.
+  The server's principal/access boundary and provider identity field allow future central identity
+  integration; OIDC and WebAuthn/passkeys are explicitly reported as **disabled/unconfigured**.
+  Enabling either requires a real provider, validated server-side issuer/audience/nonce or signed
+  challenge, stable relying-party domain and TLS design. No browser-submitted external identity is
+  trusted. The helper stays loopback-only over local HTTP; it is not a public authentication server.
 - **Campaign backups:** export all management data, a profile collection, or individual
   world/campaign/genre collections from the corresponding management pages. Object editor lists export
   individual objects. JSON imports accept these collections plus existing world/object exports;

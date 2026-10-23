@@ -11,7 +11,8 @@ import {
 } from '../../modules/objects/heroes.mjs';
 import { MixedNumber } from '../../modules/objects/mixed-numbers.mjs';
 import { mountDefinitionLibrary } from './library.js';
-import { createHeroesClient, downloadHeroesJson, HELPER_TOKEN_KEY } from './helper-client.js';
+import { createHeroesClient, downloadHeroesJson } from './helper-client.js';
+import { heroesSessionToken } from './session.js';
 import {
   getHeroesObjectPage,
   heroesPageHref,
@@ -129,8 +130,6 @@ export function mount(container, { page = null } = {}) {
 
   const element = (selector) => container.querySelector(selector);
   const state = element('#heroes-state');
-  const pairingPanel = element('#heroes-pair-panel');
-  const pairingForm = element('#heroes-pair-form');
   const worldForm = element('#heroes-world-form');
   const worldSelect = element('#heroes-world-select');
   const worldExportButton = element('#heroes-world-export');
@@ -160,9 +159,6 @@ export function mount(container, { page = null } = {}) {
   let editingEquationElement = null;
   const sendRequest = createHeroesClient({
     signal,
-    onUnauthorized: () => {
-      pairingPanel.hidden = false;
-    },
   });
   const library = mountDefinitionLibrary(element('#heroes-library'), {
     request,
@@ -336,8 +332,7 @@ export function mount(container, { page = null } = {}) {
       objectBodyShapeSelect.value = shapeDefinition?.type ?? '';
       const equation = generatedCharacter.equation;
       equationReadout.textContent = `Advantages ${equation.advantagesValue} + points ${equation.pointsValue} = disadvantages ${equation.disadvantagesValue}${equation.isBalanced ? ' (balanced)' : ` (difference ${equation.difference})`}`;
-      element('#heroes-object-form button[type="submit"]').disabled =
-        !localStorage.getItem(HELPER_TOKEN_KEY);
+      element('#heroes-object-form button[type="submit"]').disabled = !heroesSessionToken();
     } catch (error) {
       generatedCharacter = null;
       equationReadout.textContent =
@@ -1357,24 +1352,6 @@ export function mount(container, { page = null } = {}) {
     downloadHeroesJson(value, fileName);
   }
 
-  pairingForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const code = new FormData(pairingForm).get('code').trim();
-    try {
-      const { token } = await request('/pair', {
-        method: 'POST',
-        body: JSON.stringify({ code }),
-      });
-      localStorage.setItem(HELPER_TOKEN_KEY, token);
-      pairingPanel.hidden = true;
-      setEditorEnabled(true);
-      await loadWorlds();
-      pairingForm.reset();
-    } catch (error) {
-      setState(error.message, true);
-    }
-  });
-
   worldForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const name = new FormData(worldForm).get('name').trim();
@@ -1888,12 +1865,11 @@ export function mount(container, { page = null } = {}) {
 
   renderEquationElements();
   updateEquationReadout();
-  const hasToken = Boolean(localStorage.getItem(HELPER_TOKEN_KEY));
-  pairingPanel.hidden = hasToken;
+  const hasToken = Boolean(heroesSessionToken());
   setEditorEnabled(hasToken);
   if (hasToken) {
     loadWorlds().catch((error) => setState(error.message, true));
   } else {
-    setState('Pair this browser with the local helper to use Heroes SQLite storage.');
+    setState('Sign in to Heros Tools to access permitted local data.');
   }
 }

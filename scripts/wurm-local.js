@@ -9,6 +9,13 @@ import { execFile, fork, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import {
+  createHeroesSetupCode,
+  heroesIdentityAction,
+  heroesIdentityPath,
+  heroesPrincipal,
+} from './heroes-identity.js';
+import { handleAuthorizedHeroes } from './heroes-access.js';
+import {
   authFilePath,
   ensurePairingCode,
   isPairedToken,
@@ -567,7 +574,7 @@ export function createServer({ env = process.env } = {}) {
           ? {
               'Access-Control-Allow-Origin': origin,
               'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-              'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+              'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Heroes-Session',
               'Access-Control-Allow-Private-Network': 'true',
               'Access-Control-Max-Age': '600',
               Vary: 'Origin',
@@ -635,8 +642,46 @@ export function createServer({ env = process.env } = {}) {
         return send(200, result?.pixels || result);
       }
       if (url.pathname.startsWith('/heroes/')) {
-        if (!requireAuth()) return;
-        const result = await handleHeroes(req, url, heroesDatabasePath(env));
+        if (!origin)
+          return send(403, { error: 'An approved app origin is required for HERO accounts' });
+        const identityFile = heroesIdentityPath(env);
+        const bearer = req.headers['x-heroes-session'] || '';
+        if (url.pathname.startsWith('/heroes/auth/')) {
+          const action = url.pathname.slice('/heroes/auth/'.length);
+          const get = ['status', 'me', 'admin/list'].includes(action);
+          if (req.method !== (get ? 'GET' : 'POST')) throw httpError(405, 'Method not allowed');
+          const body = get ? {} : await readJsonBody(req, 16 * 1024);
+          if (action === 'admin/grant') {
+            const principal = heroesPrincipal(bearer, origin, identityFile);
+            if (!principal.roles.includes('admin'))
+              throw httpError(403, 'Administrator access required');
+            const state = await listHeroesManagement(heroesDatabasePath(env));
+            const items = {
+              world: state.worlds,
+              object: state.objects,
+              record: state.records,
+              library: await listHeroesLibrary(heroesDatabasePath(env)),
+            };
+            if (!items[body.resourceType]?.some((item) => item.id === body.resourceId))
+              throw httpError(400, 'ACL target does not exist');
+          }
+          const result = await heroesIdentityAction(action, body, {
+            file: identityFile,
+            bearer,
+            origin,
+            remote: req.socket.remoteAddress,
+          });
+          return send(200, result);
+        }
+        const principal = heroesPrincipal(bearer, origin, identityFile);
+        const result = await handleAuthorizedHeroes(
+          req,
+          url,
+          heroesDatabasePath(env),
+          principal,
+          identityFile,
+          handleHeroes
+        );
         if (result?.statusCode) return send(result.statusCode, result.body);
         return send(200, result);
       }
@@ -724,6 +769,35 @@ async function waitForProcessExit(pid, timeoutMs = 5000) {
   return !processIsAlive(pid);
 }
 
+function execFilePromise(command, args) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { timeout: 5000 }, (error, stdout) => {
+      if (error) reject(error);
+      else resolve(stdout);
+    });
+  });
+}
+
+async function stopLinuxStartupHelper(runCommand) {
+  if (process.platform !== 'linux') return false;
+  try {
+    await runCommand('systemctl', ['--user', 'is-active', '--quiet', 'wurm-helper.service']);
+  } catch (error) {
+    if (error.code === 3 || error.code === 4 || error.code === 'ENOENT') return false;
+    throw new Error(`Unable to check the Wurm Tools systemd helper: ${error.message}`, {
+      cause: error,
+    });
+  }
+  try {
+    await runCommand('systemctl', ['--user', 'stop', 'wurm-helper.service']);
+  } catch (error) {
+    throw new Error(`Unable to stop the Wurm Tools systemd helper: ${error.message}`, {
+      cause: error,
+    });
+  }
+  return true;
+}
+
 async function helperAlreadyServing() {
   if (PORT === 0) return false;
   const controller = new AbortController();
@@ -788,12 +862,19 @@ export async function startDetachedHelper() {
   }
 }
 
-export async function stopDetachedHelper() {
-  const file = semaphorePath();
+export async function stopDetachedHelper({
+  file = semaphorePath(),
+  runCommand = execFilePromise,
+} = {}) {
+  const startupStopped = await stopLinuxStartupHelper(runCommand);
   const current = readSemaphore(file);
   if (!current) {
     if (fs.existsSync(file)) fs.unlinkSync(file);
-    console.info('Wurm local helper is not running (semaphore not found).');
+    if (startupStopped) {
+      console.info('Wurm Tools Fedora/Linux login-startup helper stopped gracefully.');
+    } else {
+      console.info('Wurm local helper is not running (semaphore not found).');
+    }
     return;
   }
 
@@ -807,6 +888,8 @@ export async function stopDetachedHelper() {
   } else {
     console.info('Helper shutdown requested; it is still closing active connections.');
   }
+  if (startupStopped)
+    console.info('Wurm Tools Fedora/Linux login-startup helper stopped gracefully.');
 }
 
 function runHelperServer({ foreground = false } = {}) {
@@ -864,6 +947,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === SCRIPT_PATH) {
     await stopDetachedHelper();
   } else if (process.argv.includes('--pairing-code')) {
     console.log(`Pairing code (expires in 10 minutes): ${rotatePairingCode()}`);
+  } else if (process.argv.includes('--heroes-setup-code')) {
+    console.log(
+      `HERO administrator setup code (expires in 10 minutes): ${await createHeroesSetupCode()}`
+    );
   } else if (process.argv.includes('--unpair-all')) {
     revokeAllPairedTokens();
     console.log('All paired browsers have been revoked.');

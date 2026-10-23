@@ -8,20 +8,11 @@
     <p id="management-state" role="status" aria-live="polite">Connecting to local helper...</p>
   </div>
   <p class="heroes-management-notice">
-    Profiles are organizational records, not accounts. Anyone paired with this helper can access all
-    records and notes. Switching profiles is not sign-in or impersonation. Do not store passwords or
-    confidential GM notes here.
+    Profiles are organizational records, not accounts. Your signed-in account's server-enforced
+    permissions determine access. Switching workspace profiles does not sign in or impersonate
+    anyone. Share GM notes only through explicit ACLs. Never store passwords or authentication
+    secrets in notes.
   </p>
-  <div id="management-pair" class="heroes-pair-panel" hidden>
-    <h3>Pair the local helper</h3>
-    <p>Run npm run helper:pair-code and enter the code below.</p>
-    <form id="management-pair-form" class="heroes-inline-form">
-      <label class="heroes-field"
-        >Pairing code <input name="code" required autocomplete="off"
-      /></label>
-      <button class="btn btn-primary" type="submit">Pair helper</button>
-    </form>
-  </div>
   <fieldset id="management-controls" disabled>
     <legend>Campaign management</legend>
     <div class="heroes-inline-form">

@@ -145,7 +145,7 @@ describe('map baseline edits and work report', () => {
         status: 404,
       });
     } finally {
-      fs.rmSync(fixture.root, { recursive: true, force: true });
+      fs.rmSync(fixture.root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   });
 });

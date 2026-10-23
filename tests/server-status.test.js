@@ -1,10 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
-import { parseLibraryPaths, matchProcess, TARGETS, allowedOrigins } from '../scripts/wurm-local.js';
+import {
+  parseLibraryPaths,
+  matchProcess,
+  TARGETS,
+  allowedOrigins,
+  stopDetachedHelper,
+} from '../scripts/wurm-local.js';
 import { systemdUnitContent, windowsTaskCreateArgs } from '../scripts/helper-startup.js';
 import { describeTarget } from '../src/js/modules/pages/ServerStatusPage.js';
 
@@ -27,6 +33,28 @@ describe('wurm-local helper', () => {
     expect(allowedOrigins({ WURM_ALLOWED_ORIGINS: '*,https://extra.example' })).toContain(
       'https://extra.example'
     );
+  });
+
+  it('stops the Fedora login-startup helper when no detached-helper semaphore exists', async () => {
+    const commands = [];
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'wurm-helper-stop-'));
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      await stopDetachedHelper({
+        file: path.join(temp, 'missing.semaphore'),
+        runCommand: async (command, args) => commands.push([command, args]),
+      });
+      expect(commands).toEqual([
+        ['systemctl', ['--user', 'is-active', '--quiet', 'wurm-helper.service']],
+        ['systemctl', ['--user', 'stop', 'wurm-helper.service']],
+      ]);
+      expect(log).toHaveBeenCalledWith(
+        'Wurm Tools Fedora/Linux login-startup helper stopped gracefully.'
+      );
+    } finally {
+      log.mockRestore();
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
   });
 
   it('starts detached and shuts down when its semaphore is removed', async () => {

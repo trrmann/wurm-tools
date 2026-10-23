@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import zlib from 'node:zlib';
 import initSqlJs from 'sql.js';
+import { replaceDatabaseFile } from './replace-database-file.js';
 import { mapSize, readRegionRows, tileFromPosition } from './wurm-map.js';
 import { layerPixels, tileFromRow } from './wurm-tile-decode.js';
 import { httpError, listPlayers, openDb, safeName } from './wurm-db.js';
@@ -115,12 +116,12 @@ export async function openBaseline(file) {
   return db;
 }
 
-export function persistBaseline(db, file) {
+export async function persistBaseline(db, file) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const temp = `${file}.${process.pid}.tmp`;
+  const temp = `${file}.${randomUUID()}.tmp`;
   try {
     fs.writeFileSync(temp, Buffer.from(db.export()));
-    fs.renameSync(temp, file);
+    await replaceDatabaseFile(temp, file);
   } catch (err) {
     try {
       fs.unlinkSync(temp);
@@ -342,7 +343,7 @@ export async function getMapOres(id, { type, limit } = {}, file = baselineFilePa
     if (!hasSummary) {
       const { cave, resources } = layers();
       storeOres(db, id, cave, resources, bounds, worldSize);
-      persistBaseline(db, file);
+      await persistBaseline(db, file);
     }
     const ores = readRows(
       db,
@@ -412,7 +413,7 @@ async function writeSnapshot(serverDir, snapshot, job, file) {
     insertSnapshot(db, snapshot, records);
     db.run('COMMIT');
     transaction = false;
-    persistBaseline(db, file);
+    await persistBaseline(db, file);
     job.status = 'completed';
   } catch (err) {
     if (transaction) db.run('ROLLBACK');
@@ -746,7 +747,7 @@ export async function importMapSnapshot(data, file = baselineFilePath()) {
       db.run('ROLLBACK');
       throw err;
     }
-    persistBaseline(db, file);
+    await persistBaseline(db, file);
   } finally {
     db.close();
   }
@@ -778,7 +779,7 @@ export async function deleteMapSnapshots({ id, world } = {}, file = baselineFile
     );
     db.run(`DELETE FROM map_snapshots ${where}`, params);
     db.run('VACUUM');
-    persistBaseline(db, file);
+    await persistBaseline(db, file);
     for (const [key, job] of jobs) if (!id || key === id) jobs.delete(job.id);
     return { deleted };
   } finally {

@@ -319,7 +319,7 @@ describe('local Heroes SQLite store', () => {
     }
   });
 
-  it('requires pairing authorization before exposing Heroes storage', async () => {
+  it('requires account authorization before exposing Heroes storage', async () => {
     const fixture = tempDatabase();
     const server = createServer({
       env: { ...process.env, WURM_HEROES_DB_PATH: fixture.file },
@@ -329,7 +329,9 @@ describe('local Heroes SQLite store', () => {
       server.listen(0, '127.0.0.1', resolve);
     });
     try {
-      const response = await fetch(`http://127.0.0.1:${server.address().port}/heroes/worlds`);
+      const response = await fetch(`http://127.0.0.1:${server.address().port}/heroes/worlds`, {
+        headers: { Origin: 'http://localhost:3000' },
+      });
       expect(response.status).toBe(401);
     } finally {
       await new Promise((resolve, reject) => {

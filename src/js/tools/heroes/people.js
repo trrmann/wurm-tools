@@ -1,5 +1,5 @@
 import template from '../../../../site/partials/tools/heroes-people.html?raw';
-import { createHeroesClient, downloadHeroesJson, HELPER_TOKEN_KEY } from './helper-client.js';
+import { createHeroesClient, downloadHeroesJson } from './helper-client.js';
 import {
   HEROES_PAGES,
   getHeroesObjectPage,
@@ -39,7 +39,7 @@ export function mountHeroesPeople(
   container.querySelector('#management-heading').textContent = title;
   element('section-heading').textContent = title;
   container.querySelector('#management-heading + p').textContent =
-    'Organizational records in the shared local database; not access-controlled accounts.';
+    'Organizational records visible to your signed-in account. Workspace profiles are not accounts.';
   element('roster-role').value = role;
   element('roster-field').hidden = section !== 'profile' || Boolean(role);
   let initialProfileId = new URLSearchParams(window.location.search).get('profile') || '';
@@ -49,11 +49,6 @@ export function mountHeroesPeople(
   let loaded = false;
   const request = createHeroesClient({
     signal,
-    onUnauthorized: () => {
-      loaded = false;
-      element('pair').hidden = false;
-      element('controls').disabled = true;
-    },
   });
   const report = (message, error = false) => {
     status.textContent = message;
@@ -69,7 +64,7 @@ export function mountHeroesPeople(
       if (error.name !== 'AbortError') report(error.message, true);
     } finally {
       busy = false;
-      element('controls').disabled = !loaded || !element('pair').hidden;
+      element('controls').disabled = !loaded;
     }
   };
   const on = (target, event, action) => target.addEventListener(event, action, { signal });
@@ -216,7 +211,6 @@ export function mountHeroesPeople(
       element('import-world').value,
       'Global (no world)'
     );
-    element('pair').hidden = true;
     updateProfileUrl();
     draw();
   }
@@ -270,7 +264,7 @@ export function mountHeroesPeople(
         const check = field(label, value, value, 'checkbox');
         check.checked = roles.includes(value);
       }
-      field('Profile notes (visible to all paired clients)', 'notes', data.notes, 'textarea');
+      field('Profile notes (visible to accounts with permission)', 'notes', data.notes, 'textarea');
     }
     if (['world', 'character', 'note'].includes(section)) {
       field(
@@ -395,7 +389,7 @@ export function mountHeroesPeople(
       form.append(
         node(
           'p',
-          'GM notes belong to the selected world. Players must be subscribed to that world; a character can have no player profile. Notes are not private.'
+          'GM notes belong to the selected world. Players must be subscribed to that world; a character can have no player profile. Only administrators and accounts with an explicit note ACL and access to its referenced context can read the note. Do not put credentials here.'
         )
       );
       field('GM note', 'notes', data.notes, 'textarea').required = true;
@@ -613,19 +607,6 @@ export function mountHeroesPeople(
       await reload();
       element('import').value = '';
       report('Import complete; independent copies saved.');
-    });
-  });
-  on(element('pair-form'), 'submit', (event) => {
-    event.preventDefault();
-    run(async () => {
-      const { token } = await request('/pair', {
-        method: 'POST',
-        body: JSON.stringify({ code: new FormData(element('pair-form')).get('code').trim() }),
-      });
-      localStorage.setItem(HELPER_TOKEN_KEY, token);
-      await reload();
-      element('pair-form').reset();
-      report('Helper paired. Local records loaded.');
     });
   });
   run(async () => {

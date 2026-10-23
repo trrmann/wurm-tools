@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import initSqlJs from 'sql.js';
+import { replaceDatabaseFile } from './replace-database-file.js';
 import {
   normalizeManagementRecord,
   validateManagementRelations,
@@ -67,18 +68,6 @@ function queryRows(db, query, values = []) {
     return result;
   } finally {
     statement.free();
-  }
-}
-
-async function replaceDatabaseFile(temporary, destination) {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await fs.promises.rename(temporary, destination);
-      return;
-    } catch (error) {
-      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= 6) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
-    }
   }
 }
 

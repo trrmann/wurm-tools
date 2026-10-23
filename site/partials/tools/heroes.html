@@ -10,35 +10,6 @@
     </p>
   </header>
 
-  <section
-    id="heroes-pair-panel"
-    class="heroes-pair-panel"
-    aria-labelledby="heroes-pair-title"
-    hidden
-  >
-    <h3 id="heroes-pair-title">Connect local database</h3>
-    <p>
-      This page stores worlds in the project's local database helper; the pairing code comes from
-      Wurm Tools, not from SQLite. SQLite is included as a project dependency, so you do not need to
-      install or run a separate SQLite server.
-    </p>
-    <ol>
-      <li>Open a terminal in your Wurm Tools project folder.</li>
-      <li>If dependencies are not installed yet, run <code>npm install</code>.</li>
-      <li>Start the local helper and development site with <code>npm run dev</code>.</li>
-      <li>
-        In another terminal in the project folder, run <code>npm run helper:pair-code</code>. The
-        code expires after 10 minutes.
-      </li>
-      <li>Enter that code below to connect this browser to the local database.</li>
-    </ol>
-    <form id="heroes-pair-form">
-      <label for="heroes-pair-code">Pairing code</label>
-      <input id="heroes-pair-code" name="code" autocomplete="one-time-code" required />
-      <button class="btn btn-primary" type="submit">Connect</button>
-    </form>
-  </section>
-
   <div id="heroes-library"></div>
   <div class="heroes-workspace-grid">
     <section class="heroes-world-panel" aria-labelledby="heroes-world-title">

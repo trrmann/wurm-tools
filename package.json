@@ -1,7 +1,7 @@
 {
   "name": "wurm-tools",
   "private": true,
-  "version": "1.4.1",
+  "version": "1.4.3",
   "type": "module",
   "description": "A modular toolkit and dashboard for Wurm Online and Wurm Unlimited players",
   "scripts": {
@@ -10,6 +10,7 @@
     "prepreview": "npm run helper",
     "helper": "node scripts/wurm-local.js",
     "helper:pair-code": "node scripts/wurm-local.js --pairing-code",
+    "heroes:setup-code": "node scripts/wurm-local.js --heroes-setup-code",
     "helper:stop": "node scripts/wurm-local.js --stop",
     "helper:unpair": "node scripts/wurm-local.js --unpair-all",
     "helper:startup:install": "node scripts/helper-startup.js install",

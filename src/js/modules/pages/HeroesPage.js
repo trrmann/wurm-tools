@@ -2,8 +2,14 @@ import { BasePage } from './BasePage.js';
 import * as heroesEditor from '../../tools/heroes/index.js';
 import { renderShell, setHeader, initSidebar } from '../shell.js';
 import { applyHeroesBranding } from './heroes-branding.js';
-import { getHeroesPage, renderHeroesNavigation } from './heroes-navigation.js';
+import {
+  getHeroesPage,
+  renderHeroesNavigation,
+  heroesAccessRedirect,
+} from './heroes-navigation.js';
 import { mountHeroesPeople } from '../../tools/heroes/people.js';
+import { mountHeroesAccounts } from '../../tools/heroes/accounts.js';
+import { identityRequest } from '../../tools/heroes/session.js';
 
 export class HeroesPage extends BasePage {
   static pageAppID = 'heroes-app';
@@ -13,7 +19,8 @@ export class HeroesPage extends BasePage {
     super({
       id: 'heroes',
       title: page.title,
-      description: 'Local HERO System workspace - access is shared by all paired clients',
+      description:
+        'Local HERO System workspace - signed-in accounts and server-enforced permissions',
       brand: 'Heros Tools',
     });
     this.page = page;
@@ -23,20 +30,68 @@ export class HeroesPage extends BasePage {
   render() {
     if (!this.container) return;
     this.viewport = renderShell(this.container);
-    applyHeroesBranding(this.container);
+    applyHeroesBranding(this.container, { stage: 'checking' });
     setHeader(this.title, this.description);
-    if (this.page.admin) {
-      const notice = document.createElement('section');
-      notice.className = 'heroes-workspace heroes-management-notice';
-      const heading = document.createElement('h2');
-      heading.textContent = 'Administrator accounts and ACLs are deferred';
-      const detail = document.createElement('p');
-      detail.textContent =
-        'There are no administrator accounts or per-record permissions in this local workspace. All paired clients can read and change all records and GM notes. Profile roles and sidebar filters are organizational only. Do not store passwords or confidential notes here.';
-      notice.append(heading, detail);
-      this.viewport.append(notice);
+    if (this.page.account === 'setup') {
+      this.setAccess({ stage: 'setup' });
+      this.teardownAccounts = mountHeroesAccounts(this.viewport, 'setup', {
+        onAccessChange: (access) => this.setAccess(access),
+      });
       return;
     }
+    const status = document.createElement('p');
+    status.setAttribute('role', 'status');
+    status.textContent = 'Checking your HERO account...';
+    this.viewport.append(status);
+    this.checkAccess()
+      .then((access) => {
+        if (!this.isMounted) return;
+        const redirect = heroesAccessRedirect(this.page, access);
+        if (redirect) {
+          window.location.replace(redirect);
+          return;
+        }
+        this.setAccess(access);
+        status.remove();
+        if (this.page.account)
+          this.teardownAccounts = mountHeroesAccounts(this.viewport, this.page.account, {
+            onAccessChange: (access) => this.setAccess(access),
+          });
+        else this.renderWorkspace();
+      })
+      .catch(() => {
+        if (!this.isMounted) return;
+        window.location.replace('/site/heroes/setup/');
+      });
+  }
+
+  async checkAccess() {
+    const state = await identityRequest('status');
+    if (state.setupRequired) return { stage: 'setup' };
+    try {
+      const result = await identityRequest('me');
+      return {
+        stage: result.mfaRequired || result.enrollmentRequired ? 'mfa' : 'ready',
+        user: result.user,
+      };
+    } catch (error) {
+      if (error.status === 401) return { stage: 'anonymous' };
+      throw error;
+    }
+  }
+
+  setAccess(access) {
+    applyHeroesBranding(this.container, access);
+    this.teardownSidebar?.();
+    this.teardownSidebar = initSidebar({
+      currentToolId: null,
+      onSelectTool: () => {},
+      renderList: (container, filter) => renderHeroesNavigation(container, filter, access),
+      searchLabel: 'Search Heros pages',
+    });
+  }
+
+  renderWorkspace() {
     if (this.page.editor) heroesEditor.mount(this.viewport, { page: this.page });
     if (this.page.section) {
       const management = document.createElement('div');
@@ -49,18 +104,12 @@ export class HeroesPage extends BasePage {
     }
   }
 
-  bindEvents() {
-    this.teardownSidebar = initSidebar({
-      currentToolId: null,
-      onSelectTool: () => {},
-      renderList: renderHeroesNavigation,
-      searchLabel: 'Search Heros pages',
-    });
-  }
+  bindEvents() {}
 
   unbindEvents() {
     heroesEditor.unmount();
     this.teardownPeople?.();
+    this.teardownAccounts?.();
     this.teardownSidebar?.();
     this.teardownSidebar = null;
   }

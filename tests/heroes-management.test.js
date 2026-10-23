@@ -708,7 +708,7 @@ describe('paired helper management routes', () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 
-  it('requires helper pairing for every management endpoint', async () => {
+  it('requires an account session for every management endpoint', async () => {
     const server = createServer({
       env: { WURM_HEROES_DB_PATH: file, WURM_HELPER_AUTH_FILE: path.join(root, 'auth.json') },
     });
@@ -727,7 +727,7 @@ describe('paired helper management routes', () => {
       ]) {
         const response = await fetch(
           `http://127.0.0.1:${server.address().port}/heroes/management${route}`,
-          { method }
+          { method, headers: { Origin: 'http://localhost:3000' } }
         );
         expect(response.status).toBe(401);
       }

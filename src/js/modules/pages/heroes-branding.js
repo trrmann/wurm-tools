@@ -1,6 +1,11 @@
-import { HEROES_NAVIGATION, getHeroesPage, heroesPageHref } from './heroes-navigation.js';
+import {
+  HEROES_NAVIGATION,
+  getHeroesPage,
+  heroesPageHref,
+  heroesAccessPages,
+} from './heroes-navigation.js';
 
-export function applyHeroesBranding(container) {
+export function applyHeroesBranding(container, access = null) {
   document.documentElement.dataset.game = 'heroes';
   const title = container.querySelector('.sidebar-title');
   const subtitle = container.querySelector('.sidebar-subtitle');
@@ -16,7 +21,11 @@ export function applyHeroesBranding(container) {
   const menu = container.querySelector('#nav-menu');
   if (menu) {
     menu.replaceChildren();
-    for (const [label, href] of HEROES_NAVIGATION) {
+    const navigation =
+      access && access.stage !== 'ready'
+        ? heroesAccessPages(access).map((page) => [page.title, page.href])
+        : HEROES_NAVIGATION;
+    for (const [label, href] of navigation) {
       const item = document.createElement('li');
       const link = document.createElement('a');
       link.textContent = label;
@@ -25,7 +34,10 @@ export function applyHeroesBranding(container) {
       const current = getHeroesPage(window.location.pathname);
       if (
         (href === '/site/heroes/' && current.group === 'worlds') ||
-        (href === '/site/heroes/people/' && current.group === 'people')
+        (href === '/site/heroes/people/' && current.group === 'people') ||
+        (href === '/site/heroes/account/' &&
+          current.group === 'account' &&
+          !current.account.startsWith('logout'))
       )
         link.setAttribute('aria-current', 'page');
       item.append(link);
@@ -43,5 +55,24 @@ export function applyHeroesBranding(container) {
   if (dashboard) {
     dashboard.textContent = 'Heros Worlds';
     dashboard.href = '/site/heroes/';
+  }
+  if (access) {
+    const links = container.querySelector('.footer-links');
+    if (links) {
+      links.replaceChildren();
+      const pages =
+        access.stage === 'ready'
+          ? [
+              ['Heros Worlds', '/site/heroes/'],
+              ['Account & security', '/site/heroes/account/'],
+            ]
+          : heroesAccessPages(access).map((page) => [page.title, page.href]);
+      for (const [label, href] of pages) {
+        const link = document.createElement('a');
+        link.textContent = label;
+        link.href = href;
+        links.append(link);
+      }
+    }
   }
 }

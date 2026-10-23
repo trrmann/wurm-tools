@@ -1,6 +1,8 @@
 export const HEROES_NAVIGATION = [
   ['Worlds & objects', '/site/heroes/'],
   ['Game Masters & players', '/site/heroes/people/'],
+  ['Account / Login', '/site/heroes/account/'],
+  ['Logout', '/site/heroes/logout/'],
   ['Wurm Tools', '/'],
 ];
 
@@ -53,8 +55,21 @@ export const HEROES_PAGES = [
     section: 'profile',
     role: 'player',
   },
-  { href: '/site/heroes/people/admins/', title: 'Admins', group: 'people', admin: true },
+  { href: '/site/heroes/people/admins/', title: 'Admins', group: 'people', account: 'admin' },
   { href: '/site/heroes/people/notes/', title: 'GM notes', group: 'people', section: 'note' },
+  ...[
+    ['account', 'Account & security'],
+    ['login', 'Login'],
+    ['register', 'Register'],
+    ['setup', 'Administrator setup'],
+    ['logout', 'Logout'],
+    ['logout-success', 'Logout confirmation'],
+  ].map(([account, title]) => ({
+    href: `/site/heroes/${account}/`,
+    title,
+    group: 'account',
+    account,
+  })),
 ];
 
 export function getHeroesPage(pathname) {
@@ -99,10 +114,42 @@ export function isObjectForHeroesPage(object, page) {
   return page.editor === 'worlds' || getHeroesObjectPage(object).href === page.href;
 }
 
-export function renderHeroesNavigation(container, filter = '') {
+export function heroesAccessPages(access) {
+  if (access.stage === 'checking') return [];
+  if (access.stage === 'setup') return HEROES_PAGES.filter((page) => page.account === 'setup');
+  if (access.stage === 'anonymous')
+    return HEROES_PAGES.filter((page) => ['login', 'register'].includes(page.account));
+  if (access.stage === 'mfa')
+    return HEROES_PAGES.filter((page) => ['account', 'logout'].includes(page.account));
+  return HEROES_PAGES.filter(
+    (page) =>
+      !['login', 'register', 'setup', 'logout-success'].includes(page.account) &&
+      (page.account !== 'admin' || access.user.roles.includes('admin'))
+  );
+}
+
+export function heroesAccessRedirect(page, access) {
+  if (access.stage === 'setup') return page.account === 'setup' ? null : '/site/heroes/setup/';
+  if (access.stage === 'anonymous')
+    return ['login', 'register', 'logout-success', 'setup'].includes(page.account)
+      ? null
+      : '/site/heroes/login/';
+  if (access.stage === 'mfa')
+    return ['account', 'logout'].includes(page.account) ? null : '/site/heroes/account/';
+  if (access.stage === 'ready' && page.account === 'admin' && !access.user.roles.includes('admin'))
+    return '/site/heroes/account/';
+  if (access.stage === 'ready' && ['setup', 'login', 'register'].includes(page.account))
+    return '/site/heroes/account/';
+  return null;
+}
+
+export function renderHeroesNavigation(container, filter = '', access = null) {
   container.replaceChildren();
   const current = getHeroesPage(window.location.pathname);
-  for (const page of HEROES_PAGES.filter((page) => page.group === current.group)) {
+  const pages = access ? heroesAccessPages(access) : HEROES_PAGES;
+  for (const page of pages.filter(
+    (page) => (access && access.stage !== 'ready') || page.group === current.group
+  )) {
     if (!page.title.toLowerCase().includes(filter.toLowerCase())) continue;
     const link = document.createElement('a');
     link.className = 'nav-link';

@@ -144,7 +144,7 @@ export async function applyMapEdits(id, request, file = baselineFilePath()) {
       db.run('ROLLBACK');
       throw err;
     }
-    persistBaseline(db, file);
+    await persistBaseline(db, file);
     return { changed, reverted, area: { x0: minX, y0: minY, x1: maxX, y1: maxY } };
   } finally {
     db.close();
@@ -164,7 +164,7 @@ export async function resetMapEdits(id, { layer } = {}, file = baselineFilePath(
       params
     )[0].n;
     db.run(`DELETE FROM map_edits WHERE snapshot_id = ? ${where}`, params);
-    persistBaseline(db, file);
+    await persistBaseline(db, file);
     return { removed };
   } finally {
     db.close();

@@ -8,6 +8,15 @@
   display: none;
 }
 
+.heroes-workspace pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.heroes-workspace [role='status'].is-error {
+  color: var(--accent-red);
+}
+
 .heroes-worlds-page .heroes-workspace-grid {
   grid-template-columns: 1fr;
 }
