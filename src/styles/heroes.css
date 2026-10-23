@@ -2,6 +2,90 @@
   max-width: 1480px;
   margin: 0 auto;
   padding: 1.5rem;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+:root[data-game='heroes'] .main-wrapper {
+  min-width: 0;
+}
+
+:root[data-game='heroes'] #heroes-app,
+:root[data-game='heroes'] #heroes-people-app {
+  min-width: 0;
+  width: 100%;
+}
+
+:root[data-game='heroes'] .logo-badge,
+:root[data-game='heroes'] .mobile-menu-toggle {
+  flex-shrink: 0;
+}
+
+.heroes-signed-in {
+  color: var(--accent-gold);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+:root[data-game='heroes'] .top-header {
+  height: auto;
+  min-height: var(--header-height);
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-block: 0.6rem;
+}
+
+:root[data-game='heroes'] .header-left {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+:root[data-game='heroes'] .header-title-container {
+  min-width: 0;
+  max-width: 100%;
+}
+
+:root[data-game='heroes'] .header-title-container h1,
+:root[data-game='heroes'] #header-tool-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-game='heroes'] .header-title-container .heroes-signed-in {
+  color: var(--accent-gold);
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+}
+
+:root[data-game='heroes'] .sidebar-header > div:last-child {
+  min-width: 0;
+}
+
+:root[data-game='heroes'] .sidebar-subtitle {
+  overflow-wrap: anywhere;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.heroes-account-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-block: 0.75rem;
+}
+
+.heroes-account-list {
+  padding-left: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.heroes-account-list li {
+  padding-block: 0.4rem;
 }
 
 .heroes-workspace [hidden] {

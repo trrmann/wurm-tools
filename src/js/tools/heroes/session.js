@@ -7,6 +7,10 @@ export const HEROES_ROLE_LABELS = Object.freeze({
   visitor: 'Visitor',
 });
 
+export function heroesAccountLabel(user) {
+  return user.displayName ? `${user.displayName} (@${user.username})` : user.username;
+}
+
 export function heroesSessionToken() {
   return sessionStorage.getItem(HEROES_SESSION_KEY);
 }
@@ -33,7 +37,14 @@ export async function identityRequest(action, data) {
     throw error;
   }
   if (!response.ok) {
-    const error = new Error(body.error || `Identity service returned ${response.status}`);
+    const unsupported =
+      response.status === 404 &&
+      ['profile/name', 'name-config', 'admin/name-config', 'closure/status'].includes(action);
+    const error = new Error(
+      unsupported
+        ? 'The running helper does not support this account feature. From your updated WurmTools folder run npm run helper:stop, then npm run helper. Reload this page afterward. Your data has not been changed by this request.'
+        : body.error || `Identity service returned ${response.status}`
+    );
     error.status = response.status;
     throw error;
   }

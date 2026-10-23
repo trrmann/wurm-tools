@@ -2,9 +2,11 @@ import {
   HEROES_SESSION_KEY,
   HEROES_LOGOUT_KEY,
   HEROES_ROLE_LABELS,
+  heroesAccountLabel,
   identityRequest,
 } from './session.js';
 import { createHeroesClient } from './helper-client.js';
+import { ACCOUNT_NAME_FIELDS } from '../../modules/objects/heroes/account-name.mjs';
 
 export function mountHeroesAccounts(
   container,
@@ -431,9 +433,95 @@ export function mountHeroesAccounts(
     }
     const current = await identityRequest('me');
     if (current.mfaRequired || current.enrollmentRequired) return afterLogin(current);
-    heading.textContent = `${current.user.username} - ${current.user.roles.map((role) => HEROES_ROLE_LABELS[role] || role).join(', ')}`;
+    heading.textContent = `${heroesAccountLabel(current.user)} - ${current.user.roles.map((role) => HEROES_ROLE_LABELS[role] || role).join(', ')}`;
     content.append(link('Logout', '/site/heroes/logout/'));
+    const nameConfig = await identityRequest('name-config');
+    if (current.user.roles.includes('admin')) {
+      const sheet = document.createElement('details');
+      sheet.append(text('summary', 'System configuration: cultures and name order'));
+      sheet.append(
+        text(
+          'p',
+          'These settings control name formatting for every account. Users choose a culture, not an individual order. Preferred names take precedence; usernames remain visible.'
+        )
+      );
+      const orders = [
+        ['given-first', 'Given name first'],
+        ['family-first', 'Family name first'],
+      ];
+      const saveConfig = async (cultures) => {
+        const result = await identityRequest('admin/name-config', { cultures });
+        onAccessChange({ stage: 'ready', user: result.user });
+        content.replaceChildren();
+        await init();
+        report('Culture configuration saved for all accounts.');
+      };
+      const configForm = form(
+        'Save culture name ordering',
+        nameConfig.cultures.map((culture, index) => [
+          `culture-${index}`,
+          `${culture.label} (${culture.code || 'default'})`,
+          'text',
+          orders,
+        ]),
+        async (data) =>
+          saveConfig(
+            nameConfig.cultures.map((culture, index) => ({
+              ...culture,
+              nameOrder: data[`culture-${index}`],
+            }))
+          )
+      );
+      for (const [index, culture] of nameConfig.cultures.entries())
+        configForm.elements[`culture-${index}`].value = culture.nameOrder;
+      const addCulture = form(
+        'Add selectable culture',
+        [
+          ['code', 'Culture/language code (e.g. it-IT)'],
+          ['label', 'Culture label'],
+          ['nameOrder', 'Name order', 'text', orders],
+        ],
+        async (data) => saveConfig([...nameConfig.cultures, data])
+      );
+      sheet.append(configForm, addCulture);
+      content.append(sheet);
+    }
     if (mode !== 'admin') {
+      content.append(
+        text(
+          'p',
+          'Your personal name is optional and separate from your sign-in username. It is visible to system administrators and in your signed-in identity, not published to other users. Leave unused components blank; a single name is supported. Select a culture; the system administrator configures its name order. Your preferred name is displayed first when provided, otherwise your formatted full name is used.'
+        )
+      );
+      const nameForm = form(
+        'Save personal name',
+        [
+          [
+            'culture',
+            'Culture',
+            'text',
+            nameConfig.cultures.map((culture) => [culture.code, culture.label]),
+          ],
+          ...ACCOUNT_NAME_FIELDS,
+        ],
+        async (data) => {
+          const result = await identityRequest('profile/name', { personalName: data });
+          onAccessChange({ stage: 'ready', user: result.user });
+          heading.textContent = `${heroesAccountLabel(result.user)} - ${result.user.roles.map((role) => HEROES_ROLE_LABELS[role] || role).join(', ')}`;
+          report('Personal name saved. Your sign-in username is unchanged.');
+        }
+      );
+      for (const key of ['culture', ...ACCOUNT_NAME_FIELDS.map(([key]) => key)]) {
+        const input = nameForm.elements[key];
+        input.required = false;
+        input.maxLength = 120;
+        input.value = current.user.personalName?.[input.name] || '';
+      }
+      nameForm.elements.firstName.autocomplete = 'given-name';
+      nameForm.elements.middleName.autocomplete = 'additional-name';
+      nameForm.elements.familyName.autocomplete = 'family-name';
+      nameForm.elements.title.autocomplete = 'honorific-prefix';
+      nameForm.elements.suffixName.autocomplete = 'honorific-suffix';
       form(
         'Change password',
         [
@@ -543,7 +631,7 @@ export function mountHeroesAccounts(
       .filter((user) => user.closure !== 'deleted')
       .map((user) => [
         user.id,
-        `${user.username} (${user.roles.map((role) => HEROES_ROLE_LABELS[role] || role).join(', ')})${user.disabled ? ' - disabled' : ''}`,
+        `${heroesAccountLabel(user)} (${user.roles.map((role) => HEROES_ROLE_LABELS[role] || role).join(', ')})${user.disabled ? ' - disabled' : ''}`,
       ]);
     content.append(
       text(
@@ -557,22 +645,114 @@ export function mountHeroesAccounts(
         'These are sign-in accounts, not workspace profiles. One account may have multiple roles and appears in each applicable list. Disable an account to remove access without deleting its identity or game records.'
       )
     );
+    const toolbar = document.createElement('div');
+    toolbar.className = 'heroes-account-toolbar';
+    const searchLabel = text('label', 'Search accounts');
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.setAttribute('aria-label', 'Search accounts');
+    searchLabel.append(search);
+    const stateLabel = text('label', 'Account status');
+    const accountState = document.createElement('select');
+    accountState.setAttribute('aria-label', 'Account status');
+    for (const [value, label] of [
+      ['all', 'All accounts'],
+      ['active', 'Active'],
+      ['disabled', 'Disabled or retained'],
+    ])
+      accountState.add(new Option(label, value));
+    stateLabel.append(accountState);
+    toolbar.append(searchLabel, stateLabel);
+    content.append(toolbar);
+    const rosters = [];
     for (const [role, label] of Object.entries(HEROES_ROLE_LABELS)) {
-      const members = admin.users.filter((user) => user.roles.includes(role));
       const group = document.createElement('section');
-      group.append(text('h3', `${label} accounts (${members.length})`));
-      if (!members.length) group.append(text('p', 'No accounts with this role.'));
+      const title = text('h3', '');
+      const summary = text('p', '');
+      summary.setAttribute('aria-live', 'polite');
       const list = document.createElement('ul');
-      for (const user of members)
-        list.append(
-          text(
-            'li',
-            `${user.username}${user.id === current.user.id ? ' (you)' : ''} - ${user.closure === 'retained' ? 'Deactivated for recovery (verify identity before restoring)' : user.disabled ? 'Disabled' : 'Active'}; MFA: ${user.mfaEnabled ? 'enabled' : 'not enrolled'}; created: ${user.createdAt || 'unknown'}; last sign-in: ${user.lastLoginAt || 'never'}`
+      list.className = 'heroes-account-list';
+      const controls = document.createElement('div');
+      controls.className = 'heroes-account-toolbar';
+      const previous = text('button', 'Previous');
+      const next = text('button', 'Next');
+      for (const [button, action] of [
+        [previous, 'Previous'],
+        [next, 'Next'],
+      ]) {
+        button.type = 'button';
+        button.className = 'btn btn-secondary';
+        button.setAttribute('aria-label', `${action} ${label} accounts page`);
+      }
+      let page = 0;
+      const render = () => {
+        const query = (search.value || '').trim().toLocaleLowerCase();
+        const all = admin.users.filter((user) => user.roles.includes(role));
+        const members = all
+          .filter(
+            (user) =>
+              (!query ||
+                `${heroesAccountLabel(user)} ${user.username}`
+                  .toLocaleLowerCase()
+                  .includes(query)) &&
+              (accountState.value === 'all' ||
+                (accountState.value === 'active' ? !user.disabled : user.disabled))
           )
-        );
-      group.append(list);
+          .sort(
+            (left, right) =>
+              heroesAccountLabel(left).localeCompare(heroesAccountLabel(right)) ||
+              left.id.localeCompare(right.id)
+          );
+        const size = 10;
+        const pages = Math.max(1, Math.ceil(members.length / size));
+        page = Math.min(page, pages - 1);
+        title.textContent = `${label} accounts (${members.length})`;
+        summary.textContent = members.length
+          ? `Showing ${page * size + 1}-${Math.min((page + 1) * size, members.length)} of ${members.length}; page ${page + 1} of ${pages}.`
+          : all.length
+            ? 'No accounts match these filters.'
+            : 'No accounts with this role.';
+        list.replaceChildren();
+        for (const user of members.slice(page * size, (page + 1) * size))
+          list.append(
+            text(
+              'li',
+              `${heroesAccountLabel(user)}${user.id === current.user.id ? ' (you)' : ''} - ${user.closure === 'retained' ? 'Deactivated for recovery (verify identity before restoring)' : user.disabled ? 'Disabled' : 'Active'}; MFA: ${user.mfaEnabled ? 'enabled' : 'not enrolled'}; created: ${user.createdAt || 'unknown'}; last sign-in: ${user.lastLoginAt || 'never'}`
+            )
+          );
+        previous.disabled = page === 0;
+        next.disabled = page + 1 >= pages;
+        controls.hidden = pages === 1;
+      };
+      previous.addEventListener(
+        'click',
+        () => {
+          page--;
+          render();
+        },
+        { signal }
+      );
+      next.addEventListener(
+        'click',
+        () => {
+          page++;
+          render();
+        },
+        { signal }
+      );
+      rosters.push(() => {
+        page = 0;
+        render();
+      });
+      controls.append(previous, next);
+      group.append(title, summary, list, controls);
       content.append(group);
+      render();
     }
+    search.addEventListener('input', () => rosters.forEach((render) => render()), { signal });
+    accountState.addEventListener('change', () => rosters.forEach((render) => render()), {
+      signal,
+    });
     const roleForm = form(
       'Save account roles',
       [

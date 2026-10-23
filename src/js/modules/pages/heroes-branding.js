@@ -4,7 +4,7 @@ import {
   heroesPageHref,
   heroesAccessPages,
 } from './heroes-navigation.js';
-import { HEROES_ROLE_LABELS } from '../../tools/heroes/session.js';
+import { HEROES_ROLE_LABELS, heroesAccountLabel } from '../../tools/heroes/session.js';
 
 export function applyHeroesBranding(container, access = null) {
   document.documentElement.dataset.game = 'heroes';
@@ -15,8 +15,23 @@ export function applyHeroesBranding(container, access = null) {
   if (title) title.textContent = 'Heros Tools';
   if (subtitle)
     subtitle.textContent = access?.user
-      ? `Signed in as ${access.user.username} - ${access.user.roles.map((role) => HEROES_ROLE_LABELS[role] || role).join(', ')}${access.stage === 'mfa' ? ' (verification required)' : ''}`
+      ? `Signed in as ${heroesAccountLabel(access.user)} - ${access.user.roles.map((role) => HEROES_ROLE_LABELS[role] || role).join(', ')}${access.stage === 'mfa' ? ' (verification required)' : ''}`
       : 'HERO System workspace';
+  const header = container.querySelector('.header-title-container');
+  if (header) {
+    let identity = header.querySelector('.heroes-signed-in');
+    if (!identity) {
+      identity = document.createElement('p');
+      identity.className = 'heroes-signed-in';
+      identity.setAttribute('aria-live', 'polite');
+      header.append(identity);
+    }
+    identity.textContent = access?.user
+      ? `Signed in as ${heroesAccountLabel(access.user)}${access.stage === 'mfa' ? ' (verification required)' : ''}`
+      : '';
+    identity.title = identity.textContent;
+    identity.hidden = !access?.user;
+  }
   if (logo) {
     logo.alt = 'Heros Tools';
     logo.src = '/images/heroes-logo.svg';

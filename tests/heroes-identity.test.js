@@ -70,6 +70,101 @@ async function startServer() {
 }
 
 describe('local HERO identity', () => {
+  it('allows only system administrators to configure selectable cultures and enforces configured order for all accounts', async () => {
+    const admin = await adminAccount();
+    await call('register', { username: 'culture-user', password });
+    const login = await call('login', { username: 'culture-user', password });
+    const { cultures } = await call('name-config', {}, login.token);
+    expect(cultures.some((culture) => culture.code === 'ja-JP')).toBe(true);
+    await expect(call('admin/name-config', { cultures }, login.token)).rejects.toMatchObject({
+      status: 403,
+    });
+    const configured = cultures.map((culture) => ({
+      ...culture,
+      nameOrder: culture.code === 'ja-JP' ? 'given-first' : culture.nameOrder,
+    }));
+    await call('admin/name-config', { cultures: configured }, admin.token);
+    const saved = await call(
+      'profile/name',
+      {
+        personalName: {
+          culture: 'ja-JP',
+          firstName: 'Hana',
+          familyName: 'Tanaka',
+          nameOrder: 'family-first',
+        },
+      },
+      login.token
+    );
+    expect(saved.user.displayName).toBe('Hana Tanaka');
+    expect(saved.user.personalName.nameOrder).toBe('auto');
+    await call(
+      'profile/name',
+      {
+        personalName: {
+          culture: 'ja-JP',
+          firstName: 'Hana',
+          familyName: 'Tanaka',
+          preferredName: 'Hani',
+        },
+      },
+      login.token
+    );
+    expect((await call('me', {}, login.token)).user.displayName).toBe('Hani');
+    await expect(
+      call('profile/name', { personalName: { culture: 'it-IT' } }, login.token)
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      call(
+        'admin/name-config',
+        { cultures: configured.filter((entry) => entry.code !== 'ja-JP') },
+        admin.token
+      )
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      call(
+        'admin/name-config',
+        { cultures: [{ code: '', label: 'Default', nameOrder: 'invalid' }] },
+        admin.token
+      )
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('saves a structured personal name only for the signed-in account without changing login or granting roles', async () => {
+    const registered = await call('register', { username: 'named-user', password });
+    const login = await call('login', { username: 'named-user', password });
+    const saved = await call(
+      'profile/name',
+      {
+        personalName: { firstName: 'Hana', familyName: 'Tanaka', culture: 'ja-JP' },
+        userId: 'some-other-account',
+        roles: ['admin'],
+      },
+      login.token
+    );
+    expect(saved.user).toMatchObject({
+      id: registered.user.id,
+      username: 'named-user',
+      roles: ['visitor'],
+      displayName: 'Tanaka Hana',
+      personalName: {
+        firstName: 'Hana',
+        familyName: 'Tanaka',
+        culture: 'ja-JP',
+        nameOrder: 'auto',
+      },
+    });
+    const relogin = await call('login', { username: 'named-user', password });
+    expect((await call('me', {}, relogin.token)).user.displayName).toBe('Tanaka Hana');
+    await expect(
+      call('profile/name', { personalName: { firstName: 42 } }, relogin.token)
+    ).rejects.toMatchObject({ status: 400 });
+    expect((await call('me', {}, relogin.token)).user.displayName).toBe('Tanaka Hana');
+    const cleared = await call('profile/name', { personalName: {} }, relogin.token);
+    expect(cleared.user.displayName).toBe('');
+    await expect(call('profile/name', { personalName: {} })).rejects.toMatchObject({ status: 401 });
+  });
+
   it('creates visitors only, hashes passwords and rejects invalid or duplicate registrations', async () => {
     const result = await call('register', { username: 'Visitor', password, roles: ['admin'] });
     expect(result.user).toMatchObject({

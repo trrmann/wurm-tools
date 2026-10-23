@@ -655,7 +655,9 @@ export function createServer({ env = process.env } = {}) {
           const bearer = req.headers['x-heroes-session'] || '';
           if (url.pathname.startsWith('/heroes/auth/')) {
             const action = url.pathname.slice('/heroes/auth/'.length);
-            const get = ['status', 'me', 'admin/list', 'closure/status'].includes(action);
+            const get = ['status', 'me', 'admin/list', 'closure/status', 'name-config'].includes(
+              action
+            );
             if (req.method !== (get ? 'GET' : 'POST')) throw httpError(405, 'Method not allowed');
             const body = get ? {} : await readJsonBody(req, 16 * 1024);
             if (action === 'admin/grant') {

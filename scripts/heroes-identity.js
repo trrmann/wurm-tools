@@ -4,6 +4,13 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { heroesDatabasePath, deleteUnsharedHeroesData } from './heroes-store.js';
 import { httpError } from './wurm-db.js';
+import {
+  normalizeAccountName,
+  accountDisplayName,
+  DEFAULT_NAME_CULTURES,
+  normalizeNameCultures,
+  accountPersonName,
+} from '../src/js/modules/objects/heroes/account-name.mjs';
 
 const scrypt = promisify(crypto.scrypt);
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
@@ -93,6 +100,19 @@ function transact(file, action) {
       const state = read(file);
       state.ownership ||= [];
       state.transfers ||= [];
+      if (!state.nameCultures) {
+        state.nameCultures = DEFAULT_NAME_CULTURES.map((culture) => ({ ...culture }));
+        for (const account of state.users) {
+          const code = account.personalName?.culture;
+          if (code && !state.nameCultures.some((culture) => culture.code === code))
+            state.nameCultures.push({
+              code,
+              label: code,
+              nameOrder:
+                accountPersonName(account.personalName).culture?.nameOrder || 'given-first',
+            });
+        }
+      }
       const result = await action(state);
       save(file, state);
       return result;
@@ -129,7 +149,7 @@ function equal(left, right) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-function publicUser(user) {
+function publicUser(user, state) {
   return {
     id: user.id,
     username: user.username,
@@ -140,6 +160,10 @@ function publicUser(user) {
     createdAt: user.createdAt,
     lastLoginAt: user.lastLoginAt || null,
     closure: user.closure || null,
+    personalName: user.personalName || null,
+    displayName: user.personalName
+      ? accountDisplayName(user.personalName, state?.nameCultures || DEFAULT_NAME_CULTURES)
+      : '',
   };
 }
 
@@ -225,6 +249,7 @@ export async function heroesIdentityAction(action, body, context) {
       return {
         setupRequired: !state.users.some((user) => user.roles.includes('admin')),
         providers: HEROES_IDENTITY_CAPABILITIES,
+        accountFeatures: { personalNames: true, nameConfiguration: true, accountClosure: true },
       };
     if (['register', 'setup', 'login'].includes(action)) {
       const blocked = throttle(state, `public:${remote}`, 30);
@@ -258,7 +283,7 @@ export async function heroesIdentityAction(action, body, context) {
       key(file);
       state.users.push(user);
       if (action === 'setup') delete state.setup;
-      return { user: publicUser(user), message: 'Account created. Sign in to continue.' };
+      return { user: publicUser(user, state), message: 'Account created. Sign in to continue.' };
     }
     if (action === 'login') {
       const name = typeof body.username === 'string' ? body.username.toLowerCase() : '';
@@ -289,7 +314,7 @@ export async function heroesIdentityAction(action, body, context) {
       delete state.attempts[`login:${hash(name)}`];
       return {
         token: value,
-        user: publicUser(user),
+        user: publicUser(user, state),
         mfaRequired: needsMfa,
         enrollmentRequired: user.roles.includes('admin') && !user.mfa,
       };
@@ -297,7 +322,7 @@ export async function heroesIdentityAction(action, body, context) {
     const { user, entry } = session(state, bearer, origin, false);
     if (action === 'me')
       return {
-        user: publicUser(user),
+        user: publicUser(user, state),
         mfaRequired: Boolean(user.mfa && !entry.mfa),
         enrollmentRequired: user.roles.includes('admin') && !user.mfa,
       };
@@ -334,7 +359,7 @@ export async function heroesIdentityAction(action, body, context) {
         entry.expiresAt = Date.now() + SESSION_MS;
         user.lastLoginAt = new Date().toISOString();
         state.sessions = state.sessions.filter((item) => item === entry || item.userId !== user.id);
-        return { recoveryCodes, user: publicUser(user) };
+        return { recoveryCodes, user: publicUser(user, state) };
       }
       if (!user.mfa) return httpError(400, 'Two-factor authentication is not enabled');
       const recovery =
@@ -346,9 +371,47 @@ export async function heroesIdentityAction(action, body, context) {
       entry.expiresAt = Date.now() + SESSION_MS;
       user.lastLoginAt = new Date().toISOString();
       delete state.attempts[`mfa:${user.id}`];
-      return { user: publicUser(user) };
+      return { user: publicUser(user, state) };
     }
     session(state, bearer, origin);
+    if (action === 'name-config') return { cultures: state.nameCultures || DEFAULT_NAME_CULTURES };
+    if (action === 'admin/name-config') {
+      if (!user.roles.includes('admin')) throw httpError(403, 'Administrator access required');
+      try {
+        const cultures = normalizeNameCultures(body.cultures);
+        const codes = new Set(cultures.map((culture) => culture.code));
+        if (
+          state.users.some(
+            (account) => account.personalName && !codes.has(account.personalName.culture)
+          )
+        )
+          throw new RangeError(
+            'Cannot remove a culture used by an account; keep it in the configuration'
+          );
+        state.nameCultures = cultures;
+      } catch (error) {
+        if (!(error instanceof TypeError || error instanceof RangeError)) throw error;
+        throw httpError(400, error.message);
+      }
+      return { cultures: state.nameCultures, user: publicUser(user, state) };
+    }
+    if (action === 'profile/name') {
+      try {
+        const personalName = normalizeAccountName(body.personalName);
+        if (
+          !(state.nameCultures || DEFAULT_NAME_CULTURES).some(
+            (culture) => culture.code === personalName.culture
+          )
+        )
+          throw new RangeError('Select a culture configured by your system administrator');
+        personalName.nameOrder = 'auto';
+        user.personalName = personalName;
+      } catch (error) {
+        if (!(error instanceof TypeError || error instanceof RangeError)) throw error;
+        throw httpError(400, error.message);
+      }
+      return { user: publicUser(user, state) };
+    }
     const protectLastAdmin = (target) => {
       if (
         target.roles.includes('admin') &&
@@ -373,6 +436,7 @@ export async function heroesIdentityAction(action, body, context) {
         'pendingMfa',
         'recoveryHashes',
         'lastTotpStep',
+        'personalName',
       ])
         delete target[field];
       state.sessions = state.sessions.filter((item) => item.userId !== target.id);
@@ -511,7 +575,10 @@ export async function heroesIdentityAction(action, body, context) {
     }
     if (!user.roles.includes('admin')) throw httpError(403, 'Administrator access required');
     if (action === 'admin/list')
-      return { users: state.users.map(publicUser), grants: state.grants };
+      return {
+        users: state.users.map((account) => publicUser(account, state)),
+        grants: state.grants,
+      };
     if (action === 'admin/user') {
       const target = state.users.find((item) => item.id === body.userId);
       if (!target) throw httpError(404, 'Account not found');
@@ -536,7 +603,7 @@ export async function heroesIdentityAction(action, body, context) {
       target.disabled = body.disabled;
       if (!body.disabled) delete target.closure;
       state.sessions = state.sessions.filter((item) => item.userId !== target.id);
-      return { user: publicUser(target) };
+      return { user: publicUser(target, state) };
     }
     if (action === 'admin/grant') {
       if (

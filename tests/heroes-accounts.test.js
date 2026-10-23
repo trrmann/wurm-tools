@@ -10,12 +10,15 @@ vi.mock('../src/js/tools/heroes/session.js', () => ({
     player: 'Player',
     visitor: 'Visitor',
   },
+  heroesAccountLabel: (user) =>
+    user.displayName ? `${user.displayName} (@${user.username})` : user.username,
   identityRequest: vi.fn(),
 }));
 vi.mock('../src/js/tools/heroes/helper-client.js', () => ({
   createHeroesClient: () => async () => ({ records: [], worlds: [], objects: [], entries: [] }),
 }));
 import { identityRequest } from '../src/js/tools/heroes/session.js';
+import { DEFAULT_NAME_CULTURES } from '../src/js/modules/objects/heroes/account-name.mjs';
 
 class Element {
   constructor(tag) {
@@ -55,7 +58,7 @@ function descendants(node) {
   return [node, ...node.children.flatMap(descendants)];
 }
 
-function mount(mode = 'setup') {
+function mount(mode = 'setup', options) {
   vi.stubGlobal('document', { createElement: (tag) => new Element(tag) });
   vi.stubGlobal(
     'Option',
@@ -68,7 +71,7 @@ function mount(mode = 'setup') {
     }
   );
   const container = new Element('div');
-  mountHeroesAccounts(container, mode);
+  mountHeroesAccounts(container, mode, options);
   return container;
 }
 
@@ -78,6 +81,69 @@ afterEach(() => {
 });
 
 describe('HERO account management usability', () => {
+  it('edits optional name components, prefills existing culture, and updates signed-in identity on save', async () => {
+    vi.stubGlobal(
+      'FormData',
+      class {
+        constructor(panel) {
+          return Object.entries(panel.elements).map(([name, input]) => [name, input.value || '']);
+        }
+      }
+    );
+    const onAccessChange = vi.fn();
+    identityRequest.mockImplementation(async (action, data) => {
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+      if (action === 'me')
+        return {
+          user: {
+            id: 'named',
+            username: 'named',
+            roles: ['player'],
+            mfaEnabled: true,
+            personalName: {
+              firstName: 'Hana',
+              familyName: 'Tanaka',
+              culture: 'ja-JP',
+              nameOrder: 'auto',
+            },
+          },
+        };
+      if (action === 'closure/status') return { ownedCount: 0, incoming: [], outgoing: [] };
+      if (action === 'profile/name')
+        return {
+          user: {
+            username: 'named',
+            roles: ['player'],
+            displayName: 'Tanaka Hana',
+            personalName: data.personalName,
+          },
+        };
+      throw new Error(`Unexpected action ${action}`);
+    });
+    const container = mount('account', { onAccessChange });
+    await vi.waitFor(() =>
+      expect(descendants(container).some((node) => node.name === 'firstName')).toBe(true)
+    );
+    const panel = descendants(container).find(
+      (node) => node.tag === 'form' && node.children[0].textContent === 'Save personal name'
+    );
+    expect(panel.elements.culture.value).toBe('ja-JP');
+    expect(panel.elements.culture.tag).toBe('select');
+    expect(panel.elements.nameOrder).toBeUndefined();
+    expect(panel.elements.familyName.value).toBe('Tanaka');
+    expect(panel.elements.familyName.required).toBe(false);
+    panel.listeners.submit({ preventDefault() {} });
+    await vi.waitFor(() =>
+      expect(onAccessChange).toHaveBeenCalledWith({
+        stage: 'ready',
+        user: expect.objectContaining({ displayName: 'Tanaka Hana' }),
+      })
+    );
+    expect(
+      descendants(container).some((node) => node.textContent === 'Tanaka Hana (@named) - Player')
+    ).toBe(true);
+  });
+
   const admin = {
     id: 'admin',
     username: 'administrator',
@@ -87,7 +153,11 @@ describe('HERO account management usability', () => {
   const player = { id: 'player', username: 'dual-role', roles: ['player', 'game-master'] };
   const configure = () =>
     identityRequest.mockImplementation(async (action) =>
-      action === 'me' ? { user: admin } : { users: [admin, player], grants: [] }
+      action === 'name-config'
+        ? { cultures: DEFAULT_NAME_CULTURES }
+        : action === 'me'
+          ? { user: admin }
+          : { users: [admin, player], grants: [] }
     );
 
   it('groups actual accounts by readable role and distinguishes them from profiles', async () => {
@@ -105,6 +175,59 @@ describe('HERO account management usability', () => {
     expect(labels.filter((label) => label.startsWith('dual-role - Active'))).toHaveLength(2);
     expect(labels.some((label) => label.includes('administrator (you)'))).toBe(true);
     expect(labels.some((label) => label.includes('without deleting its identity'))).toBe(true);
+    expect(labels).toContain('System configuration: cultures and name order');
+    expect(labels).toContain('Add selectable culture');
+  });
+
+  it('paginates role lists at ten accounts and resets the page when searching or filtering status', async () => {
+    const accounts = Array.from({ length: 23 }, (_, index) => ({
+      id: `visitor-${index}`,
+      username: `visitor-${String(index).padStart(2, '0')}`,
+      displayName: index === 22 ? 'Unique Display Name' : '',
+      roles: ['visitor'],
+      disabled: index === 22,
+    }));
+    identityRequest.mockImplementation(async (action) => {
+      if (action === 'me') return { user: admin };
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+      return { users: [admin, ...accounts], grants: [] };
+    });
+    const container = mount('admin');
+    await vi.waitFor(() =>
+      expect(
+        descendants(container).some((node) => node.textContent === 'Visitor accounts (23)')
+      ).toBe(true)
+    );
+    const group = descendants(container).find(
+      (node) => node.tag === 'section' && node.children[0]?.textContent === 'Visitor accounts (23)'
+    );
+    const list = group.children.find((node) => node.tag === 'ul');
+    const controls = group.children.at(-1);
+    expect(list.children).toHaveLength(10);
+    expect(controls.children[0].disabled).toBe(true);
+    controls.children[1].listeners.click();
+    expect(group.children[1].textContent).toContain('Showing 11-20 of 23');
+    controls.children[1].listeners.click();
+    expect(list.children).toHaveLength(3);
+    expect(controls.children[1].disabled).toBe(true);
+    const search = descendants(container).find((node) => node.type === 'search');
+    search.value = 'unique display';
+    search.listeners.input();
+    expect(list.children).toHaveLength(1);
+    expect(group.children[1].textContent).toContain('page 1 of 1');
+    const state = descendants(container).find(
+      (node) =>
+        node.tag === 'select' &&
+        node.children.some((option) => option.textContent === 'All accounts')
+    );
+    state.value = 'active';
+    state.listeners.change();
+    expect(list.children).toHaveLength(0);
+    expect(group.children[1].textContent).toBe('No accounts match these filters.');
+    search.value = '';
+    search.listeners.input();
+    expect(group.children[0].textContent).toBe('Visitor accounts (22)');
+    expect(list.children).toHaveLength(10);
   });
 
   it('explains session revocation instead of silently navigating away', async () => {
@@ -126,6 +249,7 @@ describe('HERO account management usability', () => {
     let disabled = false;
     let finish;
     identityRequest.mockImplementation(async (action, data) => {
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
       if (action === 'me') return { user: admin };
       if (action === 'admin/user') {
         await new Promise((resolve) => {
@@ -193,6 +317,7 @@ describe('HERO account management usability', () => {
       }
     );
     identityRequest.mockImplementation(async (action) => {
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
       if (action === 'me') return { user: admin };
       if (action === 'closure/status') return { ownedCount: 3, incoming: [], outgoing: [] };
       if (action === 'closure/request')
@@ -231,6 +356,7 @@ describe('HERO account management usability', () => {
 
   it('shows outgoing cancellation and incoming acceptance/decline controls without closing an account automatically', async () => {
     identityRequest.mockImplementation(async (action) => {
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
       if (action === 'me') return { user: admin };
       return {
         ownedCount: 1,
@@ -248,7 +374,9 @@ describe('HERO account management usability', () => {
     expect(labels).toContain('Decline transfer from sender');
     expect(labels).toContain('Cancel ownership transfer');
     expect(
-      identityRequest.mock.calls.every(([action]) => ['me', 'closure/status'].includes(action))
+      identityRequest.mock.calls.every(([action]) =>
+        ['me', 'name-config', 'closure/status'].includes(action)
+      )
     ).toBe(true);
   });
 });

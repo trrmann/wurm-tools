@@ -37,18 +37,49 @@ describe('HERO identity helper compatibility', () => {
 
   it('shows the signed-in account and all its readable roles in the shared shell', () => {
     const subtitle = {};
-    vi.stubGlobal('document', { documentElement: { dataset: {} } });
+    let identity;
+    const header = {
+      querySelector: () => identity,
+      append: (node) => {
+        identity = node;
+      },
+    };
+    vi.stubGlobal('document', {
+      documentElement: { dataset: {} },
+      createElement: () => ({ setAttribute() {} }),
+    });
     const container = {
-      querySelector: (selector) => (selector === '.sidebar-subtitle' ? subtitle : null),
+      querySelector: (selector) =>
+        selector === '.header-title-container'
+          ? header
+          : selector === '.sidebar-subtitle'
+            ? subtitle
+            : null,
     };
     applyHeroesBranding(container, {
       stage: 'ready',
       user: { username: 'alex', roles: ['admin', 'player'] },
     });
     expect(subtitle.textContent).toBe('Signed in as alex - System administrator, Player');
+    applyHeroesBranding(container, {
+      stage: 'ready',
+      user: { username: 'alex', displayName: 'Alex Vale', roles: ['player'] },
+    });
+    expect(subtitle.textContent).toBe('Signed in as Alex Vale (@alex) - Player');
+    expect(identity.textContent).toBe('Signed in as Alex Vale (@alex)');
+    expect(identity.hidden).toBe(false);
     applyHeroesBranding(container, { stage: 'anonymous' });
     expect(subtitle.textContent).toBe('HERO System workspace');
+    expect(identity.hidden).toBe(true);
   });
+
+  it.each(['profile/name', 'name-config', 'admin/name-config', 'closure/status'])(
+    'explains an outdated helper when %s is unknown',
+    async (action) => {
+      mockRequest({ error: 'Unknown identity action' }, 404);
+      await expect(identityRequest(action)).rejects.toThrow('npm run helper:stop');
+    }
+  );
 
   it.each(['status', 'setup', 'register', 'login'])(
     'does not send session credentials for public %s requests',

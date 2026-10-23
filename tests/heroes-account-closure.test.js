@@ -84,6 +84,11 @@ describe('self-service HERO account closure', () => {
   });
 
   it('deletes only unshared owned data, preserving shared contexts, unknown ownership and ACL-only data', async () => {
+    await call(
+      'profile/name',
+      { personalName: { firstName: 'Private', familyName: 'Person' } },
+      owner.token
+    );
     const privateData = await ownedWorld();
     const shared = await ownedWorld(owner, 'Shared world');
     const legacy = await ownedWorld(recipient, 'Someone else world');
@@ -119,6 +124,7 @@ describe('self-service HERO account closure', () => {
     const deleted = stored().users.find((user) => user.id === owner.user.id);
     expect(deleted).toMatchObject({ closure: 'deleted', disabled: true, roles: [] });
     expect(deleted.passwordHash).toBeUndefined();
+    expect(deleted.personalName).toBeUndefined();
     expect(stored().ownership.some((item) => item.userId === owner.user.id)).toBe(false);
     await expect(
       call(
@@ -214,6 +220,18 @@ describe('self-service HERO account closure', () => {
         'X-Heroes-Session': owner.token,
         'Content-Type': 'application/json',
       };
+      const named = await fetch(`${base}/heroes/auth/profile/name`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          personalName: { firstName: 'Hana', familyName: 'Tanaka', culture: 'ja-JP' },
+        }),
+      });
+      expect(named.status).toBe(200);
+      expect((await named.json()).user).toMatchObject({
+        username: 'owner',
+        displayName: 'Tanaka Hana',
+      });
       const worldResponse = await fetch(`${base}/heroes/worlds`, {
         method: 'POST',
         headers,

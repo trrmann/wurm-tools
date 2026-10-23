@@ -359,6 +359,23 @@ allow it for the Render site.
   filtering and navigation are never authorization. Role changes, disabling and ACL changes revoke
   affected sessions; permissions are evaluated on every request. The last admin cannot be demoted
   or disabled. No C# is exposed to or executed by the website.
+  Administrator account lists can be searched by display name or username, filtered by account
+  status, and paged independently per role (ten accounts per page). These display filters do not
+  change permissions or the available account-edit and ACL targets.
+- **Personal names:** Account & security lets users optionally save structured personal names using
+  the shared PersonName model and a selectable culture. System administrators configure each
+  culture's name ordering and add selectable cultures in the expandable
+  **System configuration: cultures and name order** sheet on Account & security or Admins.
+  Ordering is enforced by the helper; users cannot override it individually. Existing cultures in
+  saved names remain selectable when upgrading. No family name is required. Preferred names take
+  precedence over the composed full name for display. Display names appear alongside the unchanged
+  sign-in username in the main header, sidebar, account headings and administrator account lists.
+  Names are not published to other users or included in game-data exports. Each signed-in user
+  edits only their own name; permanent self-deletion removes it and retained-account recovery
+  preserves it.
+  If an older running helper returns "Unknown identity action", restart from the updated project
+  folder with `npm run helper:stop`, then `npm run helper`, and reload the page. Unknown
+  name/configuration routes now show this instruction instead of an unexplained error.
 - **Self-service account closure:** Account & security offers three choices, requiring the current
   password and exact username confirmation. **Retain** deactivates the account with identity,
   ownership, and game data preserved; a system administrator may restore it after verifying identity.
