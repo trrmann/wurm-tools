@@ -81,6 +81,453 @@ afterEach(() => {
 });
 
 describe('HERO account management usability', () => {
+  it.each([false, true])(
+    'allows impersonated name editing with preview=%s without forbidden security, closure, or role controls',
+    async (preview) => {
+      vi.stubGlobal(
+        'FormData',
+        class {
+          constructor(panel) {
+            return Object.entries(panel.elements).map(([name, input]) => [name, input.value || '']);
+          }
+        }
+      );
+      const user = {
+        id: 'visitor',
+        username: 'visitor',
+        roles: ['visitor'],
+        activeRole: 'visitor',
+        assignedRoles: ['visitor'],
+        impersonation: { administratorId: 'admin', preview },
+        roleRequest: { id: 'pending', status: 'pending', roles: ['player'], createdAt: Date.now() },
+      };
+      identityRequest.mockImplementation(async (action) => {
+        if (action === 'me') return { user };
+        if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+        if (action === 'profile/name') return { user };
+        throw new Error(`Unexpected action ${action}`);
+      });
+      const container = mount('account');
+      await vi.waitFor(() =>
+        expect(descendants(container).some((node) => node.name === 'firstName')).toBe(true)
+      );
+      const nodes = descendants(container);
+      expect(nodes.some((node) => node.textContent.includes('Use Release in the header'))).toBe(
+        true
+      );
+      expect(
+        nodes.some((node) =>
+          node.textContent.includes(
+            preview
+              ? 'those settings are isolated and disposable'
+              : 'Administrator security controls are unavailable while impersonating a real user'
+          )
+        )
+      ).toBe(true);
+      expect(nodes.some((node) => node.href === '/site/heroes/logout/')).toBe(false);
+      expect(
+        nodes.some((node) => ['password', 'currentPassword', 'confirmation'].includes(node.name))
+      ).toBe(false);
+      expect(
+        nodes.filter((node) => node.tag === 'form').map((node) => node.children[0].textContent)
+      ).toEqual(['Save personal name']);
+      expect(identityRequest).not.toHaveBeenCalledWith('closure/status');
+      const panel = nodes.find((node) => node.tag === 'form');
+      panel.listeners.submit({ preventDefault() {} });
+      await vi.waitFor(() =>
+        expect(identityRequest).toHaveBeenCalledWith('profile/name', expect.any(Object))
+      );
+    }
+  );
+
+  it.each(['logout', 'admin', 'admin-invitations', 'admin-roles', 'admin-cultures'])(
+    'offers only release guidance for impersonated %s',
+    async (mode) => {
+      identityRequest.mockResolvedValue({
+        user: {
+          id: 'admin',
+          username: 'admin',
+          roles: ['admin'],
+          activeRole: 'admin',
+          impersonation: { preview: false },
+        },
+      });
+      const container = mount(mode);
+      await vi.waitFor(() =>
+        expect(
+          descendants(container).some((node) =>
+            node.textContent.includes('Use Release in the header')
+          )
+        ).toBe(true)
+      );
+      expect(descendants(container).some((node) => node.tag === 'form')).toBe(false);
+      expect(identityRequest.mock.calls.map(([action]) => action)).toEqual(['me']);
+    }
+  );
+
+  it.each([
+    ['admin', 'System administrators (1)'],
+    ['admin-invitations', 'Create invitation'],
+    ['admin-roles', 'Save account roles'],
+    ['admin-cultures', 'Save culture name ordering'],
+  ])('allows isolated administrator preview controls in %s without Logout', async (mode, label) => {
+    const user = {
+      id: 'preview-admin',
+      username: 'preview-admin',
+      roles: ['admin'],
+      assignedRoles: ['admin'],
+      activeRole: 'admin',
+      impersonation: { preview: true },
+    };
+    identityRequest.mockImplementation(async (action) => {
+      if (action === 'me') return { user };
+      if (action === 'admin/list') return { users: [user], grants: [], invitations: [] };
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+      throw new Error(`Unexpected action ${action}`);
+    });
+    const container = mount(mode);
+    await vi.waitFor(() =>
+      expect(descendants(container).some((node) => node.textContent === label)).toBe(true)
+    );
+    expect(descendants(container).some((node) => node.href === '/site/heroes/logout/')).toBe(false);
+    expect(identityRequest).not.toHaveBeenCalledWith('closure/status');
+  });
+
+  it.each([
+    ['admin', undefined, '/site/heroes/people/admins/'],
+    ['game-master', undefined, '/site/heroes/people/'],
+    ['player', undefined, '/site/heroes/people/players/'],
+    ['visitor', undefined, '/site/heroes/public/'],
+    ['player', '/site/heroes/player-characters/', '/site/heroes/player-characters/'],
+  ])('redirects already signed-in %s Login to its role location', async (role, saved, expected) => {
+    const replace = vi.fn();
+    vi.stubGlobal('window', { location: { replace } });
+    vi.stubGlobal('sessionStorage', { getItem: () => 'token' });
+    identityRequest.mockImplementation(async (action) => {
+      if (action === 'status') return { setupRequired: false };
+      if (action === 'me')
+        return {
+          user: { roles: [role], activeRole: role, preferences: { locations: { [role]: saved } } },
+        };
+      throw new Error(`Unexpected action ${action}`);
+    });
+    mount('login');
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledWith(expected));
+  });
+
+  it.each([false, true])(
+    'redirects successful sign-in with MFA=%s using saved role preferences',
+    async (mfaRequired) => {
+      const replace = vi.fn();
+      vi.stubGlobal('window', { location: { replace } });
+      vi.stubGlobal('sessionStorage', {
+        getItem: () => null,
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      });
+      vi.stubGlobal(
+        'FormData',
+        class {
+          constructor() {
+            return [];
+          }
+        }
+      );
+      const user = {
+        roles: ['player'],
+        activeRole: 'player',
+        preferences: { locations: { player: '/site/heroes/player-characters/' } },
+      };
+      identityRequest.mockImplementation(async (action) => {
+        if (action === 'status') return { setupRequired: false };
+        if (action === 'login') return { token: 'token', user, mfaRequired };
+        if (action === 'mfa/verify') return {};
+        if (action === 'me') return { user };
+        throw new Error(`Unexpected action ${action}`);
+      });
+      const container = mount('login');
+      const findForm = (label) =>
+        descendants(container).find(
+          (node) => node.tag === 'form' && node.children[0].textContent === label
+        );
+      await vi.waitFor(() => expect(findForm('Log in')).toBeDefined());
+      findForm('Log in').listeners.submit({ preventDefault() {} });
+      if (mfaRequired) {
+        await vi.waitFor(() => expect(findForm('Verify two-factor authentication')).toBeDefined());
+        findForm('Verify two-factor authentication').listeners.submit({ preventDefault() {} });
+      }
+      await vi.waitFor(() =>
+        expect(replace).toHaveBeenCalledWith('/site/heroes/player-characters/')
+      );
+    }
+  );
+
+  it('puts password change first, explains unavailable email verification, and collapses name and deletion', async () => {
+    identityRequest.mockImplementation(async (action) => {
+      if (action === 'me')
+        return {
+          user: {
+            id: 'visitor',
+            username: 'visitor',
+            roles: ['visitor'],
+            assignedRoles: ['visitor'],
+            mfaEnabled: true,
+          },
+        };
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+      if (action === 'closure/status') return { ownedCount: 0, incoming: [], outgoing: [] };
+      throw new Error(`Unexpected action ${action}`);
+    });
+    const container = mount('account');
+    await vi.waitFor(() =>
+      expect(descendants(container).some((node) => node.name === 'currentPassword')).toBe(true)
+    );
+    const content = container.children[0].children[2];
+    expect(content.children[0].children[0].textContent).toBe('Change password');
+    expect(content.children[1].children[0].textContent).toBe('Email verification');
+    expect(
+      descendants(content).some((node) =>
+        node.textContent.includes('does not collect an email address')
+      )
+    ).toBe(true);
+    expect(
+      descendants(content).some((node) => node.textContent.includes('no address is verified'))
+    ).toBe(true);
+    expect(content.children[2].children[0].textContent).toBe('Edit personal name');
+    expect(content.children.at(-1).children[0].textContent).toBe('Delete or transfer account');
+    expect(content.children[2].open).toBeFalsy();
+    expect(content.children.at(-1).open).toBeFalsy();
+    expect(content.children[0].children[0].textContent).toBe('Change password');
+  });
+
+  it.each(['player', 'game-master'])(
+    'renders required Profile panels before social data resolves and preserves them after a %s directory failure',
+    async (role) => {
+      let rejectDirectory;
+      identityRequest.mockImplementation(async (action) => {
+        if (action === 'me')
+          return {
+            user: {
+              id: 'account',
+              username: 'account',
+              roles: [role],
+              assignedRoles: [role, 'admin'],
+              activeRole: role,
+            },
+          };
+        if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+        if (action === 'closure/status') return { ownedCount: 0, incoming: [], outgoing: [] };
+        if (action === 'directory/status')
+          return new Promise((_resolve, reject) => {
+            rejectDirectory = reject;
+          });
+        throw new Error(`Unexpected action ${action}`);
+      });
+      const container = mount('account');
+      await vi.waitFor(() => expect(rejectDirectory).toBeTypeOf('function'));
+      const content = container.children[0].children[2];
+      const checkRequiredPanels = () => {
+        expect(content.children[0].children[0].textContent).toBe('Change password');
+        expect(content.children[1].children[0].textContent).toBe('Email verification');
+        expect(content.children[2].children[0].textContent).toBe('Edit personal name');
+        expect(content.children.at(-1).children[0].textContent).toBe('Delete or transfer account');
+        expect(descendants(content).some((node) => node.name === 'currentPassword')).toBe(true);
+        expect(descendants(content).some((node) => node.name === 'firstName')).toBe(true);
+        expect(descendants(content).some((node) => node.name === 'confirmation')).toBe(true);
+      };
+      checkRequiredPanels();
+      rejectDirectory(new Error('Directory offline'));
+      await vi.waitFor(() =>
+        expect(
+          descendants(content).some((node) =>
+            node.textContent.includes(
+              'Play relationships are temporarily unavailable: Directory offline'
+            )
+          )
+        ).toBe(true)
+      );
+      checkRequiredPanels();
+      expect(
+        descendants(content).some((node) => node.textContent === 'Retry play relationships')
+      ).toBe(true);
+    }
+  );
+
+  it('shows system administrators and direct links to all focused admin pages', async () => {
+    const currentAdmin = {
+      id: 'admin',
+      username: 'administrator',
+      roles: ['admin'],
+      assignedRoles: ['admin'],
+      activeRole: 'admin',
+    };
+    identityRequest.mockImplementation(async (action) => {
+      if (action === 'me') return { user: currentAdmin };
+      if (action === 'admin/list')
+        return {
+          users: [
+            currentAdmin,
+            {
+              id: 'second-admin',
+              username: 'second',
+              roles: ['admin'],
+              assignedRoles: ['admin', 'player'],
+              disabled: true,
+            },
+            { id: 'player', username: 'not-admin', roles: ['player'], assignedRoles: ['player'] },
+          ],
+        };
+      throw new Error(`Unexpected action ${action}`);
+    });
+    const container = mount('admin');
+    await vi.waitFor(() =>
+      expect(
+        descendants(container).some((node) => node.textContent === 'System administrators (2)')
+      ).toBe(true)
+    );
+    expect(descendants(container).some((node) => node.textContent === 'second — disabled')).toBe(
+      true
+    );
+    expect(descendants(container).some((node) => node.textContent === 'not-admin — active')).toBe(
+      false
+    );
+    expect(
+      descendants(container).some((node) => node.href === '/site/heroes/people/admins/invitations/')
+    ).toBe(true);
+    expect(
+      descendants(container).some((node) => node.href === '/site/heroes/people/admins/roles/')
+    ).toBe(true);
+    expect(
+      descendants(container).some((node) => node.href === '/site/heroes/people/admins/cultures/')
+    ).toBe(true);
+    expect(
+      descendants(container).some(
+        (node) => node.tag === 'h2' && node.textContent === 'System administrators'
+      )
+    ).toBe(true);
+  });
+
+  it('requires the selected administrator role for admin modes even when admin is an assigned membership', async () => {
+    identityRequest.mockResolvedValue({
+      user: {
+        id: 'multi-role',
+        username: 'multi-role',
+        roles: ['player'],
+        assignedRoles: ['player', 'admin'],
+        activeRole: 'player',
+      },
+    });
+    const container = mount('admin-roles');
+    await vi.waitFor(() =>
+      expect(
+        descendants(container).some((node) => node.textContent === 'Administrator access required')
+      ).toBe(true)
+    );
+    expect(identityRequest).not.toHaveBeenCalledWith('admin/list');
+  });
+
+  it('keeps culture configuration on its own administrator mode', async () => {
+    vi.stubGlobal(
+      'FormData',
+      class {
+        constructor(panel) {
+          return Object.entries(panel.elements).map(([name, input]) => [name, input.value || '']);
+        }
+      }
+    );
+    const currentAdmin = {
+      id: 'admin',
+      username: 'administrator',
+      roles: ['admin'],
+      assignedRoles: ['admin'],
+      activeRole: 'admin',
+    };
+    identityRequest.mockImplementation(async (action, data) => {
+      if (action === 'me') return { user: currentAdmin };
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+      if (action === 'admin/name-config') return { user: currentAdmin, cultures: data.cultures };
+      throw new Error(`Unexpected action ${action}`);
+    });
+    const container = mount('admin-cultures');
+    await vi.waitFor(() =>
+      expect(
+        descendants(container).some((node) => node.textContent === 'Add selectable culture')
+      ).toBe(true)
+    );
+    expect(descendants(container).some((node) => node.textContent === 'Create invitation')).toBe(
+      false
+    );
+    const save = descendants(container).find(
+      (node) => node.tag === 'form' && node.children[0].textContent === 'Save culture name ordering'
+    );
+    save.listeners.submit({ preventDefault() {} });
+    await vi.waitFor(() =>
+      expect(identityRequest).toHaveBeenCalledWith(
+        'admin/name-config',
+        expect.objectContaining({ cultures: expect.any(Array) })
+      )
+    );
+  });
+
+  it('shows incoming Game Master invitations to Players as accept/decline controls', async () => {
+    const invitation = {
+      id: 'gm-invitation',
+      playerId: 'player',
+      gameMasterId: 'gm',
+      initiatedBy: 'game-master',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+    identityRequest.mockImplementation(async (action) => {
+      if (action === 'me')
+        return {
+          user: {
+            id: 'player',
+            username: 'player',
+            roles: ['player'],
+            assignedRoles: ['player', 'game-master'],
+            activeRole: 'player',
+          },
+        };
+      if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+      if (action === 'directory/status')
+        return {
+          users: [
+            { id: 'player', username: 'player', displayName: '', roles: ['player'] },
+            { id: 'gm', username: 'game-master', displayName: '', roles: ['game-master'] },
+          ],
+          relationships: [invitation],
+          listing: { gameMaster: false, player: false },
+        };
+      if (action === 'play/status') return { directory: [], relationships: [invitation] };
+      if (action === 'closure/status') return { ownedCount: 0, incoming: [], outgoing: [] };
+      throw new Error(`Unexpected action ${action}`);
+    });
+    const container = mount('account');
+    await vi.waitFor(() =>
+      expect(
+        descendants(container).some(
+          (node) =>
+            node.tag === 'form' &&
+            node.children[0].textContent === 'Accept Game Master invitation: game-master'
+        )
+      ).toBe(true)
+    );
+    expect(
+      descendants(container).some(
+        (node) =>
+          node.tag === 'form' &&
+          node.children[0].textContent === 'Decline Game Master invitation: game-master'
+      )
+    ).toBe(true);
+    expect(
+      descendants(container).some(
+        (node) =>
+          node.tag === 'form' && node.children[0].textContent === 'Cancel play request: game-master'
+      )
+    ).toBe(false);
+  });
+
   it('explains a denied direct route on Account & security instead of silently showing an empty workspace', async () => {
     identityRequest.mockImplementation(async (action) => {
       if (action === 'me')
@@ -123,7 +570,7 @@ describe('HERO account management usability', () => {
       }
       throw new Error(`Unexpected action ${action}`);
     });
-    const container = mount('admin');
+    const container = mount('admin-roles');
     const findForm = () =>
       descendants(container).find(
         (node) =>
@@ -172,17 +619,28 @@ describe('HERO account management usability', () => {
       gameMasterId: 'gm',
       status: 'pending',
       createdAt: new Date().toISOString(),
-      player: { username: 'requesting-player', displayName: 'Player Name' },
-      gameMaster: { username: 'review-gm' },
     };
     identityRequest.mockImplementation(async (action, data) => {
       if (action === 'me') return { user };
       if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
-      if (action === 'play/status') return { directory: [], relationships: [relationship] };
+      if (action === 'directory/status')
+        return {
+          users: [
+            { id: 'gm', username: 'review-gm', displayName: '', roles: ['game-master'] },
+            {
+              id: 'player',
+              username: 'requesting-player',
+              displayName: 'Player Name',
+              roles: ['player'],
+            },
+          ],
+          relationships: [relationship],
+          listing: { gameMaster: user.listedAsGameMaster, player: false },
+        };
       if (action === 'closure/status') return { ownedCount: 0, outgoing: [], incoming: [] };
-      if (action === 'play/listing') {
+      if (action === 'directory/listing') {
         user.listedAsGameMaster = data.visible;
-        return { user };
+        return { listed: data.visible };
       }
       if (action === 'play/respond') {
         relationship.status = 'approved';
@@ -207,7 +665,10 @@ describe('HERO account management usability', () => {
         )
       ).toBe(true)
     );
-    expect(identityRequest).toHaveBeenCalledWith('play/listing', { visible: true });
+    expect(identityRequest).toHaveBeenCalledWith('directory/listing', {
+      role: 'game-master',
+      visible: true,
+    });
     expect(findForm('Save Game Master listing').elements.visible.checked).toBe(true);
     findForm('Approve play request: Player Name (@requesting-player)').listeners.submit({
       preventDefault() {},
@@ -236,11 +697,31 @@ describe('HERO account management usability', () => {
       }
     );
     const user = { id: 'player', username: 'request-player', roles: ['player'] };
-    const gm = { username: 'listed-gm', displayName: 'Visible GM' };
+    const gm = {
+      id: 'gm',
+      username: 'listed-gm',
+      displayName: 'Visible GM',
+      roles: ['game-master'],
+    };
     let relationships = [];
     identityRequest.mockImplementation(async (action, data) => {
       if (action === 'me') return { user };
       if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
+      if (action === 'directory/status')
+        return {
+          users: [
+            user,
+            gm,
+            {
+              id: 'unlisted-gm',
+              username: 'unlisted-gm',
+              displayName: 'Connected but unlisted GM',
+              roles: ['game-master'],
+            },
+          ],
+          relationships,
+          listing: { gameMaster: false, player: false },
+        };
       if (action === 'play/status') return { directory: [gm], relationships };
       if (action === 'closure/status') return { ownedCount: 0, outgoing: [], incoming: [] };
       if (action === 'play/request') {
@@ -251,8 +732,6 @@ describe('HERO account management usability', () => {
             gameMasterId: 'gm',
             status: 'pending',
             createdAt: new Date().toISOString(),
-            player: user,
-            gameMaster: gm,
           },
         ];
         return { relationship: relationships[0] };
@@ -399,7 +878,7 @@ describe('HERO account management usability', () => {
         }
         throw new Error(`Unexpected action ${action}`);
       });
-      const container = mount('admin');
+      const container = mount('admin-roles');
       const label = `${decision === 'approve' ? 'Approve' : 'Reject'} role request from waiting-user`;
       await vi.waitFor(() =>
         expect(descendants(container).some((node) => node.textContent === label)).toBe(true)
@@ -439,6 +918,12 @@ describe('HERO account management usability', () => {
     );
     const onAccessChange = vi.fn();
     identityRequest.mockImplementation(async (action, data) => {
+      if (action === 'directory/status')
+        return {
+          users: [],
+          relationships: [],
+          listing: { gameMaster: false, player: false },
+        };
       if (action === 'play/status') return { directory: [], relationships: [] };
       if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
       if (action === 'me')
@@ -488,8 +973,11 @@ describe('HERO account management usability', () => {
       })
     );
     expect(
-      descendants(container).some((node) => node.textContent === 'Tanaka Hana (@named) - Player')
+      descendants(container).some((node) => node.tag === 'h2' && node.textContent === 'Profile')
     ).toBe(true);
+    expect(
+      descendants(container).some((node) => node.textContent === 'Tanaka Hana (@named) - Player')
+    ).toBe(false);
   });
 
   const admin = {
@@ -569,7 +1057,7 @@ describe('HERO account management usability', () => {
       }
       throw new Error(`Unexpected action ${action}`);
     });
-    const container = mount('admin');
+    const container = mount('admin-invitations');
     await vi.waitFor(() =>
       expect(descendants(container).some((node) => node.textContent === 'Create invitation')).toBe(
         true
@@ -601,7 +1089,7 @@ describe('HERO account management usability', () => {
 
   it('groups actual accounts by readable role and distinguishes them from profiles', async () => {
     configure();
-    const container = mount('admin');
+    const container = mount('admin-roles');
     await vi.waitFor(() =>
       expect(
         descendants(container).some((node) => node.textContent === 'Visitor accounts (0)')
@@ -614,8 +1102,8 @@ describe('HERO account management usability', () => {
     expect(labels.filter((label) => label.startsWith('dual-role - Active'))).toHaveLength(2);
     expect(labels.some((label) => label.includes('administrator (you)'))).toBe(true);
     expect(labels.some((label) => label.includes('without deleting its identity'))).toBe(true);
-    expect(labels).toContain('System configuration: cultures and name order');
-    expect(labels).toContain('Add selectable culture');
+    expect(labels).not.toContain('System configuration: cultures and name order');
+    expect(labels).not.toContain('Add selectable culture');
   });
 
   it('paginates role lists at ten accounts and resets the page when searching or filtering status', async () => {
@@ -631,7 +1119,7 @@ describe('HERO account management usability', () => {
       if (action === 'name-config') return { cultures: DEFAULT_NAME_CULTURES };
       return { users: [admin, ...accounts], grants: [] };
     });
-    const container = mount('admin');
+    const container = mount('admin-roles');
     await vi.waitFor(() =>
       expect(
         descendants(container).some((node) => node.textContent === 'Visitor accounts (23)')
@@ -707,7 +1195,7 @@ describe('HERO account management usability', () => {
         }
       }
     );
-    const container = mount('admin');
+    const container = mount('admin-roles');
     await vi.waitFor(() =>
       expect(descendants(container).some((node) => node.textContent === 'Save account roles')).toBe(
         true

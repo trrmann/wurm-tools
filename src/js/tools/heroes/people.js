@@ -1,5 +1,6 @@
 import template from '../../../../site/partials/tools/heroes-people.html?raw';
 import { createHeroesClient, downloadHeroesJson } from './helper-client.js';
+import { identityRequest } from './session.js';
 import {
   HEROES_PAGES,
   getHeroesObjectPage,
@@ -21,18 +22,27 @@ const sections = [
   ['object-scope', 'Object availability'],
   ['character', 'Characters'],
   ['note', 'GM notes'],
+  ['player-note', 'Player notes'],
+  ['admin-note', 'Administrator notes'],
 ];
 
 export function mountHeroesPeople(
   container,
-  { section = 'profile', role = '', title = 'People', accountRoles = [], routes = [] } = {}
+  {
+    section = 'profile',
+    role = '',
+    title = 'People',
+    accountRoles = [],
+    routes = [],
+    writable = {},
+  } = {}
 ) {
   if (!sections.some(([kind]) => kind === section))
     throw new RangeError(`Unknown management section: ${section}`);
   const controller = new AbortController();
   const { signal } = controller;
   container.innerHTML = template;
-  const routeAllowed = (href) => accountRoles.includes('admin') || routes.includes(href);
+  const routeAllowed = (href) => routes.includes(href);
   for (const link of container.querySelectorAll('a[href^="/site/heroes/"]')) {
     if (!routeAllowed(link.getAttribute('href')))
       link.replaceWith(document.createTextNode(link.textContent));
@@ -41,7 +51,14 @@ export function mountHeroesPeople(
   const form = element('form');
   const status = element('state');
   const profileSelect = element('profile');
-  const canCreateGenre = accountRoles.some((role) => ['admin', 'game-master'].includes(role));
+  const canCreateGenre = accountRoles.includes('game-master');
+  const administrator = accountRoles.includes('admin');
+  for (const id of ['export', 'export-all', 'import', 'import-world']) {
+    const control = element(id);
+    control.hidden = !administrator;
+    if (control.tagName === 'INPUT' || control.tagName === 'SELECT')
+      control.closest('label').hidden = !administrator;
+  }
   if (section === 'genre') {
     element('genre-actions').hidden = false;
     element('create-genre').hidden = !canCreateGenre;
@@ -55,6 +72,7 @@ export function mountHeroesPeople(
   element('roster-field').hidden = section !== 'profile' || Boolean(role);
   let initialProfileId = new URLSearchParams(window.location.search).get('profile') || '';
   let state = { records: [], worlds: [], objects: [] };
+  let directoryAccounts = [];
   let editingId = null;
   let busy = false;
   let loaded = false;
@@ -214,6 +232,7 @@ export function mountHeroesPeople(
     });
   async function reload() {
     state = await request('/heroes/management');
+    if (administrator) directoryAccounts = (await identityRequest('directory/status')).users;
     loaded = true;
     const selected = profileSelect.value || initialProfileId;
     initialProfileId = '';
@@ -259,7 +278,18 @@ export function mountHeroesPeople(
   function drawForm(record = null) {
     editingId = record?.id || null;
     form.replaceChildren();
-    form.hidden = section === 'object' || (section === 'genre' && !record && !canCreateGenre);
+    const creationRole = ['genre', 'campaign', 'world', 'note'].includes(section)
+      ? accountRoles.includes('game-master')
+      : section === 'player-note'
+        ? accountRoles.includes('player')
+        : section === 'admin-note'
+          ? administrator
+          : accountRoles.some((value) => ['game-master', 'player'].includes(value));
+    form.hidden =
+      section === 'object' ||
+      (section === 'profile' && !administrator) ||
+      (!record && !administrator && !creationRole) ||
+      (section === 'genre' && !record && !canCreateGenre);
     if (form.hidden) return;
     const data = record?.data || {};
     if (data.migrationNotes)
@@ -276,6 +306,29 @@ export function mountHeroesPeople(
     );
     field('Name / label', 'name', data.name).required = true;
     if (section === 'profile') {
+      field(
+        'Linked confirmed account (optional for an administrator-managed no-login record)',
+        'accountId',
+        data.accountId,
+        'text',
+        directoryAccounts
+          .filter((account) =>
+            account.roles.some((value) => ['game-master', 'player'].includes(value))
+          )
+          .map((account) => [
+            account.id,
+            account.displayName
+              ? `${account.displayName} (@${account.username})`
+              : account.username,
+          ])
+      );
+      const noLogin = field(
+        'No-login record managed by system administrators',
+        'noLogin',
+        'yes',
+        'checkbox'
+      );
+      noLogin.checked = data.noLogin === true;
       const roles = data.roles || [role || 'player'];
       for (const [value, label] of [
         ['game-master', 'Game Master'],
@@ -416,10 +469,28 @@ export function mountHeroesPeople(
       form.append(
         node(
           'p',
-          'GM notes belong to the selected world. Players must be subscribed to that world; a character can have no player profile. Only administrators and accounts with an explicit note ACL and access to its referenced context can read the note. Do not put credentials here.'
+          'GM notes belong to the selected world. Reading and editing require the active Game Master role, a note permission, and access to its referenced context. Do not put credentials here.'
         )
       );
       field('GM note', 'notes', data.notes, 'textarea').required = true;
+    }
+    if (['player-note', 'admin-note'].includes(section)) {
+      form.append(
+        node(
+          'p',
+          'Notes require the matching active role and an explicit resource permission. Do not store passwords or recovery codes here.'
+        )
+      );
+      field('Note', 'notes', data.notes, 'textarea').required = true;
+    }
+    if (!administrator) {
+      for (const key of ['externalPlayer', 'externalGameMaster']) {
+        const input = form.elements[key];
+        if (input) {
+          input.readOnly = true;
+          input.closest('label').hidden = !input.value;
+        }
+      }
     }
     const submit = node(
       'button',
@@ -497,36 +568,44 @@ export function mountHeroesPeople(
         if (section === 'note')
           details = `${worldName(data.worldId)} - ${data.playerId ? profileName(data.playerId) : objectName(data.objectId)}: ${details}`;
         if (data.migrationNotes) details += `\nMigration: ${data.migrationNotes}`;
+        const canManageRecord =
+          (section !== 'profile' || administrator) &&
+          (administrator || writable.record?.includes(record.id));
         const actions = [
-          button('Edit', () => {
-            drawForm(record);
-            form.scrollIntoView({ block: 'nearest' });
-          }),
-          button('Delete', () => {
-            if (
-              !window.confirm(
-                `Delete "${data.name}"? Referenced profiles/campaigns cannot be deleted until their links are cleared.`
+          canManageRecord &&
+            button('Edit', () => {
+              drawForm(record);
+              form.scrollIntoView({ block: 'nearest' });
+            }),
+          canManageRecord &&
+            button('Delete', () => {
+              if (
+                !window.confirm(
+                  `Delete "${data.name}"? Referenced profiles/campaigns cannot be deleted until their links are cleared.`
+                )
               )
-            )
-              return;
-            run(async () => {
-              await request(`/heroes/management/${encodeURIComponent(record.id)}`, {
-                method: 'DELETE',
+                return;
+              run(async () => {
+                await request(`/heroes/management/${encodeURIComponent(record.id)}`, {
+                  method: 'DELETE',
+                });
+                await reload();
+                report('Record deleted.');
               });
-              await reload();
-              report('Record deleted.');
-            });
-          }),
-          button('Export', () =>
-            exportCollection(
-              section === 'world'
-                ? 'world'
-                : section === 'character' || section === 'note' || section === 'object-scope'
-                  ? 'record'
-                  : section,
-              section === 'world' ? data.worldId : record.id
-            )
-          ),
+            }),
+          administrator &&
+            button('Export', () =>
+              exportCollection(
+                section === 'world'
+                  ? 'world'
+                  : ['character', 'note', 'player-note', 'admin-note', 'object-scope'].includes(
+                        section
+                      )
+                    ? 'record'
+                    : section,
+                section === 'world' ? data.worldId : record.id
+              )
+            ),
         ];
         if (section === 'object-scope') actions.splice(1, 1);
         if (section === 'profile')
@@ -596,6 +675,7 @@ export function mountHeroesPeople(
     const data = Object.fromEntries(values);
     if (section === 'profile')
       data.roles = ['game-master', 'player'].filter((role) => values.has(role));
+    if (section === 'profile') data.noLogin = values.has('noLogin');
     if (section === 'world') {
       data.playerIds = values.getAll('playerIds').filter(Boolean);
     }
@@ -614,10 +694,14 @@ export function mountHeroesPeople(
             ? 'Creating your genre...'
             : 'Saving record...'
       );
-      await request(`/heroes/management${id ? `/${encodeURIComponent(id)}` : ''}`, {
+      const result = await request(`/heroes/management${id ? `/${encodeURIComponent(id)}` : ''}`, {
         method: id ? 'PUT' : 'POST',
         body: JSON.stringify({ kind: section, data }),
       });
+      if (!id) {
+        writable.record ||= [];
+        writable.record.push(result.record.id);
+      }
       const clearedProfile = section === 'genre' && !id && Boolean(profileSelect.value);
       if (section === 'genre' && !id) profileSelect.value = '';
       await reload();

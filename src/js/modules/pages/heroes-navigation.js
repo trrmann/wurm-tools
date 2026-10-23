@@ -1,22 +1,17 @@
+import { heroesRoleLocation } from '../../tools/heroes/preferences.js';
+
 export const HEROES_NAVIGATION = [
   ['Worlds & objects', '/site/heroes/'],
   ['Game Masters & players', '/site/heroes/people/'],
-  ['Account / Login', '/site/heroes/account/'],
-  ['Logout', '/site/heroes/logout/'],
+  ['Profile', '/site/heroes/account/'],
   ['Wurm Tools', '/site/wurm/'],
+  ['Logout', '/site/heroes/logout/'],
 ];
 
 export const HEROES_PAGES = [
-  { href: '/site/heroes/', title: 'Worlds', group: 'worlds', editor: 'worlds', section: 'world' },
   { href: '/site/heroes/genres/', title: 'Genres', group: 'worlds', section: 'genre' },
   { href: '/site/heroes/campaigns/', title: 'Campaigns', group: 'worlds', section: 'campaign' },
-  { href: '/site/heroes/objects/', title: 'Objects', group: 'worlds', editor: 'objects' },
-  {
-    href: '/site/heroes/non-player-characters/',
-    title: 'Non-player characters',
-    group: 'worlds',
-    editor: 'non-player-character',
-  },
+  { href: '/site/heroes/', title: 'Worlds', group: 'worlds', editor: 'worlds', section: 'world' },
   {
     href: '/site/heroes/player-characters/',
     title: 'Player characters',
@@ -24,22 +19,38 @@ export const HEROES_PAGES = [
     editor: 'player-character',
   },
   {
+    href: '/site/heroes/non-player-characters/',
+    title: 'Non-player characters',
+    group: 'worlds',
+    editor: 'non-player-character',
+  },
+  { href: '/site/heroes/objects/', title: 'Objects', group: 'worlds', editor: 'objects' },
+  {
+    href: '/site/heroes/public/',
+    title: 'Public content',
+    group: 'account',
+    account: 'public',
+    public: true,
+  },
+  {
+    href: '/site/heroes/library/',
+    title: 'Body shapes & parts',
+    group: 'worlds',
+    editor: 'library',
+  },
+  { href: '/site/heroes/sharing/', title: 'Publishing & editors', group: 'worlds', sharing: true },
+  {
     href: '/site/heroes/assignments/',
     title: 'Character assignments',
-    group: 'worlds',
+    group: 'people',
     section: 'character',
+    navigation: false,
   },
   {
     href: '/site/heroes/object-availability/',
     title: 'Object availability',
     group: 'worlds',
     section: 'object-scope',
-  },
-  {
-    href: '/site/heroes/library/',
-    title: 'Shared definition library',
-    group: 'worlds',
-    editor: 'library',
   },
   {
     href: '/site/heroes/people/',
@@ -55,10 +66,53 @@ export const HEROES_PAGES = [
     section: 'profile',
     role: 'player',
   },
-  { href: '/site/heroes/people/admins/', title: 'Admins', group: 'people', account: 'admin' },
-  { href: '/site/heroes/people/notes/', title: 'GM notes', group: 'people', section: 'note' },
+  {
+    href: '/site/heroes/people/admins/',
+    title: 'System administrators',
+    group: 'people',
+    account: 'admin',
+  },
+  {
+    href: '/site/heroes/people/admins/invitations/',
+    title: 'Account invitations',
+    group: 'people',
+    account: 'admin-invitations',
+  },
+  {
+    href: '/site/heroes/people/admins/roles/',
+    title: 'Account roles & permissions',
+    group: 'people',
+    account: 'admin-roles',
+  },
+  {
+    href: '/site/heroes/people/admins/cultures/',
+    title: 'Culture definitions',
+    group: 'people',
+    account: 'admin-cultures',
+  },
+  {
+    href: '/site/heroes/people/notes/',
+    title: 'GM notes',
+    group: 'people',
+    section: 'note',
+    requiredRole: 'game-master',
+  },
+  {
+    href: '/site/heroes/people/player-notes/',
+    title: 'Player notes',
+    group: 'people',
+    section: 'player-note',
+    requiredRole: 'player',
+  },
+  {
+    href: '/site/heroes/people/admin-notes/',
+    title: 'Administrator notes',
+    group: 'people',
+    section: 'admin-note',
+    requiredRole: 'admin',
+  },
   ...[
-    ['account', 'Account & security'],
+    ['account', 'Profile'],
     ['login', 'Login'],
     ['register', 'Register'],
     ['setup', 'Administrator setup'],
@@ -75,7 +129,10 @@ export const HEROES_PAGES = [
 export function getHeroesPage(pathname) {
   const path = pathname.replace(/index\.html$/, '').replace(/\/?$/, '/');
   if (path === '/') return HEROES_PAGES.find((page) => page.account === 'login');
-  return HEROES_PAGES.find((page) => page.href === path) ?? HEROES_PAGES[0];
+  return (
+    HEROES_PAGES.find((page) => page.href === path) ??
+    HEROES_PAGES.find((page) => page.href === '/site/heroes/')
+  );
 }
 
 export function heroesPageHref(page, search = '') {
@@ -118,11 +175,22 @@ export function isObjectForHeroesPage(object, page) {
 // Receives only resources already filtered by the helper's authoritative ACL checks.
 export function heroesWorkspaceRoutes(roles, state, library) {
   if (roles.includes('admin'))
-    return HEROES_PAGES.filter((page) => !page.account).map((page) => page.href);
+    return HEROES_PAGES.filter(
+      (page) =>
+        !page.account &&
+        (page.sharing || page.section === 'profile' || page.requiredRole === 'admin')
+    ).map((page) => page.href);
   const gm = roles.includes('game-master');
   const creator = gm || roles.includes('player');
   return HEROES_PAGES.filter((page) => {
     if (page.account) return false;
+    if (page.sharing) return creator;
+    if (page.requiredRole) return roles.includes(page.requiredRole);
+    if (
+      page.section === 'profile' &&
+      roles.some((role) => ['player', 'game-master'].includes(role))
+    )
+      return true;
     if (page.section === 'world') return gm || state.worlds.length > 0;
     if (page.editor === 'library') return creator || library.length > 0;
     if (page.editor)
@@ -136,22 +204,36 @@ export function heroesWorkspaceRoutes(roles, state, library) {
 }
 
 export function heroesRouteAllowed(page, access) {
+  if (page.requiredRole && !access.user.roles.includes(page.requiredRole)) return false;
   return page.account
-    ? page.account !== 'admin' || access.user.roles.includes('admin')
-    : access.user.roles.includes('admin') || access.routes?.includes(page.href) === true;
+    ? !page.account.startsWith('admin') || access.user.roles.includes('admin')
+    : access.routes?.includes(page.href) === true;
 }
 
 export function heroesNavigationLinks(access) {
   if (access.stage !== 'ready')
     return heroesAccessPages(access).map((page) => [page.title, page.href]);
-  const permitted = heroesAccessPages(access);
+  const permitted = heroesAccessPages(access).filter((page) => page.navigation !== false);
   return HEROES_NAVIGATION.flatMap(([label, href]) => {
     if (href === '/site/wurm/')
-      return access.user.roles.includes('admin') || access.user.wurmAccess ? [[label, href]] : [];
+      return !access.user.impersonation &&
+        (access.user.roles.includes('admin') || access.user.wurmAccess)
+        ? [[label, href]]
+        : [];
+    if (href === '/site/heroes/logout/' && access.user.impersonation) return [];
     if (['/site/heroes/', '/site/heroes/people/'].includes(href)) {
       const group = href === '/site/heroes/' ? 'worlds' : 'people';
       const destination = permitted.find((page) => page.group === group);
-      return destination ? [[label, destination.href]] : [];
+      return destination
+        ? [
+            [
+              access.user.roles.includes('admin') && group === 'worlds'
+                ? 'Content stewardship'
+                : label,
+              destination.href,
+            ],
+          ]
+        : [];
     }
     return [[label, href]];
   });
@@ -167,11 +249,14 @@ export function heroesAccessPages(access) {
   return HEROES_PAGES.filter(
     (page) =>
       !['login', 'register', 'setup', 'logout-success'].includes(page.account) &&
+      !(page.account === 'logout' && access.user.impersonation) &&
       heroesRouteAllowed(page, access)
   );
 }
 
 export function heroesAccessRedirect(page, access) {
+  if (access.stage === 'ready' && access.user.impersonation && page.account === 'logout')
+    return '/site/heroes/account/?notice=release-required';
   if (access.stage === 'setup') return page.account === 'setup' ? null : '/site/heroes/setup/';
   if (access.stage === 'anonymous')
     return ['login', 'register', 'logout-success', 'setup'].includes(page.account)
@@ -179,12 +264,19 @@ export function heroesAccessRedirect(page, access) {
       : '/site/heroes/login/';
   if (access.stage === 'mfa')
     return ['account', 'logout'].includes(page.account) ? null : '/site/heroes/account/';
-  if (access.stage === 'ready' && page.account === 'admin' && !access.user.roles.includes('admin'))
+  if (
+    access.stage === 'ready' &&
+    page.account?.startsWith('admin') &&
+    !access.user.roles.includes('admin')
+  )
     return '/site/heroes/account/?notice=route-denied';
   if (access.stage === 'ready' && !page.account && !heroesRouteAllowed(page, access))
     return '/site/heroes/account/?notice=route-denied';
   if (access.stage === 'ready' && ['setup', 'login', 'register'].includes(page.account))
-    return '/site/heroes/account/';
+    return heroesRoleLocation(
+      access.user.activeRole || access.user.roles[0],
+      access.user.preferences?.locations?.[access.user.activeRole || access.user.roles[0]]
+    );
   return null;
 }
 
@@ -193,7 +285,9 @@ export function renderHeroesNavigation(container, filter = '', access = null) {
   const current = getHeroesPage(window.location.pathname);
   const pages = access ? heroesAccessPages(access) : HEROES_PAGES;
   for (const page of pages.filter(
-    (page) => (access && access.stage !== 'ready') || page.group === current.group
+    (page) =>
+      page.navigation !== false &&
+      ((access && access.stage !== 'ready') || page.group === current.group)
   )) {
     if (!page.title.toLowerCase().includes(filter.toLowerCase())) continue;
     const link = document.createElement('a');

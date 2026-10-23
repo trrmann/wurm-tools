@@ -2,6 +2,7 @@
 // installed through Steam, reports whether each is running, and can launch them.
 // Binds to 127.0.0.1 only and accepts requests only from allowed origins.
 import http from 'node:http';
+import { Readable } from 'node:stream';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,7 +14,10 @@ import {
   heroesIdentityAction,
   heroesIdentityPath,
   heroesPrincipal,
+  heroesPublicPrincipal,
+  heroesRequestContext,
 } from './heroes-identity.js';
+import { runImpersonatedMutation } from './heroes-impersonation.js';
 import { handleAuthorizedHeroes } from './heroes-access.js';
 import {
   authFilePath,
@@ -580,7 +584,8 @@ export function createServer({ env = process.env } = {}) {
           ? {
               'Access-Control-Allow-Origin': origin,
               'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-              'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Heroes-Session',
+              'Access-Control-Allow-Headers':
+                'Authorization, Content-Type, X-Heroes-Session, X-Heroes-Approval',
               'Access-Control-Allow-Private-Network': 'true',
               'Access-Control-Max-Age': '600',
               Vary: 'Origin',
@@ -621,7 +626,10 @@ export function createServer({ env = process.env } = {}) {
           origin,
           heroesIdentityPath(env)
         );
-        if (!principal.roles.includes('admin') && !principal.wurmAccess)
+        if (
+          principal.impersonating ||
+          (!principal.roles.includes('admin') && !principal.wurmAccess)
+        )
           throw httpError(
             403,
             'Wurm tools require system-administrator access or explicit delegation'
@@ -679,41 +687,117 @@ export function createServer({ env = process.env } = {}) {
               'name-config',
               'play/status',
               'wurm/access',
+              'directory/status',
+              'messages/list',
+              'impersonation/status',
             ].includes(action);
             if (req.method !== (get ? 'GET' : 'POST')) throw httpError(405, 'Method not allowed');
             const body = get ? {} : await readJsonBody(req, 16 * 1024);
             if (action === 'admin/grant') {
-              const principal = heroesPrincipal(bearer, origin, identityFile);
+              const context = heroesRequestContext(
+                bearer,
+                origin,
+                identityFile,
+                heroesDatabasePath(env)
+              );
+              const principal = heroesPrincipal(bearer, origin, context.identityFile);
               if (!principal.roles.includes('admin'))
                 throw httpError(403, 'Administrator access required');
-              const state = await listHeroesManagement(heroesDatabasePath(env));
+              const state = await listHeroesManagement(context.databaseFile);
               const items = {
                 world: state.worlds,
                 object: state.objects,
                 record: state.records,
-                library: await listHeroesLibrary(heroesDatabasePath(env)),
+                library: await listHeroesLibrary(context.databaseFile),
               };
               if (!items[body.resourceType]?.some((item) => item.id === body.resourceId))
                 throw httpError(400, 'ACL target does not exist');
             }
-            const result = await heroesIdentityAction(action, body, {
-              file: identityFile,
-              bearer,
-              origin,
-              remote: req.socket.remoteAddress,
-              databaseFile: heroesDatabasePath(env),
-            });
+            const publicAction = ['status', 'setup', 'register', 'login', 'invite/redeem'].includes(
+              action
+            );
+            const requestContext = publicAction
+              ? null
+              : heroesRequestContext(bearer, origin, identityFile, heroesDatabasePath(env), false);
+            if (
+              requestContext?.impersonation &&
+              (/^(?:mfa\/|password$|closure\/|roles\/|logout$|wurm\/access$|impersonation\/start)/.test(
+                action
+              ) ||
+                (!requestContext.impersonation.previewRoot && action.startsWith('admin/')))
+            )
+              throw httpError(
+                403,
+                'Release impersonation before changing security settings or logging out'
+              );
+            const operation = () =>
+              heroesIdentityAction(action, body, {
+                file: [
+                  'me',
+                  'impersonation/start',
+                  'impersonation/release',
+                  'impersonation/status',
+                  'impersonation/respond',
+                ].includes(action)
+                  ? identityFile
+                  : requestContext?.identityFile || identityFile,
+                bearer,
+                origin,
+                remote: req.socket.remoteAddress,
+                databaseFile: requestContext?.databaseFile || heroesDatabasePath(env),
+              });
+            const result =
+              !get && requestContext?.impersonation && !action.startsWith('impersonation/')
+                ? await runImpersonatedMutation(
+                    { file: identityFile, bearer, origin, databaseFile: heroesDatabasePath(env) },
+                    {
+                      method: req.method,
+                      route: url.pathname,
+                      body,
+                      approvalId: req.headers['x-heroes-approval'],
+                    },
+                    operation
+                  )
+                : await operation();
+            if (result?.statusCode) return send(result.statusCode, result.body);
             return send(200, result);
           }
-          const principal = heroesPrincipal(bearer, origin, identityFile);
-          const result = await handleAuthorizedHeroes(
-            req,
-            url,
-            heroesDatabasePath(env),
-            principal,
-            identityFile,
-            handleHeroes
-          );
+          const publicRead = url.pathname === '/heroes/public' && req.method === 'GET';
+          const requestContext = publicRead
+            ? null
+            : heroesRequestContext(bearer, origin, identityFile, heroesDatabasePath(env));
+          const principal = publicRead
+            ? heroesPublicPrincipal(identityFile)
+            : heroesPrincipal(bearer, origin, requestContext.identityFile);
+          const mutation = !['GET', 'HEAD'].includes(req.method);
+          const body =
+            mutation && req.method !== 'DELETE' ? await readJsonBody(req, 300 * 1024) : null;
+          const operation = () =>
+            handleAuthorizedHeroes(
+              mutation
+                ? Object.assign(Readable.from([Buffer.from(JSON.stringify(body))]), {
+                    method: req.method,
+                  })
+                : req,
+              url,
+              requestContext?.databaseFile || heroesDatabasePath(env),
+              principal,
+              requestContext?.identityFile || identityFile,
+              handleHeroes
+            );
+          const result =
+            mutation && requestContext?.impersonation
+              ? await runImpersonatedMutation(
+                  { file: identityFile, bearer, origin, databaseFile: heroesDatabasePath(env) },
+                  {
+                    method: req.method,
+                    route: url.pathname,
+                    body,
+                    approvalId: req.headers['x-heroes-approval'],
+                  },
+                  operation
+                )
+              : await operation();
           if (result?.statusCode) return send(result.statusCode, result.body);
           return send(200, result);
         });

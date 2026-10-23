@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { promisify } from 'node:util';
 import { heroesDatabasePath, deleteUnsharedHeroesData } from './heroes-store.js';
 import { httpError } from './wurm-db.js';
@@ -65,6 +66,16 @@ function save(file, state) {
   }
 }
 
+function removePreview(root) {
+  const resolved = path.resolve(root);
+  if (
+    path.dirname(resolved) !== path.resolve(os.tmpdir()) ||
+    !/^heroes-preview-[a-zA-Z0-9]{6}$/.test(path.basename(resolved))
+  )
+    throw new Error('Invalid disposable preview directory; cleanup refused');
+  fs.rmSync(resolved, { recursive: true, force: true });
+}
+
 function encrypt(secret, file) {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key(file), iv);
@@ -100,6 +111,9 @@ function transact(file, action) {
     try {
       fs.writeSync(lock, String(process.pid));
       const state = read(file);
+      const previews = state.sessions
+        .map((entry) => entry.impersonation?.previewRoot)
+        .filter(Boolean);
       state.ownership ||= [];
       state.transfers ||= [];
       if (!state.nameCultures) {
@@ -117,6 +131,9 @@ function transact(file, action) {
       }
       const result = await action(state);
       save(file, state);
+      for (const preview of previews)
+        if (!state.sessions.some((entry) => entry.impersonation?.previewRoot === preview))
+          removePreview(preview);
       return result;
     } finally {
       fs.closeSync(lock);
@@ -164,8 +181,10 @@ function publicUser(user, state) {
     closure: user.closure || null,
     roleRequest: user.roleRequest || null,
     listedAsGameMaster: user.listedAsGameMaster === true,
+    listedAsPlayer: user.listedAsPlayer === true,
     wurmAccess: user.wurmAccess === true,
     personalName: user.personalName || null,
+    preferences: user.preferences || { theme: 'dark', locations: {} },
     displayName: user.personalName
       ? accountDisplayName(user.personalName, state?.nameCultures || DEFAULT_NAME_CULTURES)
       : '',
@@ -195,7 +214,7 @@ function invalidatePlayRelationships(state, user) {
   if (user.disabled || !user.roles.includes('game-master')) user.listedAsGameMaster = false;
 }
 
-function session(state, bearer, origin, complete = true) {
+function session(state, bearer, origin, complete = true, effective = true) {
   const entry = state.sessions.find(
     (item) =>
       item.hash === hash(bearer || '') && item.origin === origin && item.expiresAt > Date.now()
@@ -204,7 +223,32 @@ function session(state, bearer, origin, complete = true) {
   if (!entry || !user) throw httpError(401, 'Sign in to Heros Tools');
   if (complete && (user.mfa || user.roles.includes('admin')) && !entry.mfa)
     throw httpError(403, 'Complete two-factor authentication before accessing HERO data');
-  return { user, entry };
+  if (!effective || !entry.impersonation) return { user, entry, actor: user };
+  const target =
+    (entry.impersonation.previewRoot
+      ? read(path.join(entry.impersonation.previewRoot, 'identity.json')).users[0]
+      : null) ||
+    state.users.find((item) => item.id === entry.impersonation.userId && !item.disabled);
+  if (!target) throw httpError(403, 'Impersonated account is unavailable. Release impersonation.');
+  return { user: target, entry, actor: user };
+}
+
+function activeRoles(user, entry) {
+  const role = entry.impersonation?.role || entry.activeRole;
+  if (!role) return [preferredRole(user)];
+  if (!user.roles.includes(role))
+    throw httpError(403, 'The selected role is no longer assigned. Sign in again.');
+  return [role];
+}
+
+function preferredRole(user) {
+  return user.roles.includes(user.preferences?.role)
+    ? user.preferences.role
+    : ['admin', 'game-master', 'player', 'visitor'].find((role) => user.roles.includes(role));
+}
+
+export function updateHeroesIdentity(file, action) {
+  return transact(file, action);
 }
 
 function throttle(state, label, limit = 10) {
@@ -285,6 +329,10 @@ export async function heroesIdentityAction(action, body, context) {
           roleRequests: true,
           playRelationships: true,
           wurmAccess: true,
+          preferences: true,
+          impersonation: true,
+          approvedCopies: true,
+          subscriptions: true,
         },
       };
     if (['register', 'setup', 'login', 'invite/redeem'].includes(action)) {
@@ -371,17 +419,39 @@ export async function heroesIdentityAction(action, body, context) {
         enrollmentRequired: user.roles.includes('admin') && !user.mfa,
       };
     }
-    const { user, entry } = session(state, bearer, origin, false);
+    const release = action === 'impersonation/release';
+    const { user, entry, actor } = session(state, bearer, origin, false, !release);
     if (action === 'me')
       return {
-        user: publicUser(user, state),
-        mfaRequired: Boolean(user.mfa && !entry.mfa),
-        enrollmentRequired: user.roles.includes('admin') && !user.mfa,
+        user: {
+          ...publicUser(user, state),
+          roles: activeRoles(user, entry),
+          assignedRoles: [...user.roles],
+          activeRole: activeRoles(user, entry)[0],
+          impersonation: entry.impersonation
+            ? {
+                actorId: actor.id,
+                actorName: actor.username,
+                preview: Boolean(entry.impersonation.previewRoot),
+              }
+            : null,
+        },
+        mfaRequired: Boolean(actor.mfa && !entry.mfa),
+        enrollmentRequired: actor.roles.includes('admin') && !actor.mfa,
       };
     if (action === 'logout') {
+      if (entry.impersonation) throw httpError(409, 'Release impersonation before logging out');
       state.sessions = state.sessions.filter((item) => item !== entry);
       return { loggedOut: true };
     }
+    if (
+      entry.impersonation &&
+      /^(?:mfa\/|password$|closure\/|admin\/|roles\/|impersonation\/start)/.test(action)
+    )
+      throw httpError(
+        403,
+        'Release impersonation before changing account security or administrator settings'
+      );
     if (action === 'mfa/start') {
       if (user.mfa) throw httpError(409, 'Two-factor authentication is already enabled');
       if (Date.now() - entry.passwordAt > 5 * 60 * 1000)
@@ -425,9 +495,304 @@ export async function heroesIdentityAction(action, body, context) {
       delete state.attempts[`mfa:${user.id}`];
       return { user: publicUser(user, state) };
     }
-    session(state, bearer, origin);
+    session(state, bearer, origin, true, !release);
+    state.impersonationAudit ||= [];
+    state.impersonationApprovals ||= [];
+    if (release) {
+      const current = entry.impersonation;
+      if (!current) throw httpError(409, 'No impersonation is active');
+      if (current.previewRoot) removePreview(current.previewRoot);
+      state.impersonationAudit.push({
+        id: crypto.randomUUID(),
+        actorId: user.id,
+        targetId: current.userId,
+        role: current.role,
+        action: 'release',
+        at: new Date().toISOString(),
+      });
+      delete entry.impersonation;
+      for (const pending of state.impersonationApprovals)
+        if (pending.sessionHash === entry.hash && pending.status === 'pending')
+          pending.status = 'rejected';
+      return { released: true };
+    }
+    if (action === 'impersonation/start') {
+      if (!activeRoles(user, entry).includes('admin') || entry.impersonation)
+        throw httpError(
+          403,
+          'Select administrator role and release any current impersonation first'
+        );
+      if (body.userId === user.id) throw httpError(400, 'Choose another account');
+      const target = body.userId
+        ? state.users.find((item) => item.id === body.userId && !item.disabled)
+        : null;
+      if (body.userId && !target) throw httpError(404, 'Active target account not found');
+      const role = body.role || (target && preferredRole(target));
+      if (!roles.has(role) || (target && !target.roles.includes(role)))
+        throw httpError(400, 'Select a role assigned to the target account');
+      const current = { userId: target?.id || null, role, startedAt: Date.now() };
+      if (!target) {
+        const previewRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'heroes-preview-'));
+        fs.chmodSync(previewRoot, 0o700);
+        current.previewRoot = previewRoot;
+        current.previewUser = {
+          id: crypto.randomUUID(),
+          username: `preview-${role}`,
+          roles: [role],
+          disabled: false,
+          provider: 'preview',
+          mfa: 'preview-only',
+          preferences: { theme: user.preferences?.theme || 'dark', locations: {} },
+        };
+        const previewState = {
+          version: 1,
+          users: [current.previewUser],
+          grants: [],
+          ownership: [],
+          sessions: [
+            {
+              hash: hash(bearer),
+              userId: current.previewUser.id,
+              origin,
+              mfa: true,
+              activeRole: role,
+              expiresAt: entry.expiresAt,
+              passwordAt: Date.now(),
+            },
+          ],
+          attempts: {},
+          nameCultures: state.nameCultures,
+        };
+        save(path.join(previewRoot, 'identity.json'), previewState);
+      }
+      entry.impersonation = current;
+      state.impersonationAudit.push({
+        id: crypto.randomUUID(),
+        actorId: actor.id,
+        targetId: target?.id || null,
+        role,
+        action: 'start',
+        preview: !target,
+        at: new Date().toISOString(),
+      });
+      return { started: true, preview: !target };
+    }
+    if (action === 'impersonation/status') {
+      const pending = state.impersonationApprovals.filter(
+        (item) => item.targetId === actor.id && item.status === 'pending'
+      );
+      return {
+        approvals: pending.map(
+          ({ fingerprint: _fingerprint, sessionHash: _sessionHash, ...item }) => item
+        ),
+        outgoing: state.impersonationApprovals
+          .filter((item) => item.actorId === actor.id && item.status === 'pending')
+          .map(({ id, summary, expiresAt }) => ({ id, summary, expiresAt })),
+        audit:
+          activeRoles(user, entry).includes('admin') && !entry.impersonation
+            ? state.impersonationAudit
+            : [],
+      };
+    }
+    if (action === 'impersonation/cancel') {
+      const approval = state.impersonationApprovals.find(
+        (item) => item.id === body.id && item.actorId === actor.id
+      );
+      if (!approval || approval.status !== 'pending')
+        throw httpError(409, 'Pending update not found');
+      approval.status = 'rejected';
+      state.impersonationAudit.push({
+        id: crypto.randomUUID(),
+        actorId: actor.id,
+        targetId: approval.targetId,
+        action: 'approval-cancel',
+        approvalId: approval.id,
+        at: new Date().toISOString(),
+      });
+      return { cancelled: true };
+    }
+    if (action === 'impersonation/respond') {
+      if (entry.impersonation)
+        throw httpError(403, 'Only the real account session can review impersonation updates');
+      const approval = state.impersonationApprovals.find(
+        (item) => item.id === body.id && item.targetId === user.id
+      );
+      if (!approval || approval.status !== 'pending' || Date.now() >= approval.expiresAt)
+        throw httpError(
+          409,
+          'This approval is unavailable or its five-minute response window has expired'
+        );
+      if (!['approve', 'reject'].includes(body.decision))
+        throw httpError(400, 'Choose Approve or Reject');
+      approval.status = body.decision === 'approve' ? 'approved' : 'rejected';
+      state.impersonationAudit.push({
+        id: crypto.randomUUID(),
+        actorId: user.id,
+        action: `approval-${body.decision}`,
+        approvalId: approval.id,
+        at: new Date().toISOString(),
+      });
+      return { saved: true };
+    }
+    if (action === 'role/select') {
+      if (!user.roles.includes(body.role)) throw httpError(403, 'Select an assigned role');
+      if (entry.impersonation) entry.impersonation.role = body.role;
+      else entry.activeRole = body.role;
+      user.preferences ||= { theme: 'dark', locations: {} };
+      user.preferences.role = body.role;
+      return { selectedRole: body.role, location: user.preferences.locations?.[body.role] || null };
+    }
+    if (action === 'preferences/save') {
+      user.preferences ||= { theme: 'dark', locations: {} };
+      if (body.theme !== undefined) {
+        if (!['dark', 'light'].includes(body.theme))
+          throw httpError(400, 'Choose Light or Dark mode');
+        user.preferences.theme = body.theme;
+      }
+      if (body.location !== undefined) {
+        if (
+          typeof body.location !== 'string' ||
+          body.location.length > 2048 ||
+          !/^\/site\/heroes\/(?:[a-z-]+\/)*(?:\?[^#]*)?$/.test(body.location) ||
+          /\/(?:login|logout|register|setup)(?:\/|$)/.test(body.location)
+        )
+          throw httpError(400, 'Choose a workspace location on this site');
+        user.preferences.locations ||= {};
+        user.preferences.locations[activeRoles(user, entry)[0]] = body.location;
+      }
+      return { preferences: user.preferences };
+    }
+    if (action.startsWith('admin/') && !activeRoles(user, entry).includes('admin'))
+      throw httpError(403, 'Select the system-administrator role to use administrator controls');
+    if (action === 'admin/sessions/revoke') {
+      if (!state.users.some((account) => account.id === body.userId && account.id !== user.id))
+        throw httpError(400, 'Choose another existing account; use Logout for your own session');
+      const previous = state.sessions.length;
+      state.sessions = state.sessions.filter((session) => session.userId !== body.userId);
+      return { revoked: previous - state.sessions.length };
+    }
+    if (action === 'admin/play/revoke') {
+      const relationship = state.playRelationships.find(
+        (item) => item.id === body.id && ['pending', 'approved'].includes(item.status)
+      );
+      if (!relationship) throw httpError(404, 'Active relationship or invitation not found');
+      relationship.status = relationship.status === 'pending' ? 'cancelled' : 'ended';
+      relationship.resolvedAt = new Date().toISOString();
+      return { relationship };
+    }
+    if (action.startsWith('directory/') || action.startsWith('messages/')) {
+      const roles = activeRoles(user, entry);
+      const administrator = roles.includes('admin');
+      const relationships = state.playRelationships.filter(
+        (item) =>
+          ['pending', 'approved'].includes(item.status) &&
+          (administrator || item.playerId === user.id || item.gameMasterId === user.id)
+      );
+      const connected = (id) =>
+        relationships.some((item) => item.playerId === id || item.gameMasterId === id);
+      const contacted = (id) =>
+        state.messages?.some(
+          (message) =>
+            (message.from === user.id && message.to === id) ||
+            (message.to === user.id && message.from === id)
+        );
+      const visible = (account) =>
+        !account.disabled &&
+        (administrator ||
+          account.id === user.id ||
+          connected(account.id) ||
+          contacted(account.id) ||
+          account.roles.includes('admin') ||
+          (account.roles.includes('game-master') && account.listedAsGameMaster) ||
+          (account.roles.includes('player') && account.listedAsPlayer));
+      const label = (account) => {
+        const value = publicUser(account, state);
+        return {
+          id: value.id,
+          username: value.username,
+          displayName: value.displayName,
+          roles: value.roles,
+          online:
+            administrator || account.showOnline === true
+              ? state.sessions.some(
+                  (item) =>
+                    item.userId === account.id && item.expiresAt > Date.now() && !item.impersonation
+                )
+              : null,
+        };
+      };
+      if (action === 'directory/status')
+        return {
+          users: state.users.filter(visible).map(label),
+          relationships,
+          listing: {
+            gameMaster: user.listedAsGameMaster === true,
+            player: user.listedAsPlayer === true,
+            online: user.showOnline === true,
+          },
+        };
+      if (action === 'directory/online') {
+        if (typeof body.visible !== 'boolean')
+          throw httpError(400, 'Choose whether to publish online status');
+        user.showOnline = body.visible;
+        return { visible: body.visible };
+      }
+      if (action === 'directory/listing') {
+        const field =
+          body.role === 'player'
+            ? 'listedAsPlayer'
+            : body.role === 'game-master'
+              ? 'listedAsGameMaster'
+              : null;
+        if (!field || !roles.includes(body.role) || typeof body.visible !== 'boolean')
+          throw httpError(400, 'Select an active Player or Game Master role and a listing choice');
+        user[field] = body.visible;
+        return { listed: body.visible };
+      }
+      state.messages ||= [];
+      if (action === 'messages/list')
+        return {
+          messages: state.messages
+            .filter(
+              (message) =>
+                (message.from === user.id || message.to === user.id) &&
+                !message.hiddenFor.includes(user.id)
+            )
+            .map((message) => ({ ...message })),
+        };
+      if (action === 'messages/send') {
+        const recipient = state.users.find((account) => account.id === body.to && visible(account));
+        if (!recipient || recipient.id === user.id)
+          throw httpError(404, 'Choose an available directory account or relationship contact');
+        if (typeof body.text !== 'string' || !body.text.trim() || body.text.trim().length > 4000)
+          throw httpError(400, 'Enter a message of 1–4000 characters');
+        const blocked = throttle(state, `message:${user.id}`, 30);
+        if (blocked) return blocked;
+        const message = {
+          id: crypto.randomUUID(),
+          from: user.id,
+          to: recipient.id,
+          text: body.text.trim(),
+          createdAt: new Date().toISOString(),
+          hiddenFor: [],
+        };
+        state.messages.push(message);
+        return { message };
+      }
+      if (action === 'messages/remove') {
+        const message = state.messages.find(
+          (item) => item.id === body.id && (item.from === user.id || item.to === user.id)
+        );
+        if (!message) throw httpError(404, 'Message not found');
+        if (!message.hiddenFor.includes(user.id)) message.hiddenFor.push(user.id);
+        return { removed: true };
+      }
+      throw httpError(404, 'Unknown directory or message action');
+    }
     if (action === 'wurm/access') {
-      if (!user.roles.includes('admin') && user.wurmAccess !== true)
+      if (entry.impersonation)
+        throw httpError(403, 'Release impersonation before opening Wurm tools');
+      if (!activeRoles(user, entry).includes('admin') && user.wurmAccess !== true)
         throw httpError(
           403,
           'Wurm tools require system-administrator access or explicit delegation'
@@ -442,7 +807,7 @@ export async function heroesIdentityAction(action, body, context) {
         );
         return { username, displayName };
       };
-      const directory = user.roles.includes('player')
+      const directory = activeRoles(user, entry).includes('player')
         ? state.users
             .filter(
               (account) =>
@@ -466,21 +831,29 @@ export async function heroesIdentityAction(action, body, context) {
       };
     }
     if (action === 'play/listing') {
-      if (!user.roles.includes('game-master')) throw httpError(403, 'Game Master role required');
+      if (!activeRoles(user, entry).includes('game-master'))
+        throw httpError(403, 'Select the Game Master role');
       if (typeof body.visible !== 'boolean')
         throw httpError(400, 'Choose whether to list your Game Master name');
       user.listedAsGameMaster = body.visible;
       return { user: publicUser(user, state) };
     }
-    if (action === 'play/request') {
-      if (!user.roles.includes('player')) throw httpError(403, 'Player role required');
+    if (action === 'play/request' || action === 'play/invite') {
+      const invitation = action === 'play/invite';
+      if (!activeRoles(user, entry).includes(invitation ? 'game-master' : 'player'))
+        throw httpError(
+          403,
+          invitation
+            ? 'Select Game Master to invite a Player'
+            : 'Select Player to request a Game Master'
+        );
       const gm = state.users.find(
         (account) =>
           account.username === body.username &&
           account.id !== user.id &&
           !account.disabled &&
-          account.roles.includes('game-master') &&
-          account.listedAsGameMaster === true
+          account.roles.includes(invitation ? 'player' : 'game-master') &&
+          (invitation ? account.listedAsPlayer === true : account.listedAsGameMaster === true)
       );
       if (!gm)
         throw httpError(
@@ -488,7 +861,9 @@ export async function heroesIdentityAction(action, body, context) {
           'This Game Master is no longer listed. Refresh the available Game Masters.'
         );
       const previous = state.playRelationships.find(
-        (item) => item.playerId === user.id && item.gameMasterId === gm.id
+        (item) =>
+          item.playerId === (invitation ? gm.id : user.id) &&
+          item.gameMasterId === (invitation ? user.id : gm.id)
       );
       if (previous && ['pending', 'approved'].includes(previous.status))
         throw httpError(
@@ -498,8 +873,9 @@ export async function heroesIdentityAction(action, body, context) {
       state.playRelationships = state.playRelationships.filter((item) => item !== previous);
       const relationship = {
         id: crypto.randomUUID(),
-        playerId: user.id,
-        gameMasterId: gm.id,
+        playerId: invitation ? gm.id : user.id,
+        gameMasterId: invitation ? user.id : gm.id,
+        initiatedBy: invitation ? 'game-master' : 'player',
         status: 'pending',
         createdAt: new Date().toISOString(),
       };
@@ -515,7 +891,11 @@ export async function heroesIdentityAction(action, body, context) {
       const player = state.users.find((account) => account.id === relationship.playerId);
       const gm = state.users.find((account) => account.id === relationship.gameMasterId);
       if (body.decision === 'cancel') {
-        if (relationship.playerId !== user.id || relationship.status !== 'pending')
+        const requester =
+          relationship.initiatedBy === 'game-master'
+            ? relationship.gameMasterId
+            : relationship.playerId;
+        if (requester !== user.id || relationship.status !== 'pending')
           throw httpError(409, 'Only the requesting player can cancel a pending request');
         relationship.status = 'cancelled';
       } else if (body.decision === 'end') {
@@ -523,7 +903,11 @@ export async function heroesIdentityAction(action, body, context) {
           throw httpError(409, 'Only an approved relationship can be ended');
         relationship.status = 'ended';
       } else if (['approve', 'reject'].includes(body.decision)) {
-        if (relationship.gameMasterId !== user.id || !user.roles.includes('game-master'))
+        const invite = relationship.initiatedBy === 'game-master';
+        if (
+          (invite ? relationship.playerId : relationship.gameMasterId) !== user.id ||
+          !activeRoles(user, entry).includes(invite ? 'player' : 'game-master')
+        )
           throw httpError(403, 'Only the addressed Game Master can review this request');
         if (
           relationship.status !== 'pending' ||
@@ -640,7 +1024,10 @@ export async function heroesIdentityAction(action, body, context) {
         delete target[field];
       state.sessions = state.sessions.filter((item) => item.userId !== target.id);
       state.grants = state.grants.filter((item) => item.userId !== target.id);
-      state.ownership = state.ownership.filter((item) => item.userId !== target.id);
+      const steward = state.users.find((item) => !item.disabled && item.roles.includes('admin'));
+      state.ownership = state.ownership.map((item) =>
+        item.userId === target.id ? { ...item, userId: steward.id } : item
+      );
       state.transfers = state.transfers.filter(
         (item) => item.from !== target.id && item.to !== target.id
       );
@@ -750,6 +1137,9 @@ export async function heroesIdentityAction(action, body, context) {
         cleanup.deleted.map((item) => `${item.resourceType}:${item.resourceId}`)
       );
       state.grants = state.grants.filter(
+        (item) => !removed.has(`${item.resourceType}:${item.resourceId}`)
+      );
+      state.ownership = state.ownership.filter(
         (item) => !removed.has(`${item.resourceType}:${item.resourceId}`)
       );
       removeAccount(user);
@@ -919,18 +1309,131 @@ export async function heroesIdentityAction(action, body, context) {
 
 export function heroesPrincipal(bearer, origin, file = heroesIdentityPath()) {
   const state = read(file);
-  const { user } = session(state, bearer, origin);
+  const { user, entry } = session(state, bearer, origin);
   return {
     id: user.id,
-    roles: [...user.roles],
+    impersonating: Boolean(entry.impersonation),
+    roles: activeRoles(user, entry),
     grants: state.grants.filter((grant) => grant.userId === user.id),
     wurmAccess: user.wurmAccess === true,
+    ...sharingPrincipal(state, user, activeRoles(user, entry)),
   };
 }
 
+export function heroesRequestContext(bearer, origin, file, databaseFile, complete = true) {
+  const state = read(file);
+  const { entry, actor } = session(state, bearer, origin, complete, false);
+  const impersonation = entry.impersonation;
+  return {
+    actorId: actor.id,
+    sessionHash: entry.hash,
+    impersonation,
+    identityFile: impersonation?.previewRoot
+      ? path.join(impersonation.previewRoot, 'identity.json')
+      : file,
+    databaseFile: impersonation?.previewRoot
+      ? path.join(impersonation.previewRoot, 'heroes.db')
+      : databaseFile,
+  };
+}
+
+function sharingPrincipal(state, current, roles = []) {
+  return {
+    ownership: state.ownership || [],
+    accounts: state.users
+      .filter((user) => !user.disabled)
+      .map((user) => ({
+        id: user.id,
+        username: user.username,
+        roles: [...user.roles],
+        discoverable: Boolean(
+          current &&
+          (roles.includes('admin') ||
+            current.id === user.id ||
+            user.roles.includes('admin') ||
+            user.listedAsPlayer ||
+            user.listedAsGameMaster ||
+            state.ownership?.some(
+              (item) =>
+                item.userId === current.id &&
+                (item.editors?.includes(user.id) ||
+                  item.publication?.viewers?.includes(user.id) ||
+                  item.creatorId === user.id)
+            ) ||
+            state.playRelationships?.some(
+              (item) =>
+                ['pending', 'approved'].includes(item.status) &&
+                ((item.playerId === current.id && item.gameMasterId === user.id) ||
+                  (item.gameMasterId === current.id && item.playerId === user.id))
+            ))
+        ),
+      })),
+    relationships: (state.playRelationships || []).filter((item) => item.status === 'approved'),
+    scopeInvitations: state.scopeInvitations || [],
+    subscriptions: state.subscriptions || [],
+    objectPermissions: state.objectPermissions || [],
+  };
+}
+
+export function heroesPublicPrincipal(file = heroesIdentityPath()) {
+  return { id: null, roles: [], grants: [], ...sharingPrincipal(read(file)) };
+}
+
+export function saveHeroesSharing(principal, resource, body, file = heroesIdentityPath()) {
+  return transact(file, (state) => {
+    let owner = state.ownership.find(
+      (item) => item.resourceType === resource.type && item.resourceId === resource.id
+    );
+    if (!owner && principal.roles.includes('admin') && body.adopt === true) {
+      owner = { userId: principal.id, resourceType: resource.type, resourceId: resource.id };
+      state.ownership.push(owner);
+    }
+    if (!owner || (!principal.roles.includes('admin') && owner.userId !== principal.id))
+      throw httpError(
+        403,
+        'Only the content owner or system administrator can change publication and editors'
+      );
+    const audiences = [
+      'private',
+      'public',
+      'player-group',
+      'gm-group',
+      'campaign',
+      'world',
+      'genre',
+      'campaign-group',
+      'world-group',
+      'genre-group',
+    ];
+    if (!audiences.includes(body.audience))
+      throw httpError(400, 'Choose a supported publication audience');
+    for (const key of ['editors', 'viewers']) {
+      if (
+        !Array.isArray(body[key]) ||
+        body[key].some((id) => !state.users.some((user) => user.id === id && !user.disabled))
+      )
+        throw httpError(400, 'Select existing active accounts for editors and audience members');
+    }
+    owner.editors = [...new Set(body.editors)];
+    owner.publication = {
+      audience: body.audience,
+      scopeId: typeof body.scopeId === 'string' ? body.scopeId : '',
+      viewers: [...new Set(body.viewers)],
+    };
+    return { saved: true, ownerId: owner.userId };
+  });
+}
+
 export function canAccess(principal, type, id, write = false) {
+  const owned = principal.ownership?.find(
+    (item) => item.resourceType === type && item.resourceId === id
+  );
   return (
     principal.roles.includes('admin') ||
+    (principal.id && (owned?.userId === principal.id || owned?.editors?.includes(principal.id))) ||
+    (!write &&
+      (owned?.publication?.audience === 'public' ||
+        (principal.id && owned?.readers?.includes(principal.id)))) ||
     principal.grants.some(
       (grant) =>
         grant.resourceType === type &&
@@ -955,9 +1458,16 @@ export function recordHeroesResources(principal, created, removed, file = heroes
     state.grants = state.grants.filter(
       (item) => !deleted.has(`${item.resourceType}:${item.resourceId}`)
     );
-    for (const { resourceType: type, resourceId: id } of created) {
+    for (const resource of created) {
+      const { resourceType: type, resourceId: id } = resource;
       if (!state.ownership.some((item) => item.resourceType === type && item.resourceId === id))
-        state.ownership.push({ userId: principal.id, resourceType: type, resourceId: id });
+        state.ownership.push({
+          userId: principal.id,
+          creatorId: Object.hasOwn(resource, 'creatorId') ? resource.creatorId : principal.id,
+          ...(resource.provenance ? { provenance: resource.provenance } : {}),
+          resourceType: type,
+          resourceId: id,
+        });
       if (
         !state.grants.some(
           (grant) =>

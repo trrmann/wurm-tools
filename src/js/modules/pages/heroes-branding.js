@@ -4,10 +4,16 @@ import {
   heroesPageHref,
   heroesAccessPages,
 } from './heroes-navigation.js';
-import { HEROES_ROLE_LABELS, heroesAccountLabel } from '../../tools/heroes/session.js';
+import {
+  HEROES_ROLE_LABELS,
+  heroesAccountLabel,
+  identityRequest,
+} from '../../tools/heroes/session.js';
+import { heroesRoleLocation } from '../../tools/heroes/preferences.js';
 
 export function applyHeroesBranding(container, access = null) {
   document.documentElement.dataset.game = 'heroes';
+  document.documentElement.dataset.heroesTheme = access?.user?.preferences?.theme || 'dark';
   const title = container.querySelector('.sidebar-title');
   const subtitle = container.querySelector('.sidebar-subtitle');
   const logo = container.querySelector('.logo-badge img');
@@ -19,18 +25,96 @@ export function applyHeroesBranding(container, access = null) {
       : 'HERO System workspace';
   const header = container.querySelector('.header-title-container');
   if (header) {
-    let identity = header.querySelector('.heroes-signed-in');
-    if (!identity) {
-      identity = document.createElement('p');
-      identity.className = 'heroes-signed-in';
-      identity.setAttribute('aria-live', 'polite');
-      header.append(identity);
+    header.querySelector('.heroes-signed-in')?.remove();
+    header.querySelector('.heroes-role-switcher')?.remove();
+    if (access?.stage === 'ready') {
+      const label = document.createElement('label');
+      label.className = 'heroes-role-switcher';
+      label.textContent = 'Active role ';
+      const assigned = access.user.assignedRoles || access.user.roles;
+      const select = document.createElement(assigned.length > 1 ? 'select' : 'span');
+      select.className = 'custom-select';
+      select.setAttribute('aria-label', 'Active role');
+      for (const role of assigned.length > 1 ? assigned : []) {
+        const option = document.createElement('option');
+        option.value = role;
+        option.textContent = HEROES_ROLE_LABELS[role] || role;
+        select.append(option);
+      }
+      select.value = access.user.activeRole || access.user.roles[0];
+      if (assigned.length === 1)
+        select.textContent = HEROES_ROLE_LABELS[assigned[0]] || assigned[0];
+      const status = document.createElement('span');
+      status.setAttribute('role', 'status');
+      select.addEventListener('change', async () => {
+        select.disabled = true;
+        try {
+          const result = await identityRequest('role/select', { role: select.value });
+          window.location.replace(heroesRoleLocation(select.value, result.location));
+        } catch (error) {
+          status.textContent = error.message;
+          select.value = access.user.activeRole || access.user.roles[0];
+          select.disabled = false;
+        }
+      });
+      label.append(select, status);
+      header.append(label);
     }
-    identity.textContent = access?.user
-      ? `Signed in as ${heroesAccountLabel(access.user)}${access.stage === 'mfa' ? ' (verification required)' : ''}`
-      : '';
-    identity.title = identity.textContent;
-    identity.hidden = !access?.user;
+  }
+  const top = container.querySelector('.top-header');
+  if (top && access?.stage === 'ready') {
+    top.querySelector('.heroes-session-actions')?.remove();
+    const actions = document.createElement('div');
+    actions.className = 'heroes-session-actions';
+    const themeLabel = document.createElement('label');
+    themeLabel.textContent = 'Appearance ';
+    const theme = document.createElement('select');
+    theme.setAttribute('aria-label', 'Appearance');
+    for (const value of ['dark', 'light']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value === 'dark' ? 'Dark' : 'Light';
+      theme.append(option);
+    }
+    theme.value = access.user.preferences?.theme || 'dark';
+    const status = document.createElement('span');
+    status.setAttribute('role', 'status');
+    theme.addEventListener('change', async () => {
+      theme.disabled = true;
+      try {
+        await identityRequest('preferences/save', { theme: theme.value });
+        document.documentElement.dataset.heroesTheme = theme.value;
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        theme.disabled = false;
+      }
+    });
+    themeLabel.append(theme);
+    actions.append(themeLabel, status);
+    const exit = document.createElement(access.user.impersonation ? 'button' : 'a');
+    exit.className = 'btn';
+    exit.textContent = access.user.impersonation ? 'Release' : 'Logout';
+    if (access.user.impersonation) {
+      exit.type = 'button';
+      exit.addEventListener('click', async () => {
+        exit.disabled = true;
+        try {
+          await identityRequest('impersonation/release', {});
+          window.location.replace('/site/heroes/people/admins/');
+        } catch (error) {
+          status.textContent = error.message;
+          exit.disabled = false;
+        }
+      });
+      const notice = document.createElement('span');
+      notice.textContent = access.user.impersonation.preview
+        ? 'Disposable role preview - changes are discarded on Release'
+        : `Impersonating - actor: ${access.user.impersonation.actorName}`;
+      actions.append(notice);
+    } else exit.href = '/site/heroes/logout/';
+    actions.append(exit);
+    top.append(actions);
   }
   if (logo) {
     logo.alt = 'Heros Tools';

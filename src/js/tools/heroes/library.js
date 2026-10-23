@@ -8,9 +8,18 @@ import {
 } from '../../modules/objects/heroes/definition-library.mjs';
 import { generateHerosObject } from '../../modules/objects/heroes.mjs';
 
-export function mountDefinitionLibrary(container, { request, onChange, downloadJson, signal }) {
+export function mountDefinitionLibrary(
+  container,
+  { request, onChange, downloadJson, signal, accountRoles = [], writable = {}, deletable = {} }
+) {
   container.innerHTML = template;
+  const administrator = accountRoles.includes('admin');
+  const creator =
+    administrator || accountRoles.some((role) => ['game-master', 'player'].includes(role));
   const element = (id) => container.querySelector(`#heroes-${id}`);
+  element('anatomy-form').hidden = !creator;
+  element('library-export').hidden = !administrator;
+  element('library-import').closest('label').hidden = !administrator;
   const types = getAnatomyTypes();
   const typeSelect = element('anatomy-type');
   for (const type of types) typeSelect.add(new Option(`${type.label} (${type.kind})`, type.type));
@@ -98,7 +107,15 @@ export function mountDefinitionLibrary(container, { request, onChange, downloadJ
       const title = document.createElement('strong');
       title.textContent = `${entry.name} · ${entry.kind}`;
       row.append(title);
-      if (entry.kind !== 'object') {
+      const editable = administrator || writable.library?.includes(entry.id);
+      const preview = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'View definition';
+      const definition = document.createElement('pre');
+      definition.textContent = JSON.stringify(entry.definition, null, 2);
+      preview.append(summary, definition);
+      row.append(preview);
+      if (editable && entry.kind !== 'object') {
         const edit = document.createElement('button');
         edit.className = 'btn';
         edit.textContent = 'Edit';
@@ -111,7 +128,7 @@ export function mountDefinitionLibrary(container, { request, onChange, downloadJ
           render();
         });
         row.append(edit);
-      } else {
+      } else if (editable) {
         const edit = document.createElement('button');
         edit.className = 'btn';
         edit.type = 'button';
@@ -129,6 +146,7 @@ export function mountDefinitionLibrary(container, { request, onChange, downloadJ
       remove.className = 'btn';
       remove.textContent = 'Delete (convert references to copies)';
       remove.setAttribute('aria-label', `Delete library ${entry.name}`);
+      remove.hidden = !administrator && !deletable.library?.includes(entry.id);
       remove.addEventListener('click', async () => {
         try {
           await request(`/heroes/library/${encodeURIComponent(entry.id)}`, { method: 'DELETE' });
@@ -230,6 +248,12 @@ export function mountDefinitionLibrary(container, { request, onChange, downloadJ
         method: editingId ? 'PUT' : 'POST',
         body: JSON.stringify({ name: draft.name, kind: selectedType().kind, definition: draft }),
       });
+      if (!editingId) {
+        writable.library ||= [];
+        writable.library.push(entry.id);
+        deletable.library ||= [];
+        deletable.library.push(entry.id);
+      }
       editingId = entry.id;
       await refresh();
       state(`Saved ${entry.name}. Live uses refresh when loaded or regenerated.`);

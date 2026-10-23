@@ -11,6 +11,105 @@
   margin: 3rem auto;
 }
 
+.heroes-public-entry {
+  max-width: 36rem;
+  margin: 1rem auto;
+  padding-inline: 1rem;
+}
+
+.heroes-workspace pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.heroes-role-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+}
+
+.heroes-role-switcher select {
+  max-width: 100%;
+}
+
+.heroes-session-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-left: auto;
+  max-width: 100%;
+}
+
+.heroes-session-actions > .btn {
+  order: 10;
+}
+
+.heroes-impersonation-controls {
+  padding-inline: 1rem;
+  overflow-wrap: anywhere;
+}
+
+:root[data-game='heroes'][data-heroes-theme='dark'] {
+  color-scheme: dark;
+}
+
+:root[data-game='heroes'][data-heroes-theme='light'] {
+  color-scheme: light;
+  --bg-primary: #f4f7fb;
+  --bg-secondary: #e8eff7;
+  --bg-tertiary: #dce6f2;
+  --bg-card: #fff;
+  --bg-card-hover: #eaf3fc;
+  --border-color: #9aacc2;
+  --border-focus: #12638a;
+  --text-main: #172b42;
+  --text-muted: #425b76;
+  --text-dim: #53657a;
+  --accent-gold: #12638a;
+  --accent-gold-hover: #084b6d;
+  --accent-amber: #1c7199;
+  --accent-blue: #075b9a;
+  --accent-green: #136b48;
+  --accent-red: #ae2639;
+  --accent-purple: #77439e;
+}
+
+:root[data-game='heroes'][data-heroes-theme='light'] .top-header {
+  background: color-mix(in srgb, var(--bg-secondary) 95%, transparent);
+}
+
+:root[data-game='heroes'][data-heroes-theme='light'] .btn-primary {
+  color: #fff;
+}
+
+:root[data-game='heroes'][data-heroes-theme='light'] .btn-danger {
+  color: var(--accent-red);
+}
+
+.heroes-read-only button,
+.heroes-read-only .heroes-typed-controls,
+.heroes-read-only #heroes-model-entry-title,
+.heroes-read-only .heroes-nested-builder {
+  display: none;
+}
+
+.heroes-directory {
+  margin-bottom: 1.5rem;
+}
+
+.heroes-no-sidebar .main-wrapper {
+  margin-left: 0;
+}
+
+:root[data-game='heroes'] #sidebar[hidden],
+:root[data-game='heroes'] #mobile-menu-toggle[hidden] {
+  display: none;
+}
+
 :root[data-game='heroes'] .main-wrapper {
   min-width: 0;
 }
@@ -607,6 +706,42 @@
   flex-wrap: wrap;
   gap: 0.6rem;
   margin-top: 0.25rem;
+}
+
+.heroes-optional-tools {
+  margin-block: 0.8rem;
+}
+
+.heroes-optional-tools > summary {
+  cursor: pointer;
+  color: var(--accent-gold);
+  padding-block: 0.5rem;
+}
+
+.heroes-object-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+#heroes-object-list > li {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+
+#heroes-object-list > li[hidden] {
+  display: none;
+}
+
+#heroes-create-object {
+  margin-bottom: 0.8rem;
+}
+
+#heroes-object-name,
+#heroes-object-sheet,
+#heroes-editor-save,
+.heroes-editor-panel {
+  scroll-margin-top: calc(var(--header-height) + 1rem);
 }
 
 .heroes-equation-readout {

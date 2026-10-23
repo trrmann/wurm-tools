@@ -708,6 +708,13 @@ export function deleteUnsharedHeroesData(
     );
     for (const grant of grants)
       if (grant.userId !== userId) retained.add(key(grant.resourceType, grant.resourceId));
+    for (const item of ownership)
+      if (
+        item.userId === userId &&
+        (item.editors?.some((id) => id !== userId) ||
+          (item.publication?.audience && item.publication.audience !== 'private'))
+      )
+        retained.add(key(item.resourceType, item.resourceId));
     const links = [];
     const link = (source, type, id) => {
       if (id) links.push([source, key(type, id)]);
@@ -995,7 +1002,11 @@ export function exportHeroesManagement(scope = {}, filePath = heroesDatabasePath
       format: 'heros-tools-management',
       version: 2,
       exportedAt: new Date().toISOString(),
-      records,
+      records: records.map((record) => {
+        const data = { ...record.data };
+        delete data.accountId;
+        return { ...record, data };
+      }),
       worlds: state.worlds.filter((world) => includedWorlds.has(world.id)),
       objects: objects.map((object) => ({
         ...object,
@@ -1016,7 +1027,11 @@ export function exportHeroesManagement(scope = {}, filePath = heroesDatabasePath
   });
 }
 
-export function importHeroesManagement(source, filePath = heroesDatabasePath()) {
+export function importHeroesManagement(
+  source,
+  filePath = heroesDatabasePath(),
+  { includeResources = false } = {}
+) {
   return withDatabase(filePath, true, (db) => {
     if (
       source?.format !== 'heros-tools-management' ||
@@ -1093,6 +1108,7 @@ export function importHeroesManagement(source, filePath = heroesDatabasePath()) 
       let data;
       try {
         data = normalizeManagementRecord(record.kind, record.data);
+        delete data.accountId;
       } catch (error) {
         if (!(error instanceof TypeError || error instanceof RangeError)) throw error;
         throw httpError(400, error.message);
@@ -1130,6 +1146,31 @@ export function importHeroesManagement(source, filePath = heroesDatabasePath()) 
         ]
       );
     for (const record of records) writeManagementRecord(db, record);
-    return { imported: records.length, worlds: worlds.length, objects: objects.length };
+    return {
+      imported: records.length,
+      worlds: worlds.length,
+      objects: objects.length,
+      ...(includeResources
+        ? {
+            resources: [
+              ...source.worlds.map((item) => ({
+                resourceType: 'world',
+                sourceId: item.id,
+                resourceId: mapId(item.id),
+              })),
+              ...source.objects.map((item) => ({
+                resourceType: 'object',
+                sourceId: item.id,
+                resourceId: mapId(item.id),
+              })),
+              ...source.records.map((item) => ({
+                resourceType: 'record',
+                sourceId: item.id,
+                resourceId: mapId(item.id),
+              })),
+            ],
+          }
+        : {}),
+    };
   });
 }

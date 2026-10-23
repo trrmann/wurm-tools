@@ -57,7 +57,9 @@ beforeEach(async () => {
   await call('setup', { setupCode, username: 'administrator', password });
   admin = await call('login', { username: 'administrator', password });
   const enrollment = await call('mfa/start', {}, admin.token);
-  await call('mfa/confirm', { code: totpCode(enrollment.secret) }, admin.token);
+  admin.recoveryCodes = (
+    await call('mfa/confirm', { code: totpCode(enrollment.secret) }, admin.token)
+  ).recoveryCodes;
   owner = await account('owner');
   recipient = await account('recipient');
 });
@@ -183,13 +185,26 @@ describe('self-service HERO account closure', () => {
     expect((await call('closure/status', {}, owner.token)).outgoing).toHaveLength(0);
   });
 
-  it('tracks creator ownership on actual helper routes, including administrator creations and generated scope records', async () => {
+  it('tracks creator ownership on actual helper routes, including administrator accounts in a content role and generated scope records', async () => {
     const server = createServer({
       env: { HEROES_IDENTITY_PATH: identity, WURM_HEROES_DB_PATH: database },
     });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
     try {
+      await call(
+        'admin/user',
+        {
+          userId: admin.user.id,
+          roles: ['admin', 'game-master'],
+          disabled: false,
+        },
+        admin.token
+      );
+      const login = await call('login', { username: 'administrator', password });
+      await call('mfa/verify', { code: admin.recoveryCodes[0] }, login.token);
+      admin.token = login.token;
+      await call('role/select', { role: 'game-master' }, admin.token);
       const response = await fetch(`${base}/heroes/objects`, {
         method: 'POST',
         headers: {
@@ -205,6 +220,7 @@ describe('self-service HERO account closure', () => {
       });
       expect(status.status).toBe(200);
       expect(await status.json()).toMatchObject({ ownedCount: 2, incoming: [], outgoing: [] });
+      await call('role/select', { role: 'admin' }, admin.token);
       await call(
         'admin/user',
         {
@@ -254,6 +270,7 @@ describe('self-service HERO account closure', () => {
       expect(await closed.json()).toMatchObject({ closed: true, deleted: 2 });
       expect((await listHeroesManagement(database)).objects).toHaveLength(1);
       const adminObject = (await listHeroesManagement(database)).objects[0];
+      await call('role/select', { role: 'game-master' }, admin.token);
       const deleted = await fetch(`${base}/heroes/objects/${adminObject.id}`, {
         method: 'DELETE',
         headers: { Origin: origin, 'X-Heroes-Session': admin.token },

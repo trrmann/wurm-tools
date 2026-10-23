@@ -46,10 +46,27 @@ export function unmount() {
   controller = null;
 }
 
-export function mount(container, { page = null } = {}) {
+export function mount(
+  container,
+  { page = null, accountRoles = [], writable = {}, deletable = {}, owned = {} } = {}
+) {
   unmount();
   controller = new AbortController();
   const { signal } = controller;
+  const administrator = accountRoles.includes('admin');
+  const creator =
+    administrator || accountRoles.some((role) => ['game-master', 'player'].includes(role));
+  const canWrite = (type, id) => administrator || writable[type]?.includes(id) === true;
+  const rememberCreated = (type, id) => {
+    owned[type] ||= [];
+    if (!owned[type].includes(id)) owned[type].push(id);
+    writable[type] ||= [];
+    if (!writable[type].includes(id)) writable[type].push(id);
+    if (['world', 'object', 'library'].includes(type)) {
+      deletable[type] ||= [];
+      if (!deletable[type].includes(id)) deletable[type].push(id);
+    }
+  };
   container.innerHTML = fill(getShell(template), {});
   if (page) {
     container.querySelector('#heroes-page-title').textContent = page.title;
@@ -139,6 +156,25 @@ export function mount(container, { page = null } = {}) {
   const objectForm = element('#heroes-object-form');
   const objectList = element('#heroes-object-list');
   const objectCount = element('#heroes-object-count');
+  const objectSearch = element('#heroes-object-search');
+  const createObjectButton = element('#heroes-create-object');
+  const entryLabel =
+    page?.editor === 'player-character'
+      ? 'player character'
+      : page?.editor === 'non-player-character'
+        ? 'non-player character'
+        : 'object';
+  const collectionLabel =
+    page && !['worlds', 'library'].includes(page.editor) ? page.title : 'Objects';
+  element('#heroes-collection-title').textContent = collectionLabel;
+  if (page && !['worlds', 'library'].includes(page.editor))
+    element('#heroes-world-title').textContent = `Saved ${collectionLabel.toLowerCase()}`;
+  element('#heroes-editor-title').textContent = creator
+    ? `Create ${entryLabel}`
+    : `Select a saved ${entryLabel} to view`;
+  element('.heroes-save-object').textContent = `Save ${entryLabel}`;
+  createObjectButton.textContent = `Create ${entryLabel}`;
+  createObjectButton.hidden = !creator || ['worlds', 'library'].includes(page?.editor);
   const equationElementList = element('#heroes-equation-elements');
   const typedElementList = element('#heroes-sheet-sections');
   const equationReadout = element('#heroes-equation-readout');
@@ -164,6 +200,9 @@ export function mount(container, { page = null } = {}) {
     request,
     downloadJson,
     signal,
+    accountRoles,
+    writable,
+    deletable,
     onChange: async (entries) => {
       const removed = libraryEntries.filter(
         (previous) => !entries.some((entry) => entry.id === previous.id)
@@ -238,17 +277,27 @@ export function mount(container, { page = null } = {}) {
   }
 
   function setEditorEnabled(enabled) {
+    createObjectButton.disabled = !enabled || !creator;
     worldForm.querySelectorAll('input, button').forEach((control) => {
       control.disabled = !enabled;
     });
     worldSelect.disabled = !enabled;
-    worldExportButton.disabled = !enabled || !activeWorldId;
-    worldDeleteButton.disabled = !enabled || !activeWorldId;
-    worldImportInput.disabled = !enabled;
-    objectImportInput.disabled = !enabled;
+    worldExportButton.disabled = !enabled || !activeWorldId || !administrator;
+    worldDeleteButton.disabled =
+      !enabled || !activeWorldId || !deletable.world?.includes(activeWorldId);
+    worldImportInput.disabled = !enabled || !administrator;
+    objectImportInput.disabled =
+      !enabled || !creator || (activeWorldId && !canWrite('world', activeWorldId));
     objectForm.querySelectorAll('input, select, textarea, button').forEach((control) => {
-      control.disabled = !enabled;
+      control.disabled =
+        !enabled || (editingObjectId ? !canWrite('object', editingObjectId) : !creator);
     });
+    objectForm.classList.toggle(
+      'heroes-read-only',
+      editingObjectId ? !canWrite('object', editingObjectId) : !creator
+    );
+    worldForm.querySelector('button').disabled =
+      !enabled || !(administrator || accountRoles.includes('game-master'));
   }
 
   function updatePointLevelFields() {
@@ -1108,14 +1157,15 @@ export function mount(container, { page = null } = {}) {
     containedObjects.length = 0;
     resetEquationForm();
     pointValueInput.value = '0';
-    element('#heroes-editor-title').textContent = 'Create object';
-    element('.heroes-save-object').textContent = 'Save object';
+    element('#heroes-editor-title').textContent = `Create ${entryLabel}`;
+    element('.heroes-save-object').textContent = `Save ${entryLabel}`;
     element('#heroes-cancel-edit').hidden = true;
     element('#heroes-object-kind').dispatchEvent(new Event('change'));
     resetTypedForm();
     renderEquationElements();
     renderTypedElements();
     updateEquationReadout();
+    setEditorEnabled(Boolean(heroesSessionToken()));
   }
 
   objectBodyShapeSelect.addEventListener('change', () => {
@@ -1184,17 +1234,56 @@ export function mount(container, { page = null } = {}) {
     containedObjects.splice(0, containedObjects.length, ...(definition.containedObjects ?? []));
     objectKindSelect.dispatchEvent(new Event('change'));
     resetTypedForm();
-    element('#heroes-editor-title').textContent = `Edit ${object.name}`;
-    element('.heroes-save-object').textContent = 'Update object';
+    element('#heroes-editor-title').textContent =
+      `${canWrite('object', object.id) ? 'Edit' : 'View'} ${object.name}`;
+    element('.heroes-save-object').textContent = `Update ${entryLabel}`;
     element('#heroes-cancel-edit').hidden = false;
     renderEquationElements();
     renderTypedElements();
     updateEquationReadout();
+    element('#heroes-saved-tools').open = Boolean(
+      bodyShapeDefinitions()[0]?.libraryRef || containedObjects.length
+    );
+    element('.heroes-editor-panel').scrollIntoView({ block: 'start', behavior: 'smooth' });
     element('#heroes-object-name').focus();
+    setEditorEnabled(Boolean(heroesSessionToken()));
   }
+
+  function filterObjects() {
+    const query = objectSearch.value.trim().toLocaleLowerCase();
+    const rows = [...objectList.children].filter((row) => row.dataset.search !== undefined);
+    let visible = 0;
+    for (const row of rows) {
+      row.hidden = !row.dataset.search.includes(query);
+      if (!row.hidden) visible++;
+    }
+    objectCount.value = query ? `${visible} of ${rows.length}` : String(rows.length);
+    element('#heroes-object-search-empty').hidden = !query || visible > 0 || !rows.length;
+  }
+
+  objectSearch.addEventListener('input', filterObjects, { signal });
+  createObjectButton.addEventListener(
+    'click',
+    () => {
+      if (
+        element('#heroes-object-name').value.trim() &&
+        !window.confirm('Discard the current unsaved form and start a new entry?')
+      )
+        return;
+      resetEditor();
+      element('#heroes-saved-tools').open = false;
+      element('.heroes-editor-panel').scrollIntoView({ block: 'start', behavior: 'smooth' });
+      element('#heroes-object-name').focus();
+    },
+    { signal }
+  );
 
   async function loadObjects(worldId) {
     objectList.replaceChildren();
+    element('#heroes-object-search-empty').hidden = true;
+    element('#heroes-editor-scope').textContent = worldId
+      ? `New entries will be saved in ${worldSelect.selectedOptions[0].textContent}. Editing a shared definition changes every use.`
+      : 'All scopes: new entries are global. Use Object availability to link them to genres, campaigns, or worlds. Editing a shared definition changes every use.';
     const result = await request(
       worldId ? `/heroes/worlds/${encodeURIComponent(worldId)}/objects` : '/heroes/objects'
     );
@@ -1203,7 +1292,7 @@ export function mount(container, { page = null } = {}) {
     if (!objects.length) {
       const empty = document.createElement('li');
       empty.className = 'heroes-empty-list';
-      empty.textContent = 'No matching objects in this world yet.';
+      empty.textContent = `No ${collectionLabel.toLowerCase()} ${worldId ? 'in this world' : 'in accessible scopes'} yet.${createObjectButton.hidden ? ' Open a dedicated object or character page to create one.' : ` Select Create ${entryLabel} to get started.`}`;
       objectList.append(empty);
       return;
     }
@@ -1225,13 +1314,14 @@ export function mount(container, { page = null } = {}) {
       name.textContent = object.name;
       const typedCount = typedElements.length;
       const typeLabel = objectTypeById.get(objectType)?.label ?? objectType;
+      row.dataset.search = `${object.name} ${typeLabel}`.toLocaleLowerCase();
       detail.textContent = `${typeLabel} · ${equation.leftSideValue} = ${equation.rightSideValue}${equation.isBalanced ? '' : ` · difference ${equation.difference}`}${typedCount ? ` · ${typedCount} typed element(s)` : ''}`;
       content.append(name, detail);
       const edit = document.createElement(page?.editor === 'worlds' ? 'a' : 'button');
       if (edit.tagName === 'BUTTON') edit.type = 'button';
       edit.className = 'btn';
-      edit.textContent = 'Edit';
-      edit.setAttribute('aria-label', `Edit ${object.name}`);
+      edit.textContent = canWrite('object', object.id) ? 'Edit' : 'View';
+      edit.setAttribute('aria-label', `${edit.textContent} ${object.name}`);
       if (page?.editor === 'worlds') {
         const query = new URLSearchParams(window.location.search);
         query.set('world', worldId || 'all');
@@ -1249,6 +1339,7 @@ export function mount(container, { page = null } = {}) {
       exportButton.className = 'btn';
       exportButton.textContent = 'Export';
       exportButton.setAttribute('aria-label', `Export ${object.name}`);
+      exportButton.hidden = !administrator && !owned.object?.includes(object.id);
       exportButton.addEventListener('click', async () => {
         try {
           const backup = await request(`/heroes/objects/${encodeURIComponent(object.id)}/export`);
@@ -1263,21 +1354,25 @@ export function mount(container, { page = null } = {}) {
       remove.className = 'btn';
       remove.textContent = 'Delete';
       remove.setAttribute('aria-label', `Delete ${object.name}`);
+      remove.hidden = !administrator && !deletable.object?.includes(object.id);
       const saveToLibrary = document.createElement('button');
       saveToLibrary.type = 'button';
       saveToLibrary.className = 'btn';
       saveToLibrary.textContent = 'Save to shared library';
       saveToLibrary.setAttribute('aria-label', `Save ${object.name} to library`);
+      saveToLibrary.hidden = !creator || (!administrator && !owned.object?.includes(object.id));
       saveToLibrary.addEventListener('click', async () => {
         try {
-          await request('/heroes/library', {
+          const { entry } = await request('/heroes/library', {
             method: 'POST',
             body: JSON.stringify({
               name: object.name,
               kind: 'object',
               definition: object.definition,
+              sourceObjectId: object.id,
             }),
           });
+          rememberCreated('library', entry.id);
           await library.refresh();
           setState(`Saved ${object.name} to the shared library.`);
         } catch (error) {
@@ -1296,9 +1391,20 @@ export function mount(container, { page = null } = {}) {
           setState(error.message, true);
         }
       });
-      row.append(content, edit, exportButton, saveToLibrary, remove);
+      const actions = document.createElement('div');
+      actions.className = 'heroes-object-actions';
+      actions.append(edit, exportButton, saveToLibrary, remove);
+      if (creator && !administrator && !owned.object?.includes(object.id)) {
+        const copy = document.createElement('a');
+        copy.className = 'btn';
+        copy.href = '/site/heroes/sharing/#copies';
+        copy.textContent = 'Request independent copy';
+        actions.append(copy);
+      }
+      row.append(content, actions);
       objectList.append(row);
     }
+    filterObjects();
     const requestedObjectId = new URLSearchParams(window.location.search).get('object');
     if (requestedObjectId && !editingObjectId && page?.editor !== 'worlds') {
       const object = objects.find((object) => object.id === requestedObjectId);
@@ -1360,6 +1466,7 @@ export function mount(container, { page = null } = {}) {
         method: 'POST',
         body: JSON.stringify({ name }),
       });
+      rememberCreated('world', world.id);
       worldForm.reset();
       await loadWorlds(world.id);
       setState(`Created world ${world.name}.`);
@@ -1855,7 +1962,9 @@ export function mount(container, { page = null } = {}) {
         method: editingObjectId ? 'PUT' : 'POST',
         body: JSON.stringify(definition),
       });
+      if (!wasEditing) rememberCreated('object', object.id);
       resetEditor();
+      objectSearch.value = '';
       await loadObjects(activeWorldId);
       setState(`${wasEditing ? 'Updated' : 'Saved'} ${object.name} in this local database.`);
     } catch (error) {

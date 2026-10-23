@@ -6,6 +6,8 @@ export const managementKinds = Object.freeze([
   'object-scope',
   'character',
   'note',
+  'player-note',
+  'admin-note',
 ]);
 
 function text(value, label, required = false, limit = 120) {
@@ -50,6 +52,8 @@ export function normalizeManagementRecord(kind, source) {
       throw new RangeError('Select Game Master and/or Player');
     }
     data.roles = [...new Set(source.roles)];
+    if (source.accountId) reference('accountId');
+    if (source.noLogin === true) data.noLogin = true;
     data.notes = text(source.notes, 'profile notes', false, 8000);
   } else if (kind === 'world') {
     if ('genres' in source) throw new RangeError('World genres come from the parent campaign');
@@ -95,6 +99,8 @@ export function normalizeManagementRecord(kind, source) {
     data.externalGameMaster = text(source.externalGameMaster, 'external Game Master');
     if (data.playerId && data.externalPlayer)
       throw new RangeError('Choose a local or external player, not both');
+  } else if (['player-note', 'admin-note'].includes(kind)) {
+    data.notes = text(source.notes, 'note', true, 8000);
   } else {
     for (const key of ['worldId', 'playerId', 'objectId']) reference(key);
     if (!data.worldId || (!data.playerId && !data.objectId)) {

@@ -11,7 +11,11 @@ export function createHeroesClient({ signal, onUnauthorized = () => {} } = {}) {
         heroes ? token : `Bearer ${token}`
       );
     if (options.body) headers.set('Content-Type', 'application/json');
-    const response = await fetch(`http://127.0.0.1:5180${route}`, { ...options, headers, signal });
+    const response = await heroesFetch(`http://127.0.0.1:5180${route}`, {
+      ...options,
+      headers,
+      signal,
+    });
     const body = response.headers.get('content-type')?.includes('application/json')
       ? await response.json()
       : null;
@@ -54,4 +58,4 @@ export function downloadHeroesJson(value, fileName) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
-import { heroesSessionToken, HEROES_SESSION_KEY } from './session.js';
+import { heroesSessionToken, HEROES_SESSION_KEY, heroesFetch } from './session.js';

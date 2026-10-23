@@ -287,6 +287,16 @@ allow it for the Render site.
   (which starts/reuses the helper). HERO now requires a separate account login, not Wurm pairing.
   A static site deployed to Render cannot reach the local database unless
   the user has the project and local helper installed and running on their own computer.
+- **HERO object and character editing:** The Objects, Non-player characters, and Player characters
+  pages have category-specific Create/Save/Update actions and a searchable saved collection.
+  Search matches names and model type labels without changing the selected world or deleting data;
+  the count shows matching entries and an empty-search message explains how to recover the list.
+  Saving clears the search so a new or renamed entry stays visible.
+  Start with name and type, then use **Edit sheet** or **Save controls** to jump through long forms.
+  Saved-definition reuse and manual point equations are expandable optional tools.
+  Scope guidance distinguishes global creation from creation in a selected world and warns that
+  editing a shared definition affects every use. Existing sheet ordering, inherited elements,
+  point rules, backups, and server-side permissions are unchanged.
 - **HERO reusable definitions:** `/site/heroes/library/` provides a standalone anatomy builder and shared
   local library for saved parts, shapes, and world-object templates. Save custom/compound anatomy
   there before using it in an object. Choose independent copy or live reference when inserting a
@@ -328,11 +338,87 @@ allow it for the Render site.
   repeated on reload. Existing character campaign links become historical notes; campaign membership
   now comes from the character's world.
 - **Registration, login, and logout:** public signup at `/site/heroes/register/` creates a local
-  Visitor account only. `/site/heroes/login/` authenticates it; `/site/heroes/account/` manages
-  password changes and authenticator setup. `/site/heroes/logout/` invalidates the server session
+  Visitor account only. `/site/heroes/login/` authenticates it; `/site/heroes/account/` is **Profile**:
+  password changes first, an explicitly unavailable email-verification placeholder, collapsed
+  name/authenticator controls, and account closure last. No email is collected or verification
+  claimed. Social-service failures appear separately and do not prevent Profile maintenance.
+  `/site/heroes/logout/` invalidates the server session
   before navigating to `/site/heroes/logout-success/`; a failed request never reports success.
   These accounts belong to this computer's helper, **not** a site-wide central service.
   Workspace profiles remain organizational records, not authenticated identities or impersonation.
+  Administrators can link them to confirmed accounts or mark no-login organizational entries;
+  portable management exports/imports exclude those identity links.
+- **Selected role and notes:** the header selects one of the account's assigned roles. That
+  server-side session role, not the union of assigned roles, governs navigation and actions.
+  Active Admin shows administrator tools, directories, notes and content stewardship, not
+  GM/Player content editors. Switch to an assigned GM/Player role to use those editors;
+  direct editor URLs and game-content mutations are also denied while Admin is active.
+  Visitors are read-only even with an old write grant. GM, Player and Admin notes require their
+  matching active role and cannot be published; administrator full-store backups remain a
+  privileged maintenance exception. The signed-in name appears once, under the Heros brand.
+  Appearance offers light/dark modes retained per account. The last selected assigned role is
+  remembered; otherwise the highest assigned role is used (Admin, GM, Player, Visitor).
+  Switching roles restores that role's last location, or its directory; Visitors default to
+  public content. Single-role accounts show role text rather than a selector.
+  Logout, or Release during impersonation, is at the far right of the header.
+- **Account directory and messages:** Game Master/Player pages show privacy-aware real-account
+  directories above organizational records. Users may consent to public listing; private accounts
+  appear only through relationships, pending invitations/requests, existing conversations or
+  administrator contact. Administrators see all active accounts. Approved Player–GM relationships,
+  cancellable invitations, messages, replies and participant-local message removal are supported.
+  Messages are limited to 4,000 characters and 30 sends per 15 minutes. Relationships alone do not
+  grant campaign/content access. Users can separately opt into showing active-login status;
+  last-seen timestamps are not published. Administrators see all pending relationships and may
+  revoke them or force-sign-out another account without impersonating it.
+- **Impersonation and disposable previews:** administrators may impersonate an account or
+  preview a role using an isolated temporary identity/database. Preview changes are discarded
+  on Release. Account impersonation uses the administrator's existing session and does not
+  create another target login or consume the target's session allowance. Release restores the
+  administrator; Logout and credential/security changes are unavailable until Release.
+  Wurm access is unavailable while impersonating. Each mutation records actor, target, role,
+  route, time and outcome. If the target has an active login, each exact mutation requires
+  approval or rejection; no response for five minutes permits automatic approval on retry.
+  The client waits and retries the exact request; this is not offline/background execution.
+  Pending responses are not reported as saved, and successful retries do not duplicate writes.
+  The actor may cancel a pending request; Release cancels pending requests. Role previews
+  do not require another person's approval. Administrator previews may exercise isolated
+  administrative settings, never real account credentials.
+- **Publication and editors:** `/site/heroes/sharing/` separates ownership, immutable original
+  creator identity, editor accounts and read-only publication. Audiences include private, public,
+  selected approved Player/GM relationships, all world/campaign/genre subscribers, or an explicitly
+  selected subset. Scope membership uses approved subscriptions, or confirmed account-linked
+  profiles with approved Player–GM relationships; ending the relationship revokes derived
+  audience access immediately.
+  Editors can read/write independently of the publication audience. New resources record their
+  creator; legacy unknown creators stay unknown. Administrators must explicitly adopt ownerless
+  legacy content before publishing. Published/editor-shared resources and provenance survive
+  owner-account deletion under administrator stewardship.
+  `/site/heroes/public/` is readable without login and deliberately ignores any signed-in
+  privileges. **Public means this local helper installation, not a central internet service.**
+  Do not expose the helper to the internet. Private linked dependencies suppress public results,
+  rather than exposing hidden content. The landing page links to public content.
+- **Approved independent copies:** Publishing includes requests, owner approvals, declines and
+  cancellation for readable objects, library entries and management graphs. Dependencies must
+  be readable and their owners must consent. Accepted copies use new IDs, private ownership,
+  embedded/remapped dependencies and immutable original-name/creator/source provenance.
+  There is no live synchronization. Owners may propose updates to existing copy recipients;
+  acceptance creates a new private revision without overwriting the recipient's previous copy
+  or edits. Active Admin retains owner/stewardship review but must switch to an assigned GM/Player
+  role to request or accept copies into their own account. Individual object export is owner-only
+  (or privileged administrator maintenance);
+  other viewers use the approval workflow. Owners may delete a library entry only when all
+  live uses affected by detachment are writable. GM-owned worlds may be deleted only when
+  all affected objects and records are writable in the active role.
+- **Player and GM dashboards:** account directories include Player-owned PCs first, then other
+  objects and their scope memberships, plus GM-owned campaigns/worlds and visibility controls.
+  GMs invite approved related Players; Players accept invitations or request subscriptions.
+  GMs approve/reject subscriptions and separately approve use of owner-enrolled objects.
+  Cancellation, rejection, revocation, withdrawal and confirmed owned-object deletion are
+  available; administrators can moderate pending workflows. Access is derived dynamically,
+  not copied into permanent ACL grants. Scope visibility, relationships, subscriptions and
+  object-use revocations take effect immediately. Approved campaign/world objects appear in
+  their world views; private dependencies remain private.
+  See [the completed interface checklist](./documentation/heroes-todo.md#interface-issues).
 - **First administrator:** restart the helper after updating, then run `npm run heroes:setup-code`
   in the project folder. Open `/site/heroes/setup/`, enter the one-use code within ten minutes and
   create an administrator with a distinct 12-256-character password. The code is shown only by the
@@ -348,7 +434,7 @@ allow it for the Render site.
   is separate so it does not overwhelm the main flow. The form stays visible with the helper
   offline, but submission is disabled until **Check connection again** confirms setup is needed.
   Account creation leads to plain-language sign-in, authenticator and recovery-code instructions.
-  Until an administrator exists, all HERO routes lead to this one setup destination, with no
+  Until an administrator exists, authenticated-workspace HERO routes lead to this one setup destination, with no
   workspace, registration, Wurm or logout navigation. After that, signed-out users see sign-in
   and registration only; pending two-factor users see account verification and logout only.
   Workspace links/content appear only after full authentication. Admin navigation is hidden from
@@ -357,10 +443,10 @@ allow it for the Render site.
   loading updated code. Run `npm run helper:stop`, wait for it to stop, then `npm run helper`.
   Old helpers may reject `X-Heroes-Session` in browser CORS checks. Public account-status
   checks omit that header and report a restart instruction when the helper lacks account support.
-- **Server ACLs:** `/site/heroes/people/admins/` lets an authenticated, MFA-verified admin grant
+- **Server ACLs:** `/site/heroes/people/admins/roles/` lets an authenticated, MFA-verified active admin grant
   Visitor/Player/Game Master/Admin roles, disable accounts, and assign/revoke explicit Read or
   Read-and-write access to individual worlds, objects, library definitions, and management records
-  (including GM notes). Existing data is admin-only until explicitly shared. New Visitors cannot
+  (subject to matching-role note restrictions). Existing data is admin-only until explicitly shared. New Visitors cannot
   create data; Players can create objects, definitions and character/availability records;
   GMs can also create worlds and management records. Creators receive write ACLs for their records.
   Roles alone do not expose existing data. Grant linked world/campaign/genre/profile/library context
@@ -371,6 +457,8 @@ allow it for the Render site.
   filtering and navigation are never authorization. Role changes, disabling and ACL changes revoke
   affected sessions; permissions are evaluated on every request. The last admin cannot be demoted
   or disabled. No C# is exposed to or executed by the website.
+  Administrator invitations and culture definitions have separate pages linked from
+  `/site/heroes/people/admins/`; the main page lists system administrators.
   Administrator account lists can be searched by display name or username, filtered by account
   status, and paged independently per role (ten accounts per page). These display filters do not
   change permissions or the available account-edit and ACL targets.

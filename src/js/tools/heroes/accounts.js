@@ -6,6 +6,7 @@ import {
   identityRequest,
 } from './session.js';
 import { createHeroesClient } from './helper-client.js';
+import { heroesRoleLocation } from './preferences.js';
 import { ACCOUNT_NAME_FIELDS } from '../../modules/objects/heroes/account-name.mjs';
 
 export function mountHeroesAccounts(
@@ -62,7 +63,7 @@ export function mountHeroesAccounts(
     node.className = 'btn btn-secondary';
     return node;
   };
-  const form = (label, fields, action) => {
+  const form = (label, fields, action, parent = content) => {
     const panel = document.createElement('form');
     panel.className = 'heroes-editor-panel';
     panel.append(text('h3', label));
@@ -108,10 +109,29 @@ export function mountHeroesAccounts(
       },
       { signal }
     );
-    content.append(panel);
+    parent.append(panel);
     return panel;
   };
-  const showRecovery = (codes) => {
+  const disclosure = (parent, summary) => {
+    const details = document.createElement('details');
+    details.append(text('summary', summary));
+    parent.append(details);
+    return details;
+  };
+  const roleLocation = (user) => {
+    const role = user.activeRole || user.roles?.[0];
+    return heroesRoleLocation(role, user.preferences?.locations?.[role]);
+  };
+  const releaseGuidance = (impersonation) =>
+    text(
+      'p',
+      `Impersonation is active. Use Release in the header to return to your administrator account. Logout, password changes, two-factor authentication, account closure, and role requests are unavailable until you release impersonation. ${
+        impersonation?.preview === true
+          ? 'Administrator settings are available only when previewing the System administrator role; those settings are isolated and disposable, and are discarded when you release the preview.'
+          : 'Administrator security controls are unavailable while impersonating a real user.'
+      }`
+    );
+  const showRecovery = (codes, user) => {
     content.replaceChildren(
       text(
         'p',
@@ -120,7 +140,7 @@ export function mountHeroesAccounts(
     );
     content.append(
       text('pre', codes.join('\n')),
-      link('I saved my recovery codes - continue', '/site/heroes/')
+      link('I saved my recovery codes - continue', roleLocation(user))
     );
     report('Two-factor authentication enabled. Do not share the secret or recovery codes.');
   };
@@ -348,11 +368,12 @@ export function mountHeroesAccounts(
       );
       form('Confirm authenticator', [['code', 'Authentication code']], async (data) => {
         const response = await identityRequest('mfa/confirm', data);
-        showRecovery(response.recoveryCodes);
+        const current = await identityRequest('me');
+        showRecovery(response.recoveryCodes, current.user);
       });
     });
   };
-  const afterLogin = (result) => {
+  const afterLogin = async (result) => {
     if (result.enrollmentRequired || result.mfaRequired)
       onAccessChange({ stage: 'mfa', user: result.user });
     if (result.enrollmentRequired) return enroll();
@@ -364,12 +385,14 @@ export function mountHeroesAccounts(
         [['code', 'Authenticator or recovery code']],
         async (data) => {
           await identityRequest('mfa/verify', data);
-          window.location.replace('/site/heroes/');
+          const current = await identityRequest('me');
+          window.location.replace(roleLocation(current.user));
         }
       );
       return;
     }
-    window.location.replace('/site/heroes/');
+    const user = result.user || (await identityRequest('me')).user;
+    window.location.replace(roleLocation(user));
   };
   async function init() {
     if (mode === 'logout-success') {
@@ -384,6 +407,12 @@ export function mountHeroesAccounts(
       return;
     }
     if (mode === 'logout') {
+      const current = await identityRequest('me');
+      if (current.user.impersonation) {
+        heading.textContent = 'Release impersonation';
+        content.append(releaseGuidance(current.user.impersonation));
+        return;
+      }
       heading.textContent = 'Log out';
       form('Confirm logout', [], async () => {
         await identityRequest('logout', {});
@@ -406,6 +435,21 @@ export function mountHeroesAccounts(
           : link('Log in', '/site/heroes/login/');
       content.append(accountLink, setupLink);
       const state = await identityRequest('status');
+      if (
+        mode === 'login' &&
+        !state.setupRequired &&
+        typeof sessionStorage !== 'undefined' &&
+        sessionStorage.getItem?.(HEROES_SESSION_KEY)
+      ) {
+        try {
+          const current = await identityRequest('me');
+          content.replaceChildren();
+          return afterLogin(current);
+        } catch (error) {
+          if (error.status !== 401) throw error;
+          sessionStorage.removeItem(HEROES_SESSION_KEY);
+        }
+      }
       setupLink.hidden = !state.setupRequired;
       if (mode === 'login' && state.setupRequired) {
         accountLink.href = '/site/heroes/setup/';
@@ -441,7 +485,7 @@ export function mountHeroesAccounts(
           if (mode === 'login') {
             sessionStorage.setItem(HEROES_SESSION_KEY, result.token);
             sessionStorage.removeItem(HEROES_LOGOUT_KEY);
-            afterLogin(result);
+            await afterLogin(result);
           } else {
             content.replaceChildren(
               text('p', result.message),
@@ -460,19 +504,51 @@ export function mountHeroesAccounts(
       return;
     }
     const current = await identityRequest('me');
-    if (current.mfaRequired || current.enrollmentRequired) return afterLogin(current);
-    heading.textContent = `${heroesAccountLabel(current.user)} - ${current.user.roles.map((role) => HEROES_ROLE_LABELS[role] || role).join(', ')}`;
+    const impersonating = Boolean(current.user.impersonation);
+    if (!impersonating && (current.mfaRequired || current.enrollmentRequired))
+      return afterLogin(current);
+    const membershipRoles = (user) => user.assignedRoles || user.roles || [];
+    const activeRole = current.user.activeRole || current.user.roles?.[0];
+    const hasActiveRole = (role) =>
+      current.user.activeRole
+        ? current.user.activeRole === role
+        : current.user.roles?.includes(role) === true;
+    const adminModes = ['admin', 'admin-invitations', 'admin-roles', 'admin-cultures'];
+    if (impersonating && current.user.impersonation.preview !== true && adminModes.includes(mode)) {
+      heading.textContent = 'Release impersonation';
+      content.append(
+        releaseGuidance(current.user.impersonation),
+        link('Profile', '/site/heroes/account/')
+      );
+      return;
+    }
+    if (adminModes.includes(mode) && !hasActiveRole('admin')) {
+      heading.textContent = 'Administrator access required';
+      content.append(link('Profile', '/site/heroes/account/'));
+      report('Select the System administrator role to use this page.', true);
+      return;
+    }
+    heading.textContent =
+      mode === 'account'
+        ? 'Profile'
+        : {
+            admin: 'System administrators',
+            'admin-invitations': 'Account invitations',
+            'admin-roles': 'Account roles and permissions',
+            'admin-cultures': 'Culture configuration',
+          }[mode] || 'Profile';
     if (accessDenied)
       report(
         'That HERO page is not available to your account. No workspace was opened. Ask a system administrator about the required role or resource permissions.',
         true
       );
-    content.append(link('Logout', '/site/heroes/logout/'));
-    const nameConfig = await identityRequest('name-config');
-    if (current.user.roles.includes('admin')) {
-      const sheet = document.createElement('details');
-      sheet.append(text('summary', 'System configuration: cultures and name order'));
-      sheet.append(
+    const logoutLink = link('Logout', '/site/heroes/logout/');
+    if (!impersonating) content.append(logoutLink);
+    const nameConfig = ['account', 'admin-cultures'].includes(mode)
+      ? await identityRequest('name-config')
+      : null;
+    if (mode === 'admin-cultures') {
+      content.append(
         text(
           'p',
           'These settings control name formatting for every account. Users choose a culture, not an individual order. Preferred names take precedence; usernames remain visible.'
@@ -503,45 +579,62 @@ export function mountHeroesAccounts(
               ...culture,
               nameOrder: data[`culture-${index}`],
             }))
-          )
+          ),
+        content
       );
       for (const [index, culture] of nameConfig.cultures.entries())
         configForm.elements[`culture-${index}`].value = culture.nameOrder;
-      const addCulture = form(
+      form(
         'Add selectable culture',
         [
           ['code', 'Culture/language code (e.g. it-IT)'],
           ['label', 'Culture label'],
           ['nameOrder', 'Name order', 'text', orders],
         ],
-        async (data) => saveConfig([...nameConfig.cultures, data])
+        async (data) => saveConfig([...nameConfig.cultures, data]),
+        content
       );
-      sheet.append(configForm, addCulture);
-      content.append(sheet);
+      return;
     }
-    if (mode !== 'admin') {
-      if (current.user.roles.some((role) => ['player', 'game-master'].includes(role))) {
-        content.append(
-          text('h3', 'Play relationships'),
+    if (mode === 'account') {
+      const hasRelationshipRole = ['player', 'game-master'].includes(activeRole);
+      const profileFeatures = hasRelationshipRole
+        ? disclosure(content, 'Play relationships and requests')
+        : null;
+      const loadRelationships = async () => {
+        if (!hasRelationshipRole) return;
+        profileFeatures.append(
           text(
             'p',
             'Request to play under a Game Master using sign-in accounts, not workspace profiles. An approved relationship does not join a world, share data, approve objects, or grant resource permissions. Either participant can end it; existing resource ACLs are unchanged.'
           )
         );
-        const play = await identityRequest('play/status');
-        form('Refresh play relationships', [], async () => {
-          content.replaceChildren();
-          await init();
-          report('Available Game Masters and your play relationships refreshed.');
-        });
+        const play = await identityRequest('directory/status');
+        const accounts = new Map(play.users.map((user) => [user.id, user]));
+        profileFeatures.append(
+          link(
+            activeRole === 'game-master' ? 'Manage Player relationships' : 'Browse Game Masters',
+            activeRole === 'game-master' ? '/site/heroes/people/' : '/site/heroes/people/players/'
+          )
+        );
+        form(
+          'Refresh play relationships',
+          [],
+          async () => {
+            content.replaceChildren();
+            await init();
+            report('Available Game Masters and your play relationships refreshed.');
+          },
+          profileFeatures
+        );
         const refreshPlay = async (action, data, message) => {
           await identityRequest(action, data);
           content.replaceChildren();
           await init();
           report(message);
         };
-        if (current.user.roles.includes('game-master')) {
-          content.append(
+        if (activeRole === 'game-master') {
+          profileFeatures.append(
             text(
               'p',
               'Your Game Master listing is hidden by default. Listing makes your preferred/formatted name and @username visible to Player accounts on this helper. Unlisting stops new requests; it does not erase existing requests or relationships. Players who request you also share their displayed name and username with you.'
@@ -553,29 +646,31 @@ export function mountHeroesAccounts(
             async (_data, panel) => {
               const visible = panel.elements.visible.checked;
               await refreshPlay(
-                'play/listing',
-                { visible },
+                'directory/listing',
+                { role: 'game-master', visible },
                 visible
                   ? 'Your Game Master name is now listed for Player accounts.'
                   : 'Your Game Master name is hidden from the directory. Existing relationships are unchanged.'
               );
-            }
+            },
+            profileFeatures
           );
-          listing.elements.visible.checked = current.user.listedAsGameMaster === true;
+          listing.elements.visible.checked = play.listing.gameMaster === true;
         }
-        if (current.user.roles.includes('player')) {
-          content.append(
+        if (activeRole === 'player') {
+          profileFeatures.append(
             text(
               'p',
               'Only Game Masters who opt in appear below. Sending a request shares your displayed name and @username with that Game Master. A Game Master can also play under another Game Master when their account has both roles.'
             )
           );
-          const available = play.directory.filter(
+          const listed = await identityRequest('play/status');
+          const available = listed.directory.filter(
             (gm) =>
               !play.relationships.some(
                 (relationship) =>
                   relationship.playerId === current.user.id &&
-                  relationship.gameMaster.username === gm.username &&
+                  accounts.get(relationship.gameMasterId)?.username === gm.username &&
                   ['pending', 'approved'].includes(relationship.status)
               )
           );
@@ -595,54 +690,83 @@ export function mountHeroesAccounts(
                   'play/request',
                   { username: data.username },
                   'Play request sent. Only the addressed Game Master can approve it. Your data permissions are unchanged.'
-                )
+                ),
+              profileFeatures
             );
           else
-            content.append(
+            profileFeatures.append(
               text(
                 'p',
                 'No listed Game Masters are available for a new request. Game Masters must opt in; those with a pending or approved relationship with you are omitted.'
               )
             );
         }
-        content.append(text('h4', 'My requests and relationships'));
-        if (!play.relationships.length)
-          content.append(text('p', 'No play requests or relationships yet.'));
-        for (const relationship of play.relationships) {
-          const outgoing = relationship.playerId === current.user.id;
-          const counterpart = heroesAccountLabel(
-            outgoing ? relationship.gameMaster : relationship.player
-          );
-          content.append(
+        profileFeatures.append(text('h4', 'My requests and relationships'));
+        const activeRelationships = play.relationships.filter(
+          (relationship) =>
+            (relationship.playerId === current.user.id ? 'player' : 'game-master') === activeRole
+        );
+        if (!activeRelationships.length)
+          profileFeatures.append(text('p', 'No play requests or relationships yet.'));
+        for (const relationship of activeRelationships) {
+          const initiatedByGameMaster = relationship.initiatedBy === 'game-master';
+          const isPlayer = relationship.playerId === current.user.id;
+          const sideRole = isPlayer ? 'player' : 'game-master';
+          const outgoing = initiatedByGameMaster ? !isPlayer : isPlayer;
+          const counterpartId = isPlayer ? relationship.gameMasterId : relationship.playerId;
+          const counterpart = accounts.has(counterpartId)
+            ? heroesAccountLabel(accounts.get(counterpartId))
+            : 'Former or private account';
+          profileFeatures.append(
             text(
               'p',
-              `${outgoing ? 'As Player under' : 'As Game Master for'} ${counterpart}: ${relationship.status}. Requested ${new Date(relationship.createdAt).toLocaleString()}.${relationship.resolvedAt ? ` Updated ${new Date(relationship.resolvedAt).toLocaleString()}.` : ''}`
+              `${activeRole === 'player' ? 'As Player' : 'As Game Master'} — ${counterpart}: ${relationship.status}. Requested ${new Date(relationship.createdAt).toLocaleString()}.${relationship.resolvedAt ? ` Updated ${new Date(relationship.resolvedAt).toLocaleString()}.` : ''}`
             )
           );
           const actions =
             relationship.status === 'pending'
               ? outgoing
-                ? [['cancel', 'Cancel play request']]
-                : [
-                    ['approve', 'Approve play request'],
-                    ['reject', 'Reject play request'],
+                ? [
+                    [
+                      'cancel',
+                      initiatedByGameMaster
+                        ? 'Cancel Game Master invitation'
+                        : 'Cancel play request',
+                    ],
                   ]
+                : initiatedByGameMaster && sideRole === 'player'
+                  ? [
+                      ['approve', 'Accept Game Master invitation'],
+                      ['reject', 'Decline Game Master invitation'],
+                    ]
+                  : [
+                      ['approve', 'Approve play request'],
+                      ['reject', 'Reject play request'],
+                    ]
               : relationship.status === 'approved'
                 ? [['end', 'End play relationship']]
                 : [];
           for (const [decision, label] of actions)
-            form(`${label}: ${counterpart}`, [], async () =>
-              refreshPlay(
-                'play/respond',
-                { id: relationship.id, decision },
-                `${label} completed. World membership, object approvals, and resource ACLs are unchanged.`
-              )
+            form(
+              `${label}: ${counterpart}`,
+              [],
+              async () =>
+                refreshPlay(
+                  'play/respond',
+                  { id: relationship.id, decision },
+                  `${label} completed. World membership, object approvals, and resource ACLs are unchanged.`
+                ),
+              profileFeatures
             );
         }
-      }
-      if (current.user.roles.includes('visitor') || current.user.roleRequest) {
-        content.append(
-          text('h3', 'Player / Game Master role request'),
+      };
+      let roleRequestDetails;
+      if (
+        !impersonating &&
+        (membershipRoles(current.user).includes('visitor') || current.user.roleRequest)
+      ) {
+        roleRequestDetails = disclosure(content, 'Request Player / Game Master roles');
+        roleRequestDetails.append(
           text(
             'p',
             'Visitors can ask a system administrator to approve Player, Game Master, or both roles. Approval replaces Visitor status and requires signing in again. It does not join a game or grant access to existing data; those permissions are separate.'
@@ -650,7 +774,7 @@ export function mountHeroesAccounts(
         );
         const roleRequest = current.user.roleRequest;
         if (roleRequest) {
-          content.append(
+          roleRequestDetails.append(
             text(
               'p',
               `Your role request: ${roleRequest.status} - ${roleRequest.roles.map((role) => HEROES_ROLE_LABELS[role]).join(', ')}. Submitted ${new Date(roleRequest.createdAt).toLocaleString()}.${roleRequest.resolvedAt ? ` Resolved ${new Date(roleRequest.resolvedAt).toLocaleString()}.` : ''}`
@@ -658,20 +782,25 @@ export function mountHeroesAccounts(
           );
         }
         if (roleRequest?.status === 'pending') {
-          form('Cancel role request', [], async () => {
-            await identityRequest('roles/cancel', { requestId: roleRequest.id });
-            content.replaceChildren();
-            await init();
-            report('Role request cancelled. Your roles and permissions are unchanged.');
-          });
+          form(
+            'Cancel role request',
+            [],
+            async () => {
+              await identityRequest('roles/cancel', { requestId: roleRequest.id });
+              content.replaceChildren();
+              await init();
+              report('Role request cancelled. Your roles and permissions are unchanged.');
+            },
+            roleRequestDetails
+          );
         } else if (
-          current.user.roles.includes('visitor') &&
-          !current.user.roles.includes('admin')
+          membershipRoles(current.user).includes('visitor') &&
+          !membershipRoles(current.user).includes('admin')
         ) {
           form(
             'Submit role request',
             ['player', 'game-master']
-              .filter((role) => !current.user.roles.includes(role))
+              .filter((role) => !membershipRoles(current.user).includes(role))
               .map((role) => [role, HEROES_ROLE_LABELS[role], 'checkbox']),
             async (_data, panel) => {
               const roles = ['player', 'game-master'].filter(
@@ -683,11 +812,37 @@ export function mountHeroesAccounts(
               report(
                 'Role request submitted for system-administrator approval. Your access is unchanged until approval.'
               );
-            }
+            },
+            roleRequestDetails
           );
         }
       }
-      content.append(
+      const passwordForm = impersonating
+        ? releaseGuidance(current.user.impersonation)
+        : form(
+            'Change password',
+            [
+              ['currentPassword', 'Current password', 'password'],
+              ['password', 'New password', 'password'],
+            ],
+            async (data, panel) => {
+              await identityRequest('password', data);
+              panel.reset();
+              report('Password changed; other sessions revoked.');
+            }
+          );
+      const emailStatus = document.createElement('section');
+      emailStatus.className = 'heroes-editor-panel';
+      emailStatus.append(
+        text('h3', 'Email verification'),
+        text(
+          'p',
+          'Email verification is not available yet. This helper does not collect an email address or send verification messages, and no address is verified.'
+        )
+      );
+      content.append(emailStatus);
+      const nameDetails = disclosure(content, 'Edit personal name');
+      nameDetails.append(
         text(
           'p',
           'Your personal name is optional and separate from your sign-in username. It is visible to system administrators and in your signed-in identity. Other users see it only when you opt into the Game Master directory or participate in a play request/relationship. Leave unused components blank; a single name is supported. Select a culture; the system administrator configures its name order. Your preferred name is displayed first when provided, otherwise your formatted full name is used.'
@@ -707,9 +862,9 @@ export function mountHeroesAccounts(
         async (data) => {
           const result = await identityRequest('profile/name', { personalName: data });
           onAccessChange({ stage: 'ready', user: result.user });
-          heading.textContent = `${heroesAccountLabel(result.user)} - ${result.user.roles.map((role) => HEROES_ROLE_LABELS[role] || role).join(', ')}`;
           report('Personal name saved. Your sign-in username is unchanged.');
-        }
+        },
+        nameDetails
       );
       for (const key of ['culture', ...ACCOUNT_NAME_FIELDS.map(([key]) => key)]) {
         const input = nameForm.elements[key];
@@ -722,108 +877,236 @@ export function mountHeroesAccounts(
       nameForm.elements.familyName.autocomplete = 'family-name';
       nameForm.elements.title.autocomplete = 'honorific-prefix';
       nameForm.elements.suffixName.autocomplete = 'honorific-suffix';
-      form(
-        'Change password',
-        [
-          ['currentPassword', 'Current password', 'password'],
-          ['password', 'New password', 'password'],
-        ],
-        async (data, panel) => {
-          await identityRequest('password', data);
-          panel.reset();
-          report('Password changed; other sessions revoked.');
-        }
-      );
-      if (!current.user.mfaEnabled) {
-        form('Enable two-factor authentication', [], async () => enroll());
-      } else
-        content.append(
-          text(
-            'p',
-            'Authenticator two-factor authentication is enabled. Use saved single-use recovery codes if your authenticator is unavailable.'
-          )
-        );
-      const closure = await identityRequest('closure/status');
-      content.append(
-        text('h3', 'Close my account'),
-        text(
-          'p',
-          `Tracked owned resources: ${closure.ownedCount}. Ownership is recorded separately from read/write permissions. Legacy data without recorded ownership is never deleted by this action.`
-        ),
-        text(
-          'p',
-          'Retain deactivates your account for system-administrator recovery after identity verification. Delete permanently removes your credentials and only unshared owned data; shared data and connected contexts stay with system administrators. Transfer keeps your account active until the named recipient accepts all resources you own at acceptance, then permanently deletes your credentials. You cannot close the last active system-administrator account.'
-        )
-      );
-      for (const transfer of closure.outgoing) {
-        content.append(
-          text('p', `Awaiting acceptance by ${transfer.username}. Your account is still active.`)
-        );
-        form('Cancel ownership transfer', [], async () => {
-          await identityRequest('closure/cancel', { id: transfer.id });
-          content.replaceChildren();
-          await init();
-          report('Transfer cancelled. Your account and data are unchanged.');
-        });
-      }
-      for (const transfer of closure.incoming) {
-        content.append(
-          text(
-            'p',
-            `${transfer.username} requests transfer of all their owned resources (currently ${transfer.ownedCount}) to you. Accepting permanently closes their account and grants you ownership and write access to those resources; other users keep their existing access.`
-          )
-        );
-        form(`Accept transfer from ${transfer.username}`, [], async () => {
-          const result = await identityRequest('closure/accept', { id: transfer.id });
-          content.replaceChildren();
-          await init();
-          report(
-            `Transfer accepted. ${result.transferred} resource ownership records transferred; the sender's account was closed.`
+      let securityDetails;
+      let closureDetails;
+      if (!impersonating) {
+        securityDetails = disclosure(content, 'Two-factor authentication');
+        if (!current.user.mfaEnabled) {
+          form('Enable two-factor authentication', [], async () => enroll(), securityDetails);
+        } else
+          securityDetails.append(
+            text(
+              'p',
+              'Authenticator two-factor authentication is enabled. Use saved single-use recovery codes if your authenticator is unavailable.'
+            )
           );
-        });
-        form(`Decline transfer from ${transfer.username}`, [], async () => {
-          await identityRequest('closure/reject', { id: transfer.id });
-          content.replaceChildren();
-          await init();
-          report('Transfer declined. The sender account remains active.');
-        });
-      }
-      const closeForm = form(
-        'Confirm account closure',
-        [
+        const closure = await identityRequest('closure/status');
+        closureDetails = disclosure(content, 'Delete or transfer account');
+        closureDetails.append(
+          text(
+            'p',
+            `Tracked owned resources: ${closure.ownedCount}. Ownership is recorded separately from read/write permissions. Legacy data without recorded ownership is never deleted by this action.`
+          ),
+          text(
+            'p',
+            'Retain deactivates your account for system-administrator recovery after identity verification. Delete permanently removes your credentials and only unshared owned data; shared data and connected contexts stay with system administrators. Transfer keeps your account active until the named recipient accepts all resources you own at acceptance, then permanently deletes your credentials. You cannot close the last active system-administrator account.'
+          )
+        );
+        for (const transfer of closure.outgoing) {
+          closureDetails.append(
+            text('p', `Awaiting acceptance by ${transfer.username}. Your account is still active.`)
+          );
+          form(
+            'Cancel ownership transfer',
+            [],
+            async () => {
+              await identityRequest('closure/cancel', { id: transfer.id });
+              content.replaceChildren();
+              await init();
+              report('Transfer cancelled. Your account and data are unchanged.');
+            },
+            closureDetails
+          );
+        }
+        for (const transfer of closure.incoming) {
+          closureDetails.append(
+            text(
+              'p',
+              `${transfer.username} requests transfer of all their owned resources (currently ${transfer.ownedCount}) to you. Accepting permanently closes their account and grants you ownership and write access to those resources; other users keep their existing access.`
+            )
+          );
+          form(
+            `Accept transfer from ${transfer.username}`,
+            [],
+            async () => {
+              const result = await identityRequest('closure/accept', { id: transfer.id });
+              content.replaceChildren();
+              await init();
+              report(
+                `Transfer accepted. ${result.transferred} resource ownership records transferred; the sender's account was closed.`
+              );
+            },
+            closureDetails
+          );
+          form(
+            `Decline transfer from ${transfer.username}`,
+            [],
+            async () => {
+              await identityRequest('closure/reject', { id: transfer.id });
+              content.replaceChildren();
+              await init();
+              report('Transfer declined. The sender account remains active.');
+            },
+            closureDetails
+          );
+        }
+        const closeForm = form(
+          'Confirm account closure',
           [
-            'choice',
-            'What should happen to my data?',
-            'text',
             [
-              ['retain', 'Retain my account and data for future recovery'],
-              ['delete', 'Delete my credentials and unshared owned data'],
-              ['transfer', 'Transfer owned resources, then delete my credentials after acceptance'],
+              'choice',
+              'What should happen to my data?',
+              'text',
+              [
+                ['retain', 'Retain my account and data for future recovery'],
+                ['delete', 'Delete my credentials and unshared owned data'],
+                [
+                  'transfer',
+                  'Transfer owned resources, then delete my credentials after acceptance',
+                ],
+              ],
             ],
+            ['recipient', 'Recipient username (transfer only)'],
+            ['confirmation', 'Type your exact username to confirm'],
+            ['password', 'Current password', 'password'],
           ],
-          ['recipient', 'Recipient username (transfer only)'],
-          ['confirmation', 'Type your exact username to confirm'],
-          ['password', 'Current password', 'password'],
-        ],
-        async (data) => {
-          const result = await identityRequest('closure/request', data);
-          if (result.closed) {
-            sessionStorage.removeItem(HEROES_SESSION_KEY);
-            sessionStorage.removeItem(HEROES_LOGOUT_KEY);
-            onAccessChange({ stage: 'anonymous' });
-            content.replaceChildren(link('Log in with another account', '/site/heroes/login/'));
-          } else {
+          async (data) => {
+            const result = await identityRequest('closure/request', data);
+            if (result.closed) {
+              sessionStorage.removeItem(HEROES_SESSION_KEY);
+              sessionStorage.removeItem(HEROES_LOGOUT_KEY);
+              onAccessChange({ stage: 'anonymous' });
+              content.replaceChildren(link('Log in with another account', '/site/heroes/login/'));
+            } else {
+              content.replaceChildren();
+              await init();
+            }
+            report(result.message);
+          },
+          closureDetails
+        );
+        closeForm.elements.recipient.required = false;
+        closeForm.elements.password.autocomplete = 'current-password';
+      }
+      content.replaceChildren(
+        passwordForm,
+        emailStatus,
+        nameDetails,
+        ...(profileFeatures ? [profileFeatures] : []),
+        ...(roleRequestDetails ? [roleRequestDetails] : []),
+        ...(!impersonating ? [securityDetails, logoutLink, closureDetails] : [])
+      );
+      try {
+        await loadRelationships();
+      } catch (error) {
+        if (error.status === 401) throw error;
+        profileFeatures.replaceChildren(
+          text('summary', 'Play relationships and requests'),
+          text('p', `Play relationships are temporarily unavailable: ${error.message}`),
+          link('Open Game Masters', '/site/heroes/people/'),
+          link('Open Players', '/site/heroes/people/players/')
+        );
+        form(
+          'Retry play relationships',
+          [],
+          async () => {
             content.replaceChildren();
             await init();
-          }
-          report(result.message);
-        }
-      );
-      closeForm.elements.recipient.required = false;
-      closeForm.elements.password.autocomplete = 'current-password';
+          },
+          profileFeatures
+        );
+      }
       return;
     }
     const admin = await identityRequest('admin/list');
+    const accountRoleList = (user) => user.assignedRoles || user.roles || [];
+    if (mode === 'admin') {
+      const administrators = admin.users.filter(
+        (user) => user.closure !== 'deleted' && accountRoleList(user).includes('admin')
+      );
+      const administratorList = document.createElement('ul');
+      for (const user of administrators)
+        administratorList.append(
+          text(
+            'li',
+            `${heroesAccountLabel(user)}${user.disabled ? ' — disabled' : ' — active'}${user.id === current.user.id ? ' (you)' : ''}`
+          )
+        );
+      content.append(
+        text('p', `System administrators (${administrators.length})`),
+        administratorList,
+        text('p', 'Choose a focused administration page:')
+      );
+      content.append(
+        link('Create and manage invitations', '/site/heroes/people/admins/invitations/'),
+        link('Manage account roles and permissions', '/site/heroes/people/admins/roles/'),
+        link('Configure name cultures', '/site/heroes/people/admins/cultures/')
+      );
+      return;
+    }
+    if (mode === 'admin-invitations') {
+      content.append(
+        text(
+          'p',
+          'Create a private single-use code for an approved account role. Give it only to the intended person, who chooses their username and password on Register using this same helper. Codes expire after 24 hours and stop working if their issuing administrator loses access. Roles do not share existing data; use resource ACLs separately.'
+        )
+      );
+      form(
+        'Create invitation',
+        Object.entries(HEROES_ROLE_LABELS).map(([role, label]) => [role, label, 'checkbox']),
+        async (_data, panel) => {
+          const roles = Object.keys(HEROES_ROLE_LABELS).filter(
+            (role) => panel.elements[role].checked
+          );
+          const result = await identityRequest('admin/invite', { roles });
+          content.replaceChildren();
+          await init();
+          const output = text('input', '');
+          output.value = result.code;
+          output.readOnly = true;
+          output.setAttribute('aria-label', 'Private invitation code');
+          output.autocomplete = 'off';
+          content.append(
+            text('h3', 'Save this private invitation now'),
+            text(
+              'p',
+              `Shown only once. Expires ${new Date(result.invitation.expiresAt).toLocaleString()}. Approved roles: ${result.invitation.roles.map((role) => HEROES_ROLE_LABELS[role]).join(', ')}. Do not post this code publicly.`
+            ),
+            output
+          );
+          report('Invitation created. Copy the private code shown below before leaving this page.');
+        }
+      );
+      const invitations = admin.invitations || [];
+      content.append(text('h3', `Pending invitations (${invitations.length})`));
+      for (const invitation of invitations) {
+        const row = document.createElement('div');
+        row.append(
+          text(
+            'p',
+            `${invitation.roles.map((role) => HEROES_ROLE_LABELS[role]).join(', ')} — expires ${new Date(invitation.expiresAt).toLocaleString()}`
+          )
+        );
+        const revoke = text('button', 'Revoke invitation');
+        revoke.type = 'button';
+        revoke.className = 'btn btn-secondary';
+        revoke.addEventListener(
+          'click',
+          () =>
+            run(async () => {
+              report('Revoking invitation...');
+              await identityRequest('admin/invite/revoke', { invitationId: invitation.id });
+              content.replaceChildren();
+              await init();
+              report('Invitation revoked. Its code can no longer create an account.');
+            }),
+          { signal }
+        );
+        row.append(revoke);
+        content.append(row);
+      }
+      return;
+    }
     const request = createHeroesClient({ signal });
     const state = await request('/heroes/management');
     const library = await request('/heroes/library');
@@ -831,7 +1114,9 @@ export function mountHeroesAccounts(
       .filter((user) => user.closure !== 'deleted')
       .map((user) => [
         user.id,
-        `${heroesAccountLabel(user)} (${user.roles.map((role) => HEROES_ROLE_LABELS[role] || role).join(', ')})${user.disabled ? ' - disabled' : ''}`,
+        `${heroesAccountLabel(user)} (${accountRoleList(user)
+          .map((role) => HEROES_ROLE_LABELS[role] || role)
+          .join(', ')})${user.disabled ? ' - disabled' : ''}`,
       ]);
     content.append(
       text(
@@ -884,67 +1169,6 @@ export function mountHeroesAccounts(
         });
       }
     }
-    content.append(
-      text('h3', 'Invite a new account'),
-      text(
-        'p',
-        'Select approved roles and create a private single-use code. Give it only to the intended person, who chooses their username and password on Register using this same helper. Codes expire after 24 hours and stop working if their issuing administrator loses access. Roles do not share existing data; use resource ACLs separately.'
-      )
-    );
-    form(
-      'Create invitation',
-      Object.entries(HEROES_ROLE_LABELS).map(([role, label]) => [role, label, 'checkbox']),
-      async (_data, panel) => {
-        const roles = Object.keys(HEROES_ROLE_LABELS).filter(
-          (role) => panel.elements[role].checked
-        );
-        const result = await identityRequest('admin/invite', { roles });
-        content.replaceChildren();
-        await init();
-        const output = text('input', '');
-        output.value = result.code;
-        output.readOnly = true;
-        output.setAttribute('aria-label', 'Private invitation code');
-        output.autocomplete = 'off';
-        content.append(
-          text('h3', 'Save this private invitation now'),
-          text(
-            'p',
-            `Shown only once. Expires ${new Date(result.invitation.expiresAt).toLocaleString()}. Approved roles: ${result.invitation.roles.map((role) => HEROES_ROLE_LABELS[role]).join(', ')}. Do not post this code publicly.`
-          ),
-          output
-        );
-        report('Invitation created. Copy the private code shown below before leaving this page.');
-      }
-    );
-    const invitations = admin.invitations || [];
-    content.append(text('h3', `Pending invitations (${invitations.length})`));
-    for (const invitation of invitations) {
-      const row = document.createElement('div');
-      row.append(
-        text(
-          'p',
-          `${invitation.roles.map((role) => HEROES_ROLE_LABELS[role]).join(', ')} — expires ${new Date(invitation.expiresAt).toLocaleString()}`
-        )
-      );
-      const revoke = text('button', 'Revoke invitation');
-      revoke.type = 'button';
-      revoke.className = 'btn btn-secondary';
-      revoke.addEventListener(
-        'click',
-        () =>
-          run(async () => {
-            report('Revoking invitation...');
-            await identityRequest('admin/invite/revoke', { invitationId: invitation.id });
-            content.replaceChildren();
-            await init();
-            report('Invitation revoked. Its code can no longer create an account.');
-          }),
-        { signal }
-      );
-      row.append(revoke);
-      content.append(row);
-    }
     const toolbar = document.createElement('div');
     toolbar.className = 'heroes-account-toolbar';
     const searchLabel = text('label', 'Search accounts');
@@ -987,7 +1211,7 @@ export function mountHeroesAccounts(
       let page = 0;
       const render = () => {
         const query = (search.value || '').trim().toLocaleLowerCase();
-        const all = admin.users.filter((user) => user.roles.includes(role));
+        const all = admin.users.filter((user) => accountRoleList(user).includes(role));
         const members = all
           .filter(
             (user) =>
@@ -1088,7 +1312,7 @@ export function mountHeroesAccounts(
     const selectUser = () => {
       const user = admin.users.find((user) => user.id === roleForm.elements.userId.value);
       for (const role of ['visitor', 'player', 'game-master', 'admin'])
-        roleForm.elements[role].checked = user.roles.includes(role);
+        roleForm.elements[role].checked = accountRoleList(user).includes(role);
       roleForm.elements.disabled.checked = user.disabled;
     };
     roleForm.elements.userId.addEventListener('change', selectUser, { signal });

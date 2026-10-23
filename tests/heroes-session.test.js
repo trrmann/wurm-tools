@@ -63,18 +63,25 @@ describe('HERO identity helper compatibility', () => {
     expect(removeItem).toHaveBeenCalledWith('heros-session-v1');
   });
 
-  it('shows the signed-in account and all its readable roles in the shared shell', () => {
+  it('shows identity only in the Heros brand and a role selector in the page header', () => {
     const subtitle = {};
     let identity;
     const header = {
-      querySelector: () => identity,
+      querySelector: () => null,
       append: (node) => {
         identity = node;
       },
     };
     vi.stubGlobal('document', {
       documentElement: { dataset: {} },
-      createElement: () => ({ setAttribute() {} }),
+      createElement: () => ({
+        children: [],
+        setAttribute() {},
+        addEventListener() {},
+        append(...children) {
+          this.children.push(...children);
+        },
+      }),
     });
     const container = {
       querySelector: (selector) =>
@@ -86,19 +93,24 @@ describe('HERO identity helper compatibility', () => {
     };
     applyHeroesBranding(container, {
       stage: 'ready',
-      user: { username: 'alex', roles: ['admin', 'player'] },
+      user: { username: 'alex', roles: ['admin'], assignedRoles: ['admin', 'player'] },
     });
-    expect(subtitle.textContent).toBe('Signed in as alex - System administrator, Player');
+    expect(subtitle.textContent).toBe('Signed in as alex - System administrator');
+    expect(identity.className).toBe('heroes-role-switcher');
+    expect(identity.children[0].children.map((option) => option.value)).toEqual([
+      'admin',
+      'player',
+    ]);
     applyHeroesBranding(container, {
       stage: 'ready',
       user: { username: 'alex', displayName: 'Alex Vale', roles: ['player'] },
     });
     expect(subtitle.textContent).toBe('Signed in as Alex Vale (@alex) - Player');
-    expect(identity.textContent).toBe('Signed in as Alex Vale (@alex)');
-    expect(identity.hidden).toBe(false);
+    expect(identity.textContent).toBe('Active role ');
+    expect(identity.children[0].textContent).toBe('Player');
+    expect(identity.children[0].children).toHaveLength(0);
     applyHeroesBranding(container, { stage: 'anonymous' });
     expect(subtitle.textContent).toBe('HERO System workspace');
-    expect(identity.hidden).toBe(true);
   });
 
   it.each([

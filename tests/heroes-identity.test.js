@@ -12,6 +12,7 @@ import { createServer } from '../scripts/wurm-local.js';
 import {
   createHeroesObject,
   createHeroesWorld,
+  exportHeroesManagement,
   saveHeroesManagement,
   saveHeroesLibrary,
 } from '../scripts/heroes-store.js';
@@ -76,6 +77,513 @@ async function accountWithRoles(admin, username, roles) {
 }
 
 describe('player and Game Master account relationships', () => {
+  it('restricts world, campaign and genre audiences to linked approved subscribers and strips portable account links', async () => {
+    const admin = await adminAccount();
+    const gm = await accountWithRoles(admin, 'scope-gm', ['game-master']);
+    const player = await accountWithRoles(admin, 'scope-player', ['player']);
+    const outsider = await accountWithRoles(admin, 'scope-outsider', ['player']);
+    await call('play/listing', { visible: true }, gm.token);
+    const relationship = (await call('play/request', { username: gm.user.username }, player.token))
+      .relationship;
+    await call('play/respond', { id: relationship.id, decision: 'approve' }, gm.token);
+    const gmProfile = await saveHeroesManagement(
+      {
+        kind: 'profile',
+        data: { name: 'Scope GM', roles: ['game-master'], accountId: gm.user.id },
+      },
+      null,
+      database
+    );
+    const playerProfile = await saveHeroesManagement(
+      {
+        kind: 'profile',
+        data: { name: 'Scope Player', roles: ['player'], accountId: player.user.id },
+      },
+      null,
+      database
+    );
+    const outsiderProfile = await saveHeroesManagement(
+      {
+        kind: 'profile',
+        data: { name: 'Unapproved Player', roles: ['player'], accountId: outsider.user.id },
+      },
+      null,
+      database
+    );
+    const genre = await saveHeroesManagement(
+      { kind: 'genre', data: { name: 'Scope genre' } },
+      null,
+      database
+    );
+    const campaign = await saveHeroesManagement(
+      { kind: 'campaign', data: { name: 'Scope campaign', genreId: genre.id, active: true } },
+      null,
+      database
+    );
+    const world = await createHeroesWorld('Scope world', database);
+    await saveHeroesManagement(
+      {
+        kind: 'world',
+        data: {
+          name: 'World membership',
+          worldId: world.id,
+          campaignId: campaign.id,
+          gameMasterId: gmProfile.id,
+          playerIds: [playerProfile.id, outsiderProfile.id],
+        },
+      },
+      null,
+      database
+    );
+    const portable = await exportHeroesManagement({}, database);
+    expect(portable.records.filter((item) => item.kind === 'profile')).toHaveLength(3);
+    expect(
+      portable.records
+        .filter((item) => item.kind === 'profile')
+        .every((item) => !('accountId' in item.data))
+    ).toBe(true);
+    const { request, close } = await startServer();
+    try {
+      const object = (
+        await request('/heroes/objects', gm.token, 'POST', {
+          name: 'Scoped prop',
+          kind: 'equipment',
+        })
+      ).body.object;
+      for (const [audience, scopeId] of [
+        ['world', world.id],
+        ['campaign', campaign.id],
+        ['genre', genre.id],
+      ]) {
+        const publication = {
+          resourceType: 'object',
+          resourceId: object.id,
+          audience,
+          scopeId,
+          viewers: [],
+          editors: [],
+        };
+        expect((await request('/heroes/sharing', admin.token, 'POST', publication)).status).toBe(
+          200
+        );
+        expect(
+          (await request('/heroes/objects', player.token)).body.objects.map((item) => item.id)
+        ).toContain(object.id);
+        expect((await request('/heroes/objects', outsider.token)).body.objects).toEqual([]);
+        expect((await request('/heroes/public')).body.objects).toEqual([]);
+        expect(
+          (
+            await request('/heroes/sharing', admin.token, 'POST', {
+              ...publication,
+              audience: `${audience}-group`,
+              viewers: [outsider.user.id],
+            })
+          ).status
+        ).toBe(400);
+        expect(
+          (
+            await request('/heroes/sharing', admin.token, 'POST', {
+              ...publication,
+              audience: `${audience}-group`,
+              viewers: [player.user.id],
+            })
+          ).status
+        ).toBe(200);
+        expect(
+          (await request('/heroes/objects', player.token)).body.objects.map((item) => item.id)
+        ).toContain(object.id);
+        expect(
+          (
+            await request(`/heroes/objects/${object.id}`, player.token, 'PUT', {
+              name: 'Unauthorized',
+              kind: 'equipment',
+            })
+          ).status
+        ).toBe(403);
+      }
+      await call('play/respond', { id: relationship.id, decision: 'end' }, gm.token);
+      expect((await request('/heroes/objects', player.token)).body.objects).toEqual([]);
+    } finally {
+      await close();
+    }
+  });
+
+  it('requires explicit administrator adoption for legacy publication without inventing its creator', async () => {
+    const legacy = await createHeroesObject(
+      null,
+      { name: 'Legacy prop', kind: 'equipment' },
+      database
+    );
+    const admin = await adminAccount();
+    const { request, close } = await startServer();
+    try {
+      const publication = {
+        resourceType: 'object',
+        resourceId: legacy.id,
+        audience: 'public',
+        scopeId: '',
+        viewers: [],
+        editors: [],
+      };
+      expect((await request('/heroes/sharing', admin.token, 'POST', publication)).status).toBe(403);
+      expect(
+        (await request('/heroes/sharing', admin.token, 'POST', { ...publication, adopt: true }))
+          .status
+      ).toBe(200);
+      const shared = (await request('/heroes/sharing', admin.token)).body.resources.find(
+        (item) => item.id === legacy.id
+      );
+      expect(shared.ownerId).toBe(admin.user.id);
+      expect(shared.creatorId).toBe('');
+      expect((await request('/heroes/public')).body.objects.map((item) => item.id)).toContain(
+        legacy.id
+      );
+    } finally {
+      await close();
+    }
+  });
+
+  it('preserves published and editor-shared content and provenance when an owner deletes their account', async () => {
+    const admin = await adminAccount();
+    const owner = await accountWithRoles(admin, 'closing-owner', ['game-master']);
+    const editor = await accountWithRoles(admin, 'retained-editor', ['player']);
+    const { request, close } = await startServer();
+    try {
+      const published = (
+        await request('/heroes/objects', owner.token, 'POST', {
+          name: 'Retained public prop',
+          kind: 'equipment',
+        })
+      ).body.object;
+      const shared = (
+        await request('/heroes/objects', owner.token, 'POST', {
+          name: 'Retained editor prop',
+          kind: 'equipment',
+        })
+      ).body.object;
+      const privateWorld = (
+        await request('/heroes/worlds', owner.token, 'POST', { name: 'Private closing world' })
+      ).body.world;
+      const unshared = (
+        await request(`/heroes/worlds/${privateWorld.id}/objects`, owner.token, 'POST', {
+          name: 'Deleted private prop',
+          kind: 'equipment',
+        })
+      ).body.object;
+      for (const [object, audience, editors] of [
+        [published, 'public', []],
+        [shared, 'private', [editor.user.id]],
+      ]) {
+        expect(
+          (
+            await request('/heroes/sharing', owner.token, 'POST', {
+              resourceType: 'object',
+              resourceId: object.id,
+              audience,
+              scopeId: '',
+              viewers: [],
+              editors,
+            })
+          ).status
+        ).toBe(200);
+      }
+      const closure = await call(
+        'closure/request',
+        { choice: 'delete', confirmation: 'closing-owner', password },
+        owner.token,
+        { databaseFile: database }
+      );
+      expect(closure).toMatchObject({ closed: true });
+      expect(closure.deleted).toBeGreaterThan(0);
+      expect((await request('/heroes/public')).body.objects.map((item) => item.id)).toContain(
+        published.id
+      );
+      const editorObjects = (await request('/heroes/objects', editor.token)).body.objects.map(
+        (item) => item.id
+      );
+      expect(editorObjects).toContain(shared.id);
+      expect(editorObjects).not.toContain(unshared.id);
+      const resources = (await request('/heroes/sharing', admin.token)).body.resources;
+      expect(resources.find((item) => item.id === shared.id).creatorId).toBe(owner.user.id);
+      expect(resources.some((item) => item.id === unshared.id)).toBe(false);
+    } finally {
+      await close();
+    }
+  });
+
+  it('publishes owned content for signed-out readers without granting editing, and revokes editors immediately', async () => {
+    const admin = await adminAccount();
+    const owner = await accountWithRoles(admin, 'content-owner', ['game-master']);
+    const editor = await accountWithRoles(admin, 'content-editor', ['player']);
+    const { request, close } = await startServer();
+    try {
+      const first = await request('/heroes/objects', owner.token, 'POST', {
+        name: 'Published prop',
+        kind: 'equipment',
+      });
+      const second = await request('/heroes/objects', owner.token, 'POST', {
+        name: 'Private prop',
+        kind: 'equipment',
+      });
+      expect(first.status).toBe(201);
+      expect(second.status).toBe(201);
+      const id = first.body.object.id;
+      expect((await request('/heroes/public')).body.objects).toEqual([]);
+      const publish = {
+        resourceType: 'object',
+        resourceId: id,
+        audience: 'public',
+        scopeId: '',
+        viewers: [],
+        editors: [editor.user.id],
+      };
+      expect((await request('/heroes/sharing', owner.token, 'POST', publish)).status).toBe(200);
+      const publicRead = await request('/heroes/public');
+      expect(publicRead.status).toBe(200);
+      expect(publicRead.body.objects.map((object) => object.id)).toEqual([id]);
+      expect((await request('/heroes/objects')).status).toBe(401);
+      expect(
+        (
+          await request(`/heroes/objects/${id}`, '', 'PUT', {
+            name: 'Anonymous edit',
+            kind: 'equipment',
+          })
+        ).status
+      ).toBe(401);
+      expect(
+        (
+          await request(`/heroes/objects/${id}`, editor.token, 'PUT', {
+            name: 'Authorized editor',
+            kind: 'equipment',
+          })
+        ).status
+      ).toBe(200);
+      expect((await request('/heroes/sharing', editor.token, 'POST', publish)).status).toBe(403);
+      expect(
+        (
+          await request('/heroes/sharing', owner.token, 'POST', {
+            ...publish,
+            audience: 'private',
+            editors: [],
+          })
+        ).status
+      ).toBe(200);
+      expect((await request('/heroes/public')).body.objects).toEqual([]);
+      expect(
+        (
+          await request(`/heroes/objects/${id}`, editor.token, 'PUT', {
+            name: 'Revoked',
+            kind: 'equipment',
+          })
+        ).status
+      ).toBe(403);
+      const metadata = (await request('/heroes/sharing', owner.token)).body.resources.find(
+        (item) => item.id === id
+      );
+      expect(metadata.creatorId).toBe(owner.user.id);
+      expect(metadata.ownerId).toBe(owner.user.id);
+      expect((await request('/heroes/sharing', owner.token, 'POST', null)).status).toBe(400);
+    } finally {
+      await close();
+    }
+  });
+
+  it('limits publication group members to approved relationships without granting write access', async () => {
+    const admin = await adminAccount();
+    const owner = await accountWithRoles(admin, 'group-gm', ['game-master']);
+    const player = await accountWithRoles(admin, 'group-player', ['player']);
+    const outsider = await accountWithRoles(admin, 'group-outsider', ['player']);
+    await call('play/listing', { visible: true }, owner.token);
+    const relationship = await call(
+      'play/request',
+      { username: owner.user.username },
+      player.token
+    );
+    await call(
+      'play/respond',
+      { id: relationship.relationship.id, decision: 'approve' },
+      owner.token
+    );
+    const { request, close } = await startServer();
+    try {
+      const created = await request('/heroes/objects', owner.token, 'POST', {
+        name: 'Group prop',
+        kind: 'equipment',
+      });
+      const id = created.body.object.id;
+      const publish = {
+        resourceType: 'object',
+        resourceId: id,
+        audience: 'player-group',
+        scopeId: '',
+        viewers: [player.user.id],
+        editors: [],
+      };
+      expect(
+        (
+          await request('/heroes/sharing', owner.token, 'POST', {
+            ...publish,
+            viewers: [outsider.user.id],
+          })
+        ).status
+      ).toBe(400);
+      expect((await request('/heroes/sharing', owner.token, 'POST', publish)).status).toBe(200);
+      expect(
+        (await request('/heroes/objects', player.token)).body.objects.map((object) => object.id)
+      ).toContain(id);
+      expect((await request('/heroes/objects', outsider.token)).body.objects).toEqual([]);
+      expect((await request(`/heroes/objects/${id}`, player.token, 'DELETE')).status).toBe(403);
+      await call(
+        'play/respond',
+        { id: relationship.relationship.id, decision: 'end' },
+        owner.token
+      );
+      expect((await request('/heroes/objects', player.token)).body.objects).toEqual([]);
+    } finally {
+      await close();
+    }
+  });
+
+  it('keeps account discovery and private messaging consent-bound, with cancellable GM invitations', async () => {
+    const admin = await adminAccount();
+    const player = await accountWithRoles(admin, 'listed-player', ['player']);
+    const gm = await accountWithRoles(admin, 'listed-gm', ['game-master']);
+    const hidden = await accountWithRoles(admin, 'private-player', ['player']);
+    const outsider = await call('register', { username: 'message-visitor', password });
+    const visitor = await call('login', { username: outsider.user.username, password });
+    expect(
+      (await call('directory/status', {}, gm.token)).users.map((item) => item.id)
+    ).not.toContain(player.user.id);
+    await expect(
+      call('messages/send', { to: hidden.user.id, text: 'Unsolicited' }, gm.token)
+    ).rejects.toMatchObject({ status: 404 });
+    await call('directory/listing', { role: 'player', visible: true }, player.token);
+    expect(
+      (await call('directory/status', {}, visitor.token)).users.map((item) => item.id)
+    ).toContain(player.user.id);
+    expect(
+      (await call('directory/status', {}, admin.token)).users.map((item) => item.id)
+    ).toContain(hidden.user.id);
+    const sent = await call(
+      'messages/send',
+      { to: player.user.id, text: 'Hello publicly listed Player' },
+      visitor.token
+    );
+    expect((await call('messages/list', {}, player.token)).messages[0].text).toBe(
+      'Hello publicly listed Player'
+    );
+    expect((await call('messages/list', {}, hidden.token)).messages).toEqual([]);
+    await expect(
+      call('messages/remove', { id: sent.message.id }, hidden.token)
+    ).rejects.toMatchObject({ status: 404 });
+    await call('messages/remove', { id: sent.message.id }, player.token);
+    expect((await call('messages/list', {}, player.token)).messages).toEqual([]);
+    expect((await call('messages/list', {}, visitor.token)).messages).toHaveLength(1);
+    const invited = await call('play/invite', { username: player.user.username }, gm.token);
+    expect(
+      (await call('directory/status', {}, player.token)).users.map((item) => item.id)
+    ).toContain(gm.user.id);
+    await expect(
+      call('play/respond', { id: invited.relationship.id, decision: 'approve' }, gm.token)
+    ).rejects.toMatchObject({ status: 403 });
+    await call('play/respond', { id: invited.relationship.id, decision: 'approve' }, player.token);
+    await call(
+      'messages/send',
+      { to: gm.user.id, text: 'Private relationship reply' },
+      player.token
+    );
+    expect((await call('messages/list', {}, gm.token)).messages).toHaveLength(1);
+    await call('play/respond', { id: invited.relationship.id, decision: 'end' }, gm.token);
+    const again = await call('play/invite', { username: player.user.username }, gm.token);
+    await call('play/respond', { id: again.relationship.id, decision: 'cancel' }, gm.token);
+    expect((await call('play/status', {}, gm.token)).relationships[0].status).toBe('cancelled');
+    await expect(
+      call('admin/sessions/revoke', { userId: player.user.id }, visitor.token)
+    ).rejects.toMatchObject({ status: 403 });
+    expect(
+      (await call('admin/sessions/revoke', { userId: visitor.user.id }, admin.token)).revoked
+    ).toBe(1);
+    await expect(call('me', {}, visitor.token)).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('enforces a selected assigned role on the helper, including administrator controls and Wurm', async () => {
+    const admin = await adminAccount();
+    await call(
+      'admin/user',
+      { userId: admin.user.id, roles: ['admin', 'player'], disabled: false },
+      admin.token
+    );
+    const login = await call('login', { username: 'administrator', password });
+    await call('mfa/verify', { code: admin.recovery[0] }, login.token);
+    await call('role/select', { role: 'player' }, login.token);
+    const current = await call('me', {}, login.token);
+    expect(current.user.roles).toEqual(['player']);
+    expect(current.user.assignedRoles).toEqual(['admin', 'player']);
+    expect(heroesPrincipal(login.token, origin, identity).roles).toEqual(['player']);
+    await expect(call('admin/list', {}, login.token)).rejects.toMatchObject({ status: 403 });
+    await expect(call('wurm/access', {}, login.token)).rejects.toMatchObject({ status: 403 });
+    await expect(call('role/select', { role: 'game-master' }, login.token)).rejects.toMatchObject({
+      status: 403,
+    });
+    await call('role/select', { role: 'admin' }, login.token);
+    expect((await call('admin/list', {}, login.token)).users).toBeDefined();
+    expect(heroesPrincipal(login.token, origin, identity).roles).toEqual(['admin']);
+  });
+
+  it('keeps GM, Player and administrator notes role-specific even with explicit ACLs', async () => {
+    const admin = await adminAccount();
+    const player = await accountWithRoles(admin, 'note-player', ['player']);
+    const gm = await accountWithRoles(admin, 'note-gm', ['game-master']);
+    const { request, close } = await startServer();
+    try {
+      const saved = await request('/heroes/management', player.token, 'POST', {
+        kind: 'player-note',
+        data: { name: 'Player journal', notes: 'A private reminder' },
+      });
+      expect(saved.status).toBe(201);
+      const id = saved.body.record.id;
+      await call(
+        'admin/grant',
+        { userId: gm.user.id, resourceType: 'record', resourceId: id, access: 'write' },
+        admin.token
+      );
+      const gmLogin = await call('login', { username: 'note-gm', password });
+      expect(
+        (await request('/heroes/management', player.token)).body.records.map((record) => record.id)
+      ).toContain(id);
+      expect(
+        (await request('/heroes/management', gmLogin.token)).body.records.map((record) => record.id)
+      ).not.toContain(id);
+      expect((await request(`/heroes/management/${id}`, gmLogin.token, 'DELETE')).status).toBe(403);
+      expect(
+        (
+          await request('/heroes/management', gmLogin.token, 'POST', {
+            kind: 'admin-note',
+            data: { name: 'Denied', notes: 'Not an administrator' },
+          })
+        ).status
+      ).toBe(403);
+      expect(
+        (
+          await request('/heroes/management', admin.token, 'POST', {
+            kind: 'admin-note',
+            data: { name: 'Operations', notes: 'Local administration' },
+          })
+        ).status
+      ).toBe(201);
+      expect(
+        (
+          await request('/heroes/management', gmLogin.token, 'POST', {
+            kind: 'profile',
+            data: { name: 'Unconfirmed player', roles: ['player'] },
+          })
+        ).status
+      ).toBe(403);
+    } finally {
+      await close();
+    }
+  });
+
   it('lists only opted-in active GMs to Players and exposes only consented display names and usernames', async () => {
     const admin = await adminAccount();
     const player = await accountWithRoles(admin, 'directory-player', ['player']);
@@ -93,7 +601,9 @@ describe('player and Game Master account relationships', () => {
       status: 400,
     });
     await call('play/listing', { visible: true }, gm.token);
+    await call('role/select', { role: 'game-master' }, dual.token);
     await call('play/listing', { visible: true }, dual.token);
+    await call('role/select', { role: 'player' }, dual.token);
     expect((await call('play/status', {}, player.token)).directory).toEqual([
       { username: 'directory-dual', displayName: '' },
       { username: 'directory-gm', displayName: 'Private GM name' },
@@ -191,8 +701,11 @@ describe('player and Game Master account relationships', () => {
     const first = await accountWithRoles(admin, 'first-dual', ['player', 'game-master']);
     const second = await accountWithRoles(admin, 'second-dual', ['player', 'game-master']);
     const gmOnly = await accountWithRoles(admin, 'gm-only', ['game-master']);
-    for (const account of [first, second])
+    for (const account of [first, second]) {
+      await call('role/select', { role: 'game-master' }, account.token);
       await call('play/listing', { visible: true }, account.token);
+      await call('role/select', { role: 'player' }, account.token);
+    }
     await expect(call('play/request', { username: 'gm-only' }, first.token)).rejects.toMatchObject({
       status: 404,
     });
@@ -213,9 +726,12 @@ describe('player and Game Master account relationships', () => {
     await expect(
       call('play/respond', { id: staleId, decision: 'approve' }, second.token)
     ).rejects.toMatchObject({ status: 404 });
+    await call('role/select', { role: 'game-master' }, second.token);
     await call('play/respond', { id: submitted.relationship.id, decision: 'reject' }, second.token);
+    await call('role/select', { role: 'player' }, second.token);
     submitted = await call('play/request', { username: 'second-dual' }, first.token);
     const reverse = await call('play/request', { username: 'first-dual' }, second.token);
+    await call('role/select', { role: 'game-master' }, second.token);
     await expect(
       call('play/respond', { id: submitted.relationship.id, decision: 'invalid' }, second.token)
     ).rejects.toMatchObject({ status: 400 });
@@ -226,6 +742,7 @@ describe('player and Game Master account relationships', () => {
     );
     expect(decisions.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect(decisions.find((result) => result.status === 'rejected').reason.status).toBe(409);
+    await call('role/select', { role: 'game-master' }, first.token);
     await call('play/respond', { id: reverse.relationship.id, decision: 'approve' }, first.token);
     expect((await call('play/status', {}, first.token)).relationships).toHaveLength(2);
     await call('play/respond', { id: reverse.relationship.id, decision: 'end' }, first.token);
@@ -292,12 +809,17 @@ describe('player and Game Master account relationships', () => {
     const dual = await accountWithRoles(admin, 'changed-player', ['player', 'game-master']);
     const first = await accountWithRoles(admin, 'unchanged-first', ['player', 'game-master']);
     const second = await accountWithRoles(admin, 'unchanged-second', ['player', 'game-master']);
-    for (const account of [dual, first, second])
+    for (const account of [dual, first, second]) {
+      await call('role/select', { role: 'game-master' }, account.token);
       await call('play/listing', { visible: true }, account.token);
+      await call('role/select', { role: 'player' }, account.token);
+    }
     const approved = await call('play/request', { username: 'unchanged-first' }, dual.token);
+    await call('role/select', { role: 'game-master' }, first.token);
     await call('play/respond', { id: approved.relationship.id, decision: 'approve' }, first.token);
     await call('play/request', { username: 'unchanged-second' }, dual.token);
     const incoming = await call('play/request', { username: 'changed-player' }, second.token);
+    await call('role/select', { role: 'game-master' }, dual.token);
     await call('play/respond', { id: incoming.relationship.id, decision: 'approve' }, dual.token);
     await call(
       'admin/user',
@@ -336,6 +858,9 @@ describe('local HERO identity', () => {
       expect((await request('/heroes/access')).status).toBe(401);
       expect((await request('/heroes/access', reader.token)).body.routes).toEqual([]);
       expect((await request('/heroes/access', admin.token)).body.routes).toContain(
+        '/site/heroes/people/admin-notes/'
+      );
+      expect((await request('/heroes/access', admin.token)).body.routes).not.toContain(
         '/site/heroes/people/notes/'
       );
       await call(
@@ -1126,7 +1651,7 @@ describe('server-enforced HERO authorization', () => {
       expect((await request('/heroes/objects', login.token)).status).toBe(401);
       login = await call('login', { username: 'visitor', password });
       expect((await request('/heroes/objects', login.token)).body.objects[0].id).toBe(object.id);
-      expect((await request(`/heroes/objects/${object.id}/export`, login.token)).status).toBe(200);
+      expect((await request(`/heroes/objects/${object.id}/export`, login.token)).status).toBe(403);
       expect(
         (
           await request(`/heroes/objects/${object.id}`, login.token, 'PUT', {
@@ -1148,7 +1673,7 @@ describe('server-enforced HERO authorization', () => {
             kind: 'equipment',
           })
         ).status
-      ).toBe(200);
+      ).toBe(403);
       expect(
         (
           await request('/heroes/auth/admin/grant', admin.token, 'POST', {

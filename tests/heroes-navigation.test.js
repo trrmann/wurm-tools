@@ -35,9 +35,13 @@ describe('Heros contextual pages', () => {
 
   it('hides every unauthorized workspace route from sidebars, grouped menus and direct URLs', () => {
     const access = { stage: 'ready', user: { roles: ['visitor'] }, routes: [] };
-    expect(heroesAccessPages(access).map((page) => page.account)).toEqual(['account', 'logout']);
+    expect(heroesAccessPages(access).map((page) => page.account)).toEqual([
+      'public',
+      'account',
+      'logout',
+    ]);
     expect(heroesNavigationLinks(access)).toEqual([
-      ['Account / Login', '/site/heroes/account/'],
+      ['Profile', '/site/heroes/account/'],
       ['Logout', '/site/heroes/logout/'],
     ]);
     for (const page of HEROES_PAGES.filter((page) => !page.account))
@@ -90,7 +94,9 @@ describe('Heros contextual pages', () => {
     expect(player).not.toContain('/site/heroes/genres/');
     expect(player).not.toContain('/site/heroes/people/notes/');
     expect(heroesWorkspaceRoutes(['game-master'], empty, [])).toEqual(
-      HEROES_PAGES.filter((page) => !page.account).map((page) => page.href)
+      HEROES_PAGES.filter(
+        (page) => !page.account && (!page.requiredRole || page.requiredRole === 'game-master')
+      ).map((page) => page.href)
     );
     const resources = {
       worlds: [],
@@ -103,11 +109,32 @@ describe('Heros contextual pages', () => {
     expect(heroesWorkspaceRoutes(['visitor'], resources, [])).toEqual([
       '/site/heroes/player-characters/',
       '/site/heroes/people/players/',
-      '/site/heroes/people/notes/',
     ]);
     expect(heroesWorkspaceRoutes(['visitor'], empty, [{}])).toEqual(['/site/heroes/library/']);
     expect(heroesWorkspaceRoutes(['admin'], empty, [])).toEqual(
-      HEROES_PAGES.filter((page) => !page.account).map((page) => page.href)
+      HEROES_PAGES.filter(
+        (page) =>
+          !page.account &&
+          (page.sharing || page.section === 'profile' || page.requiredRole === 'admin')
+      ).map((page) => page.href)
+    );
+  });
+
+  it('denies administrator game-editor URLs and replaces impersonated logout with Profile release guidance', () => {
+    const access = {
+      stage: 'ready',
+      user: { roles: ['admin'], assignedRoles: ['admin', 'game-master', 'player'] },
+      routes: heroesWorkspaceRoutes(['admin'], { worlds: [], records: [], objects: [] }, []),
+    };
+    for (const route of ['/site/heroes/', '/site/heroes/campaigns/', '/site/heroes/objects/'])
+      expect(heroesAccessRedirect(getHeroesPage(route), access)).toBe(
+        '/site/heroes/account/?notice=route-denied'
+      );
+    access.user.impersonation = { actorId: 'original-admin', preview: true };
+    expect(heroesAccessPages(access).some((page) => page.account === 'logout')).toBe(false);
+    expect(heroesNavigationLinks(access).some(([label]) => label === 'Logout')).toBe(false);
+    expect(heroesAccessRedirect(getHeroesPage('/site/heroes/logout/'), access)).toBe(
+      '/site/heroes/account/?notice=release-required'
     );
   });
 
@@ -181,17 +208,20 @@ describe('Heros contextual pages', () => {
   });
 
   it('carries only organizational context between pages, never an object selection or secret', () => {
-    expect(heroesPageHref(HEROES_PAGES[1], '?world=w1&profile=p1&object=o1&token=secret')).toBe(
-      '/site/heroes/genres/?world=w1&profile=p1'
-    );
+    expect(
+      heroesPageHref(
+        getHeroesPage('/site/heroes/genres/'),
+        '?world=w1&profile=p1&object=o1&token=secret'
+      )
+    ).toBe('/site/heroes/genres/?world=w1&profile=p1');
     expect(heroesPageHref({ href: '/' }, '?world=w1&profile=p1')).toBe('/');
-    expect(heroesPageHref(HEROES_PAGES[0])).toBe('/site/heroes/');
+    expect(heroesPageHref(getHeroesPage('/site/heroes/'))).toBe('/site/heroes/');
   });
 
   it.each([
     ['/site/heroes/player-characters/', 'worlds', 'Player characters'],
     ['/site/heroes/people/players/', 'people', 'Players'],
-    ['/site/heroes/people/admins/index.html', 'people', 'Admins'],
+    ['/site/heroes/people/admins/index.html', 'people', 'System administrators'],
   ])('renders only contextual sidebar entries at %s', (pathname, group, activeTitle) => {
     const links = [];
     vi.stubGlobal('window', { location: { pathname, search: '?world=w1&profile=p1' } });
@@ -209,7 +239,9 @@ describe('Heros contextual pages', () => {
       };
       renderHeroesNavigation(container);
       expect(links.map((link) => link.textContent)).toEqual(
-        HEROES_PAGES.filter((page) => page.group === group).map((page) => page.title)
+        HEROES_PAGES.filter((page) => page.group === group && page.navigation !== false).map(
+          (page) => page.title
+        )
       );
       expect(
         links.filter((link) => link['aria-current'] === 'page').map((link) => link.textContent)
@@ -219,7 +251,9 @@ describe('Heros contextual pages', () => {
       expect(links.map((link) => link.textContent)).toEqual(
         HEROES_PAGES.filter(
           (page) =>
-            page.group === group && page.title.toLowerCase().includes(activeTitle.toLowerCase())
+            page.group === group &&
+            page.navigation !== false &&
+            page.title.toLowerCase().includes(activeTitle.toLowerCase())
         ).map((page) => page.title)
       );
     } finally {

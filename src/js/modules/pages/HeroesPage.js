@@ -9,8 +9,13 @@ import {
 } from './heroes-navigation.js';
 import { mountHeroesPeople } from '../../tools/heroes/people.js';
 import { mountHeroesAccounts } from '../../tools/heroes/accounts.js';
-import { identityRequest } from '../../tools/heroes/session.js';
+import { identityRequest, heroesSessionToken } from '../../tools/heroes/session.js';
 import { createHeroesClient } from '../../tools/heroes/helper-client.js';
+import { mountHeroesDirectory } from '../../tools/heroes/directory.js';
+import { mountHeroesSharing } from '../../tools/heroes/sharing.js';
+import { mountHeroesImpersonation } from '../../tools/heroes/impersonation.js';
+import { mountHeroesSubscriptions } from '../../tools/heroes/subscriptions.js';
+import { mountHeroesCopies } from '../../tools/heroes/copies.js';
 
 export class HeroesPage extends BasePage {
   static pageAppID = 'heroes-app';
@@ -30,6 +35,12 @@ export class HeroesPage extends BasePage {
 
   render() {
     if (!this.container) return;
+    if (this.page.public) {
+      document.documentElement.dataset.game = 'heroes';
+      this.teardownSharing = mountHeroesSharing(this.container, { publicOnly: true });
+      if (heroesSessionToken()) this.renderPublicAccount();
+      return;
+    }
     if (['/', '/index.html'].includes(window.location.pathname)) {
       document.documentElement.dataset.game = 'heroes';
       this.container.classList.add('heroes-login-entry');
@@ -59,8 +70,29 @@ export class HeroesPage extends BasePage {
           return;
         }
         this.setAccess(access);
+        if (access.stage === 'ready') {
+          const controls = document.createElement('div');
+          this.viewport.before(controls);
+          this.teardownImpersonation = mountHeroesImpersonation(controls, { user: access.user });
+          if (
+            !access.user.impersonation &&
+            (!this.page.account ||
+              this.page.account === 'account' ||
+              this.page.account.startsWith('admin'))
+          ) {
+            identityRequest('preferences/save', {
+              location: window.location.pathname + window.location.search,
+            }).catch((error) => {
+              if (!this.isMounted) return;
+              const warning = document.createElement('p');
+              warning.setAttribute('role', 'status');
+              warning.textContent = `Unable to remember this location: ${error.message}`;
+              this.viewport.prepend(warning);
+            });
+          }
+        }
         status.remove();
-        if (this.page.account)
+        if (this.page.account) {
           this.teardownAccounts = mountHeroesAccounts(this.viewport, this.page.account, {
             onAccessChange: (next) => {
               if (next.stage !== 'ready') return this.setAccess(next);
@@ -78,7 +110,18 @@ export class HeroesPage extends BasePage {
             accessDenied:
               new URLSearchParams(window.location.search).get('notice') === 'route-denied',
           });
-        else this.renderWorkspace(access);
+          if (this.page.account === 'admin') {
+            const directory = document.createElement('div');
+            this.viewport.prepend(directory);
+            this.teardownDirectory = mountHeroesDirectory(directory, { user: access.user });
+            const subscriptions = document.createElement('div');
+            directory.after(subscriptions);
+            this.teardownSubscriptions = mountHeroesSubscriptions(subscriptions, {
+              user: access.user,
+              role: 'admin',
+            });
+          }
+        } else this.renderWorkspace(access);
       })
       .catch((error) => {
         if (!this.isMounted) return;
@@ -104,10 +147,46 @@ export class HeroesPage extends BasePage {
         stage: pending ? 'mfa' : 'ready',
         user: result.user,
         routes: permissions.routes,
+        writable: permissions.writable,
+        deletable: permissions.deletable,
+        owned: permissions.owned,
       };
     } catch (error) {
       if (error.status === 401) return { stage: 'anonymous' };
       throw error;
+    }
+  }
+
+  async renderPublicAccount() {
+    try {
+      const result = await identityRequest('me');
+      if (!this.isMounted || result.mfaRequired || result.enrollmentRequired) return;
+      const toolbar = document.createElement('header');
+      toolbar.className = 'top-header heroes-public-toolbar';
+      const title = document.createElement('div');
+      title.className = 'header-title-container';
+      const identity = document.createElement('p');
+      identity.className = 'sidebar-subtitle';
+      title.append(identity);
+      toolbar.append(title);
+      this.container.prepend(toolbar);
+      applyHeroesBranding(this.container, { stage: 'ready', user: result.user });
+      const approvals = document.createElement('div');
+      toolbar.after(approvals);
+      this.teardownImpersonation = mountHeroesImpersonation(approvals, { user: result.user });
+      if (!result.user.impersonation)
+        await identityRequest('preferences/save', {
+          location: window.location.pathname + window.location.search,
+        });
+    } catch (error) {
+      if (!this.isMounted) return;
+      const status = document.createElement('p');
+      status.setAttribute('role', 'status');
+      status.textContent =
+        error.status === 401
+          ? 'Your account session ended. Public content remains available; use Profile to sign in.'
+          : `Unable to load account controls: ${error.message}. Public content remains available.`;
+      this.container.prepend(status);
     }
   }
 
@@ -120,11 +199,50 @@ export class HeroesPage extends BasePage {
       renderList: (container, filter) => renderHeroesNavigation(container, filter, access),
       searchLabel: 'Search Heros pages',
     });
+    const sidebar = this.container.querySelector('#sidebar');
+    const sidebarList = this.container.querySelector('#sidebar-navigation');
+    if (sidebar && sidebarList) {
+      const empty = sidebarList.children.length === 0;
+      sidebar.hidden = empty;
+      this.container.classList.toggle('heroes-no-sidebar', empty);
+      const toggle = this.container.querySelector('#mobile-menu-toggle');
+      if (toggle) toggle.hidden = empty;
+    }
   }
 
   renderWorkspace(access) {
-    if (this.page.editor) heroesEditor.mount(this.viewport, { page: this.page });
+    if (this.page.sharing) {
+      const sharing = document.createElement('div');
+      const copies = document.createElement('div');
+      copies.id = 'copies';
+      this.viewport.append(sharing, copies);
+      this.teardownSharing = mountHeroesSharing(sharing);
+      this.teardownCopies = mountHeroesCopies(copies);
+    }
+    if (this.page.editor)
+      heroesEditor.mount(this.viewport, {
+        page: this.page,
+        accountRoles: access.user.roles,
+        writable: access.writable,
+        deletable: access.deletable,
+        owned: access.owned,
+      });
     if (this.page.section) {
+      if (this.page.section === 'profile') {
+        const directory = document.createElement('div');
+        this.viewport.append(directory);
+        this.teardownDirectory = mountHeroesDirectory(directory, {
+          user: access.user,
+          role: this.page.role,
+        });
+        if (access.user.roles.some((role) => ['player', 'game-master', 'admin'].includes(role))) {
+          const subscriptions = document.createElement('div');
+          this.viewport.append(subscriptions);
+          this.teardownSubscriptions = mountHeroesSubscriptions(subscriptions, {
+            user: access.user,
+          });
+        }
+      }
       const management = document.createElement('div');
       this.viewport.append(management);
       this.teardownPeople = mountHeroesPeople(management, {
@@ -133,6 +251,7 @@ export class HeroesPage extends BasePage {
         title: this.page.title,
         accountRoles: access.user.roles,
         routes: access.routes,
+        writable: access.writable,
       });
     }
   }
@@ -142,6 +261,11 @@ export class HeroesPage extends BasePage {
   unbindEvents() {
     heroesEditor.unmount();
     this.teardownPeople?.();
+    this.teardownDirectory?.();
+    this.teardownSharing?.();
+    this.teardownImpersonation?.();
+    this.teardownSubscriptions?.();
+    this.teardownCopies?.destroy();
     this.teardownAccounts?.();
     this.teardownSidebar?.();
     this.teardownSidebar = null;
