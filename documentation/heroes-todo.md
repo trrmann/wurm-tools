@@ -90,11 +90,17 @@ Calculations remain limited to existing, researched 5th Edition rules; labels do
   - [ ] a gm can chose to publish items for players or global or not published.
   - [ ] a gm does need a players permission to share an object, even if the gm has approved it being submitted by the player.
   - [ ] maximum priority: the system admin, game masters, players, and visitors roles are confusing to look at the way the pages are layed out, need to simply the view for the user to manage. also there is not play to put the actual name, should use the person name structure already defined based on culture. also should be able to see who is signed in when they are signed in. I preformed an action to update records as sys admin and it went to authentication but di dnot tell me what was going on before it did it or while it was doing it and it needs ot be more trnaspart as to what is going on. I do not see the lists of system admins, game masters, players or visitors lookign throught he pages, even paginated in this site, it should have the ablity to see who is allowed in the system and have the ability to CRUD the list as well. genres are tweakable but not addable by GMs
+    - [x] Account-management usability first (user-selected scope): group actual accounts by System administrator, Game Master, Player, and Visitor; show active/disabled state, MFA and sign-in metadata, and the current account. Show signed-in identity and readable roles in the shared sidebar. Report account actions in progress, refresh lists after role/ACL changes, and explain session revocation with an explicit sign-in action rather than silently redirecting. Account removal means disabling access while preserving identity and game records.
+    - [ ] Remaining scope: culturally structured personal names, fuller account creation/management workflows and pagination, and GM genre-creation usability.
+    - [x] Self-service account closure has three user-selected policies: delete credentials and unshared owned resources; transfer ownership to an active account only after its recipient accepts; or deactivate with identity/data retained for administrator restoration after identity verification. Require the current password and exact username confirmation, protect the last active administrator, revoke closed-account sessions, and permit transfer cancellation/decline. Record creator ownership separately from ACLs for new helper-created/imported resources (including administrators); never infer legacy ownership from write access. Keep shared resources and their connected contexts, globally available definitions, and data with unknown ownership. Deleted credentials cannot be restored; portable game backups do not carry identity, ownership, or pending transfer requests. Existing administrative disabling remains separate.
 
 ### Object Interactions
 
 - [ ] After generation is rulebook-aligned, define and implement OOP interaction methods for rule-defined combat, damaging/breaking objects, and non-combat actions.
 - [ ] Validate object interactions against the 5th Edition rules before beginning genre-specific features.
+- [ ] voluntary account deletetion should allow the user to export all thier data as well. this should be recoverable import if approved by sys admin. all approvals on restore must be recertified by gms and other players.
+- [ ] involuntary deletetion by system admin should allow backup of all data to be stored and recoverable.npm run helper:stop
+      npm run helper
 
 ### Genre Support
 

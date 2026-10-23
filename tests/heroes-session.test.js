@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { identityRequest } from '../src/js/tools/heroes/session.js';
+import { createHeroesClient } from '../src/js/tools/heroes/helper-client.js';
+import { applyHeroesBranding } from '../src/js/modules/pages/heroes-branding.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -15,6 +17,39 @@ function mockRequest(body, status = 200) {
 }
 
 describe('HERO identity helper compatibility', () => {
+  it('keeps the workspace visible and explains a rejected action when a session is revoked', async () => {
+    const removeItem = vi.fn();
+    vi.stubGlobal('sessionStorage', { getItem: () => 'revoked', removeItem });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        json: async () => ({ error: 'Sign in to Heros Tools' }),
+      })
+    );
+    await expect(createHeroesClient()('/heroes/management')).rejects.toThrow(
+      'This action was not completed. Open Account & security'
+    );
+    expect(removeItem).toHaveBeenCalledWith('heros-session-v1');
+  });
+
+  it('shows the signed-in account and all its readable roles in the shared shell', () => {
+    const subtitle = {};
+    vi.stubGlobal('document', { documentElement: { dataset: {} } });
+    const container = {
+      querySelector: (selector) => (selector === '.sidebar-subtitle' ? subtitle : null),
+    };
+    applyHeroesBranding(container, {
+      stage: 'ready',
+      user: { username: 'alex', roles: ['admin', 'player'] },
+    });
+    expect(subtitle.textContent).toBe('Signed in as alex - System administrator, Player');
+    applyHeroesBranding(container, { stage: 'anonymous' });
+    expect(subtitle.textContent).toBe('HERO System workspace');
+  });
+
   it.each(['status', 'setup', 'register', 'login'])(
     'does not send session credentials for public %s requests',
     async (action) => {

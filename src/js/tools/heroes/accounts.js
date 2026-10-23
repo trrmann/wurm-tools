@@ -1,4 +1,9 @@
-import { HEROES_SESSION_KEY, HEROES_LOGOUT_KEY, identityRequest } from './session.js';
+import {
+  HEROES_SESSION_KEY,
+  HEROES_LOGOUT_KEY,
+  HEROES_ROLE_LABELS,
+  identityRequest,
+} from './session.js';
 import { createHeroesClient } from './helper-client.js';
 
 export function mountHeroesAccounts(
@@ -31,9 +36,15 @@ export function mountHeroesAccounts(
       if (
         error.status === 401 &&
         !['login', 'register', 'setup', 'logout', 'logout-success'].includes(mode)
-      )
-        window.location.replace('/site/heroes/login/');
-      else report(error.message, true);
+      ) {
+        sessionStorage.removeItem(HEROES_SESSION_KEY);
+        onAccessChange({ stage: 'anonymous' });
+        report(
+          'Your session expired or was revoked. This action was not completed. Sign in again, then retry.',
+          true
+        );
+        content.replaceChildren(link('Sign in again', '/site/heroes/login/'));
+      } else report(error.message, true);
     } finally {
       busy = false;
     }
@@ -85,6 +96,7 @@ export function mountHeroesAccounts(
         event.preventDefault();
         run(async () => {
           submit.disabled = true;
+          report(`${label} - contacting your local helper...`);
           try {
             await action(Object.fromEntries(new FormData(panel)), panel);
           } finally {
@@ -419,7 +431,7 @@ export function mountHeroesAccounts(
     }
     const current = await identityRequest('me');
     if (current.mfaRequired || current.enrollmentRequired) return afterLogin(current);
-    heading.textContent = `${current.user.username} - ${current.user.roles.join(', ')}`;
+    heading.textContent = `${current.user.username} - ${current.user.roles.map((role) => HEROES_ROLE_LABELS[role] || role).join(', ')}`;
     content.append(link('Logout', '/site/heroes/logout/'));
     if (mode !== 'admin') {
       form(
@@ -443,34 +455,133 @@ export function mountHeroesAccounts(
             'Authenticator two-factor authentication is enabled. Use saved single-use recovery codes if your authenticator is unavailable.'
           )
         );
+      const closure = await identityRequest('closure/status');
+      content.append(
+        text('h3', 'Close my account'),
+        text(
+          'p',
+          `Tracked owned resources: ${closure.ownedCount}. Ownership is recorded separately from read/write permissions. Legacy data without recorded ownership is never deleted by this action.`
+        ),
+        text(
+          'p',
+          'Retain deactivates your account for system-administrator recovery after identity verification. Delete permanently removes your credentials and only unshared owned data; shared data and connected contexts stay with system administrators. Transfer keeps your account active until the named recipient accepts all resources you own at acceptance, then permanently deletes your credentials. You cannot close the last active system-administrator account.'
+        )
+      );
+      for (const transfer of closure.outgoing) {
+        content.append(
+          text('p', `Awaiting acceptance by ${transfer.username}. Your account is still active.`)
+        );
+        form('Cancel ownership transfer', [], async () => {
+          await identityRequest('closure/cancel', { id: transfer.id });
+          content.replaceChildren();
+          await init();
+          report('Transfer cancelled. Your account and data are unchanged.');
+        });
+      }
+      for (const transfer of closure.incoming) {
+        content.append(
+          text(
+            'p',
+            `${transfer.username} requests transfer of all their owned resources (currently ${transfer.ownedCount}) to you. Accepting permanently closes their account and grants you ownership and write access to those resources; other users keep their existing access.`
+          )
+        );
+        form(`Accept transfer from ${transfer.username}`, [], async () => {
+          const result = await identityRequest('closure/accept', { id: transfer.id });
+          content.replaceChildren();
+          await init();
+          report(
+            `Transfer accepted. ${result.transferred} resource ownership records transferred; the sender's account was closed.`
+          );
+        });
+        form(`Decline transfer from ${transfer.username}`, [], async () => {
+          await identityRequest('closure/reject', { id: transfer.id });
+          content.replaceChildren();
+          await init();
+          report('Transfer declined. The sender account remains active.');
+        });
+      }
+      const closeForm = form(
+        'Confirm account closure',
+        [
+          [
+            'choice',
+            'What should happen to my data?',
+            'text',
+            [
+              ['retain', 'Retain my account and data for future recovery'],
+              ['delete', 'Delete my credentials and unshared owned data'],
+              ['transfer', 'Transfer owned resources, then delete my credentials after acceptance'],
+            ],
+          ],
+          ['recipient', 'Recipient username (transfer only)'],
+          ['confirmation', 'Type your exact username to confirm'],
+          ['password', 'Current password', 'password'],
+        ],
+        async (data) => {
+          const result = await identityRequest('closure/request', data);
+          if (result.closed) {
+            sessionStorage.removeItem(HEROES_SESSION_KEY);
+            sessionStorage.removeItem(HEROES_LOGOUT_KEY);
+            onAccessChange({ stage: 'anonymous' });
+            content.replaceChildren(link('Log in with another account', '/site/heroes/login/'));
+          } else {
+            content.replaceChildren();
+            await init();
+          }
+          report(result.message);
+        }
+      );
+      closeForm.elements.recipient.required = false;
+      closeForm.elements.password.autocomplete = 'current-password';
       return;
     }
     const admin = await identityRequest('admin/list');
     const request = createHeroesClient({ signal });
     const state = await request('/heroes/management');
     const library = await request('/heroes/library');
-    const users = admin.users.map((user) => [
-      user.id,
-      `${user.username} (${user.roles.join(', ')})${user.disabled ? ' - disabled' : ''}`,
-    ]);
+    const users = admin.users
+      .filter((user) => user.closure !== 'deleted')
+      .map((user) => [
+        user.id,
+        `${user.username} (${user.roles.map((role) => HEROES_ROLE_LABELS[role] || role).join(', ')})${user.disabled ? ' - disabled' : ''}`,
+      ]);
     content.append(
       text(
         'p',
         'New accounts are Visitors and cannot create data until granted Player or Game Master. Roles do not grant access to existing resources; use explicit read/write ACLs. Administrators have full access and require TOTP. Legacy profiles are organizational records, never accounts.'
       )
     );
-    for (const user of admin.users)
-      content.append(
-        text(
-          'p',
-          `${user.username}: ${user.roles.join(', ')}; MFA: ${user.mfaEnabled ? 'enabled' : 'not enrolled'}; last login: ${user.lastLoginAt || 'never'}`
-        )
-      );
+    content.append(
+      text(
+        'p',
+        'These are sign-in accounts, not workspace profiles. One account may have multiple roles and appears in each applicable list. Disable an account to remove access without deleting its identity or game records.'
+      )
+    );
+    for (const [role, label] of Object.entries(HEROES_ROLE_LABELS)) {
+      const members = admin.users.filter((user) => user.roles.includes(role));
+      const group = document.createElement('section');
+      group.append(text('h3', `${label} accounts (${members.length})`));
+      if (!members.length) group.append(text('p', 'No accounts with this role.'));
+      const list = document.createElement('ul');
+      for (const user of members)
+        list.append(
+          text(
+            'li',
+            `${user.username}${user.id === current.user.id ? ' (you)' : ''} - ${user.closure === 'retained' ? 'Deactivated for recovery (verify identity before restoring)' : user.disabled ? 'Disabled' : 'Active'}; MFA: ${user.mfaEnabled ? 'enabled' : 'not enrolled'}; created: ${user.createdAt || 'unknown'}; last sign-in: ${user.lastLoginAt || 'never'}`
+          )
+        );
+      group.append(list);
+      content.append(group);
+    }
     const roleForm = form(
       'Save account roles',
       [
         ['userId', 'Account', 'text', users],
-        ...['visitor', 'player', 'game-master', 'admin'].map((role) => [role, role, 'checkbox']),
+        ...['visitor', 'player', 'game-master', 'admin'].map((role) => [
+          role,
+          HEROES_ROLE_LABELS[role],
+          'checkbox',
+        ]),
         ['disabled', 'Disable account', 'checkbox'],
       ],
       async (data, panel) => {
@@ -484,9 +595,14 @@ export function mountHeroesAccounts(
         });
         if (data.userId === current.user.id) {
           sessionStorage.removeItem(HEROES_SESSION_KEY);
-          window.location.replace('/site/heroes/login/');
-        } else
-          report('Account updated; its sessions were revoked. Reload to refresh the account list.');
+          onAccessChange({ stage: 'anonymous' });
+          content.replaceChildren(link('Sign in again', '/site/heroes/login/'));
+          report('Your account was updated and your session revoked. Sign in again to continue.');
+        } else {
+          content.replaceChildren();
+          await init();
+          report('Account updated. The account lists are refreshed; its sessions were revoked.');
+        }
       }
     );
     const selectUser = () => {
@@ -531,6 +647,15 @@ export function mountHeroesAccounts(
             resourceId,
             access: data.access,
           });
+          if (data.userId === current.user.id) {
+            sessionStorage.removeItem(HEROES_SESSION_KEY);
+            onAccessChange({ stage: 'anonymous' });
+            content.replaceChildren(link('Sign in again', '/site/heroes/login/'));
+            report('Permissions saved. Your session was revoked; sign in again to continue.');
+            return;
+          }
+          content.replaceChildren();
+          await init();
           report(
             'ACL saved. Changes apply to the next request; affected user sessions were revoked.'
           );

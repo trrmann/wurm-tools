@@ -563,6 +563,12 @@ export function createServer({ env = process.env } = {}) {
   const origins = allowedOrigins(env);
   const authFile = authFilePath(env);
   const pairingAttempts = new Map();
+  let heroesRequests = Promise.resolve();
+  const runHeroesRequest = (action) => {
+    const operation = heroesRequests.then(action);
+    heroesRequests = operation.catch(() => {});
+    return operation;
+  };
   return http.createServer(async (req, res) => {
     const origin = req.headers.origin;
     const originOk = !origin || origins.includes(origin);
@@ -642,48 +648,51 @@ export function createServer({ env = process.env } = {}) {
         return send(200, result?.pixels || result);
       }
       if (url.pathname.startsWith('/heroes/')) {
-        if (!origin)
-          return send(403, { error: 'An approved app origin is required for HERO accounts' });
-        const identityFile = heroesIdentityPath(env);
-        const bearer = req.headers['x-heroes-session'] || '';
-        if (url.pathname.startsWith('/heroes/auth/')) {
-          const action = url.pathname.slice('/heroes/auth/'.length);
-          const get = ['status', 'me', 'admin/list'].includes(action);
-          if (req.method !== (get ? 'GET' : 'POST')) throw httpError(405, 'Method not allowed');
-          const body = get ? {} : await readJsonBody(req, 16 * 1024);
-          if (action === 'admin/grant') {
-            const principal = heroesPrincipal(bearer, origin, identityFile);
-            if (!principal.roles.includes('admin'))
-              throw httpError(403, 'Administrator access required');
-            const state = await listHeroesManagement(heroesDatabasePath(env));
-            const items = {
-              world: state.worlds,
-              object: state.objects,
-              record: state.records,
-              library: await listHeroesLibrary(heroesDatabasePath(env)),
-            };
-            if (!items[body.resourceType]?.some((item) => item.id === body.resourceId))
-              throw httpError(400, 'ACL target does not exist');
+        return await runHeroesRequest(async () => {
+          if (!origin)
+            return send(403, { error: 'An approved app origin is required for HERO accounts' });
+          const identityFile = heroesIdentityPath(env);
+          const bearer = req.headers['x-heroes-session'] || '';
+          if (url.pathname.startsWith('/heroes/auth/')) {
+            const action = url.pathname.slice('/heroes/auth/'.length);
+            const get = ['status', 'me', 'admin/list', 'closure/status'].includes(action);
+            if (req.method !== (get ? 'GET' : 'POST')) throw httpError(405, 'Method not allowed');
+            const body = get ? {} : await readJsonBody(req, 16 * 1024);
+            if (action === 'admin/grant') {
+              const principal = heroesPrincipal(bearer, origin, identityFile);
+              if (!principal.roles.includes('admin'))
+                throw httpError(403, 'Administrator access required');
+              const state = await listHeroesManagement(heroesDatabasePath(env));
+              const items = {
+                world: state.worlds,
+                object: state.objects,
+                record: state.records,
+                library: await listHeroesLibrary(heroesDatabasePath(env)),
+              };
+              if (!items[body.resourceType]?.some((item) => item.id === body.resourceId))
+                throw httpError(400, 'ACL target does not exist');
+            }
+            const result = await heroesIdentityAction(action, body, {
+              file: identityFile,
+              bearer,
+              origin,
+              remote: req.socket.remoteAddress,
+              databaseFile: heroesDatabasePath(env),
+            });
+            return send(200, result);
           }
-          const result = await heroesIdentityAction(action, body, {
-            file: identityFile,
-            bearer,
-            origin,
-            remote: req.socket.remoteAddress,
-          });
+          const principal = heroesPrincipal(bearer, origin, identityFile);
+          const result = await handleAuthorizedHeroes(
+            req,
+            url,
+            heroesDatabasePath(env),
+            principal,
+            identityFile,
+            handleHeroes
+          );
+          if (result?.statusCode) return send(result.statusCode, result.body);
           return send(200, result);
-        }
-        const principal = heroesPrincipal(bearer, origin, identityFile);
-        const result = await handleAuthorizedHeroes(
-          req,
-          url,
-          heroesDatabasePath(env),
-          principal,
-          identityFile,
-          handleHeroes
-        );
-        if (result?.statusCode) return send(result.statusCode, result.body);
-        return send(200, result);
+        });
       }
       const start = url.pathname.match(/^\/start\/(server|client)$/);
       if (req.method === 'POST' && start) {

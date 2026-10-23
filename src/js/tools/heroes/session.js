@@ -1,5 +1,11 @@
 export const HEROES_SESSION_KEY = 'heros-session-v1';
 export const HEROES_LOGOUT_KEY = 'heros-logout-confirmed-v1';
+export const HEROES_ROLE_LABELS = Object.freeze({
+  admin: 'System administrator',
+  'game-master': 'Game Master',
+  player: 'Player',
+  visitor: 'Visitor',
+});
 
 export function heroesSessionToken() {
   return sessionStorage.getItem(HEROES_SESSION_KEY);

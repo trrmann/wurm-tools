@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { heroesDatabasePath } from './heroes-store.js';
+import { heroesDatabasePath, deleteUnsharedHeroesData } from './heroes-store.js';
 import { httpError } from './wurm-db.js';
 
 const scrypt = promisify(crypto.scrypt);
@@ -28,6 +28,8 @@ function read(file) {
     !state.attempts
   )
     throw new Error('Invalid HERO identity store; restore its matching encryption key and backup');
+  state.ownership ||= [];
+  state.transfers ||= [];
   return state;
 }
 
@@ -89,6 +91,8 @@ function transact(file, action) {
     try {
       fs.writeSync(lock, String(process.pid));
       const state = read(file);
+      state.ownership ||= [];
+      state.transfers ||= [];
       const result = await action(state);
       save(file, state);
       return result;
@@ -135,6 +139,7 @@ function publicUser(user) {
     provider: user.provider,
     createdAt: user.createdAt,
     lastLoginAt: user.lastLoginAt || null,
+    closure: user.closure || null,
   };
 }
 
@@ -344,6 +349,151 @@ export async function heroesIdentityAction(action, body, context) {
       return { user: publicUser(user) };
     }
     session(state, bearer, origin);
+    const protectLastAdmin = (target) => {
+      if (
+        target.roles.includes('admin') &&
+        !state.users.some(
+          (item) => item.id !== target.id && item.roles.includes('admin') && !item.disabled
+        )
+      )
+        throw httpError(
+          400,
+          'Another active system administrator is required before closing this account'
+        );
+    };
+    const removeAccount = (target) => {
+      target.disabled = true;
+      target.closure = 'deleted';
+      target.username = `deleted-${target.id}`;
+      target.roles = [];
+      for (const field of [
+        'passwordHash',
+        'salt',
+        'mfa',
+        'pendingMfa',
+        'recoveryHashes',
+        'lastTotpStep',
+      ])
+        delete target[field];
+      state.sessions = state.sessions.filter((item) => item.userId !== target.id);
+      state.grants = state.grants.filter((item) => item.userId !== target.id);
+      state.ownership = state.ownership.filter((item) => item.userId !== target.id);
+      state.transfers = state.transfers.filter(
+        (item) => item.from !== target.id && item.to !== target.id
+      );
+    };
+    if (action === 'closure/status') {
+      return {
+        ownedCount: state.ownership.filter((item) => item.userId === user.id).length,
+        incoming: state.transfers
+          .filter((item) => item.to === user.id)
+          .map((item) => ({
+            id: item.id,
+            username: state.users.find((account) => account.id === item.from)?.username,
+            ownedCount: state.ownership.filter((owner) => owner.userId === item.from).length,
+          })),
+        outgoing: state.transfers
+          .filter((item) => item.from === user.id)
+          .map((item) => ({
+            id: item.id,
+            username: state.users.find((account) => account.id === item.to)?.username,
+          })),
+      };
+    }
+    if (action === 'closure/cancel' || action === 'closure/reject') {
+      const transfer = state.transfers.find((item) => item.id === body.id);
+      if (!transfer || (action === 'closure/cancel' ? transfer.from : transfer.to) !== user.id)
+        throw httpError(404, 'Transfer request not found');
+      state.transfers = state.transfers.filter((item) => item !== transfer);
+      return { cancelled: true };
+    }
+    if (action === 'closure/accept') {
+      const transfer = state.transfers.find((item) => item.id === body.id && item.to === user.id);
+      const owner = state.users.find((item) => item.id === transfer?.from && !item.disabled);
+      if (!transfer || !owner) throw httpError(404, 'Active transfer request not found');
+      protectLastAdmin(owner);
+      const owned = state.ownership.filter((item) => item.userId === owner.id);
+      for (const resource of owned) {
+        resource.userId = user.id;
+        state.grants = state.grants.filter(
+          (grant) =>
+            !(
+              grant.userId === user.id &&
+              grant.resourceType === resource.resourceType &&
+              grant.resourceId === resource.resourceId
+            )
+        );
+        state.grants.push({ ...resource, access: 'write' });
+      }
+      removeAccount(owner);
+      return { accepted: true, transferred: owned.length };
+    }
+    if (action === 'closure/request') {
+      if (
+        !['retain', 'delete', 'transfer'].includes(body.choice) ||
+        body.confirmation !== user.username
+      )
+        throw httpError(400, 'Choose a data option and type your exact username to confirm');
+      const blocked = throttle(state, `closure:${user.id}`, 5);
+      if (blocked) return blocked;
+      if (
+        typeof body.password !== 'string' ||
+        body.password.length > 256 ||
+        !equal(await passwordHash(body.password, user.salt), user.passwordHash)
+      )
+        return httpError(403, 'Current password is incorrect; account closure was not performed');
+      protectLastAdmin(user);
+      if (body.choice === 'transfer') {
+        const recipient = state.users.find(
+          (item) =>
+            typeof body.recipient === 'string' &&
+            item.username === body.recipient.toLowerCase() &&
+            !item.disabled &&
+            item.id !== user.id
+        );
+        if (!recipient) throw httpError(400, 'Choose a different active account by its username');
+        if (state.transfers.some((item) => item.from === user.id))
+          throw httpError(409, 'Cancel your pending transfer before requesting another');
+        state.transfers.push({ id: crypto.randomUUID(), from: user.id, to: recipient.id });
+        return {
+          pending: true,
+          message:
+            'Transfer requested. Your account stays active until the recipient accepts. All items you own at acceptance will transfer.',
+        };
+      }
+      if (body.choice === 'retain') {
+        user.disabled = true;
+        user.closure = 'retained';
+        state.sessions = state.sessions.filter((item) => item.userId !== user.id);
+        state.transfers = state.transfers.filter(
+          (item) => item.from !== user.id && item.to !== user.id
+        );
+        return {
+          closed: true,
+          message:
+            'Account deactivated. Your identity and data are retained. A system administrator can restore access after verifying your identity.',
+        };
+      }
+      const cleanup = await deleteUnsharedHeroesData(
+        user.id,
+        state.ownership,
+        state.grants,
+        context.databaseFile || heroesDatabasePath()
+      );
+      const removed = new Set(
+        cleanup.deleted.map((item) => `${item.resourceType}:${item.resourceId}`)
+      );
+      state.grants = state.grants.filter(
+        (item) => !removed.has(`${item.resourceType}:${item.resourceId}`)
+      );
+      removeAccount(user);
+      return {
+        closed: true,
+        deleted: cleanup.deleted.length,
+        retained: cleanup.retained,
+        message: `Account credentials deleted. Deleted ${cleanup.deleted.length} unshared resources; retained ${cleanup.retained} shared or linked resources under system-administrator stewardship. This account cannot be restored.`,
+      };
+    }
     if (action === 'password') {
       const blocked = throttle(state, `password:${user.id}`, 5);
       if (blocked) return blocked;
@@ -365,6 +515,8 @@ export async function heroesIdentityAction(action, body, context) {
     if (action === 'admin/user') {
       const target = state.users.find((item) => item.id === body.userId);
       if (!target) throw httpError(404, 'Account not found');
+      if (target.closure === 'deleted')
+        throw httpError(400, 'A permanently deleted account cannot be restored');
       if (
         !Array.isArray(body.roles) ||
         !body.roles.length ||
@@ -382,12 +534,13 @@ export async function heroesIdentityAction(action, body, context) {
         throw httpError(400, 'Cannot disable or demote the last administrator');
       target.roles = [...new Set(body.roles)];
       target.disabled = body.disabled;
+      if (!body.disabled) delete target.closure;
       state.sessions = state.sessions.filter((item) => item.userId !== target.id);
       return { user: publicUser(target) };
     }
     if (action === 'admin/grant') {
       if (
-        !state.users.some((item) => item.id === body.userId) ||
+        !state.users.some((item) => item.id === body.userId && item.closure !== 'deleted') ||
         !['world', 'object', 'library', 'record'].includes(body.resourceType) ||
         typeof body.resourceId !== 'string' ||
         !body.resourceId ||
@@ -443,18 +596,35 @@ export function canAccess(principal, type, id, write = false) {
 }
 
 export function grantCreator(principal, type, id, file = heroesIdentityPath()) {
+  return recordHeroesResources(principal, [{ resourceType: type, resourceId: id }], [], file);
+}
+
+export function recordHeroesResources(principal, created, removed, file = heroesIdentityPath()) {
   return transact(file, (state) => {
-    if (
-      !state.grants.some(
-        (grant) =>
-          grant.userId === principal.id && grant.resourceType === type && grant.resourceId === id
+    if (!state.users.some((user) => user.id === principal.id && !user.disabled))
+      throw httpError(403, 'Creator account is no longer active; ownership was not assigned');
+    const deleted = new Set(removed.map((item) => `${item.resourceType}:${item.resourceId}`));
+    state.ownership = state.ownership.filter(
+      (item) => !deleted.has(`${item.resourceType}:${item.resourceId}`)
+    );
+    state.grants = state.grants.filter(
+      (item) => !deleted.has(`${item.resourceType}:${item.resourceId}`)
+    );
+    for (const { resourceType: type, resourceId: id } of created) {
+      if (!state.ownership.some((item) => item.resourceType === type && item.resourceId === id))
+        state.ownership.push({ userId: principal.id, resourceType: type, resourceId: id });
+      if (
+        !state.grants.some(
+          (grant) =>
+            grant.userId === principal.id && grant.resourceType === type && grant.resourceId === id
+        )
       )
-    )
-      state.grants.push({
-        userId: principal.id,
-        resourceType: type,
-        resourceId: id,
-        access: 'write',
-      });
+        state.grants.push({
+          userId: principal.id,
+          resourceType: type,
+          resourceId: id,
+          access: 'write',
+        });
+    }
   });
 }

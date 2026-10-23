@@ -19,7 +19,9 @@ export function createHeroesClient({ signal, onUnauthorized = () => {} } = {}) {
       if (response.status === 401) {
         if (heroes) {
           sessionStorage.removeItem(HEROES_SESSION_KEY);
-          window.location.assign('/site/heroes/login/');
+          throw new Error(
+            'Your HERO session expired or was revoked. This action was not completed. Open Account & security to sign in again, then retry.'
+          );
         } else {
           localStorage.removeItem(HELPER_TOKEN_KEY);
           onUnauthorized();

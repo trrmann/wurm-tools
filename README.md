@@ -359,6 +359,20 @@ allow it for the Render site.
   filtering and navigation are never authorization. Role changes, disabling and ACL changes revoke
   affected sessions; permissions are evaluated on every request. The last admin cannot be demoted
   or disabled. No C# is exposed to or executed by the website.
+- **Self-service account closure:** Account & security offers three choices, requiring the current
+  password and exact username confirmation. **Retain** deactivates the account with identity,
+  ownership, and game data preserved; a system administrator may restore it after verifying identity.
+  **Delete** removes credentials and unshared owned resources permanently. Shared resources and
+  their connected contexts, globally available definitions, and legacy data without recorded
+  ownership are retained under system-administrator stewardship. **Transfer** requests acceptance
+  from a named active account: the sender remains active and can cancel; the recipient can accept
+  or decline in Account & security. Acceptance transfers all then-owned resources and their write
+  ACLs, preserves other users' access, and permanently removes the sender's credentials. Linked
+  resources owned by others still require separate permissions. The last active system administrator
+  cannot close their account. Creator ownership is tracked separately from ACL access for new
+  helper-created/imported resources; existing write grants are not assumed to prove ownership.
+  Administrative disabling remains distinct from permanent self-deletion. Ownership and pending
+  transfer requests stay in the local identity store and are excluded from portable game backups.
 - **Local identity security and future providers:** passwords use salted scrypt hashes; TOTP
   secrets use AES-256-GCM encryption. Recovery codes, setup codes and bearer sessions are stored
   as hashes, never plaintext. Sessions expire after eight hours (pending MFA after ten minutes),

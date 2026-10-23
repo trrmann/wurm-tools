@@ -1,4 +1,4 @@
-import { canAccess, grantCreator } from './heroes-identity.js';
+import { canAccess, recordHeroesResources } from './heroes-identity.js';
 import { listHeroesManagement, listHeroesLibrary } from './heroes-store.js';
 import { httpError } from './wurm-db.js';
 
@@ -40,7 +40,32 @@ export async function handleAuthorizedHeroes(req, url, file, principal, identity
   };
   const recordReadable = (record) => read('record', record.id) && referencesReadable(record.data);
 
-  if (admin) return dispatch(req, url, file);
+  const dispatchOwned = async (request) => {
+    const result = await dispatch(request, url, file);
+    if (['POST', 'DELETE'].includes(request.method)) {
+      const current = await listHeroesManagement(file);
+      const currentLibrary = await listHeroesLibrary(file);
+      const created = [];
+      const removed = [];
+      for (const [type, before, after] of [
+        ['world', state.worlds, current.worlds],
+        ['object', state.objects, current.objects],
+        ['record', state.records, current.records],
+        ['library', library, currentLibrary],
+      ]) {
+        const previous = new Set(before.map((item) => item.id));
+        const remaining = new Set(after.map((item) => item.id));
+        for (const item of after)
+          if (!previous.has(item.id)) created.push({ resourceType: type, resourceId: item.id });
+        for (const item of before)
+          if (!remaining.has(item.id)) removed.push({ resourceType: type, resourceId: item.id });
+      }
+      if (created.length || removed.length)
+        await recordHeroesResources(principal, created, removed, identityFile);
+    }
+    return result;
+  };
+  if (admin) return dispatchOwned(req);
   if (req.method === 'GET') {
     if (parts[0] === 'management' && parts.length === 1)
       return {
@@ -185,19 +210,11 @@ export async function handleAuthorizedHeroes(req, url, file, principal, identity
       method: req.method,
     });
   }
-  const result = await dispatch(req, url, file);
+  const result = await dispatchOwned(req);
   if (creating) {
     const body = result?.body || result;
     const created = body?.object || body?.world || body?.entry || body?.record;
     if (!created?.id) throw new Error('Creation did not return a resource identity');
-    await grantCreator(principal, type, created.id, identityFile);
-    if (type === 'object') {
-      const current = await listHeroesManagement(file);
-      for (const record of current.records.filter(
-        (record) => record.kind === 'object-scope' && record.data.objectId === created.id
-      ))
-        await grantCreator(principal, 'record', record.id, identityFile);
-    }
   }
   return result;
 }

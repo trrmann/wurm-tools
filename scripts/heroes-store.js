@@ -678,6 +678,100 @@ export function listHeroesManagement(filePath = heroesDatabasePath()) {
   return withDatabase(filePath, false, managementState);
 }
 
+export function deleteUnsharedHeroesData(
+  userId,
+  ownership,
+  grants,
+  filePath = heroesDatabasePath()
+) {
+  return withDatabase(filePath, true, (db) => {
+    const state = managementState(db);
+    const resources = [
+      ...state.worlds.map((value) => ({ type: 'world', value })),
+      ...state.objects.map((value) => ({ type: 'object', value })),
+      ...state.records.map((value) => ({ type: 'record', value })),
+      ...queryRows(db, 'SELECT * FROM heroes_library').map((row) => ({
+        type: 'library',
+        value: { id: row.id, definition: JSON.parse(row.definition_json) },
+      })),
+    ];
+    const key = (type, id) => `${type}:${id}`;
+    const owned = new Set(
+      ownership
+        .filter((item) => item.userId === userId)
+        .map((item) => key(item.resourceType, item.resourceId))
+    );
+    const retained = new Set(
+      resources
+        .filter(({ type, value }) => !owned.has(key(type, value.id)))
+        .map(({ type, value }) => key(type, value.id))
+    );
+    for (const grant of grants)
+      if (grant.userId !== userId) retained.add(key(grant.resourceType, grant.resourceId));
+    const links = [];
+    const link = (source, type, id) => {
+      if (id) links.push([source, key(type, id)]);
+    };
+    const definitionLinks = (source, value) => {
+      if (!value || typeof value !== 'object') return;
+      if (value.libraryRef) link(source, 'library', value.libraryRef);
+      for (const child of Object.values(value)) definitionLinks(source, child);
+    };
+    for (const { type, value } of resources) {
+      const source = key(type, value.id);
+      if (type === 'object') link(source, 'world', value.worldId);
+      definitionLinks(source, value.definition);
+      if (type !== 'record') continue;
+      for (const [field, target] of [
+        ['worldId', 'world'],
+        ['objectId', 'object'],
+        ['campaignId', 'record'],
+        ['genreId', 'record'],
+        ['gameMasterId', 'record'],
+        ['playerId', 'record'],
+      ])
+        link(source, target, value.data[field]);
+      for (const [field, target] of [
+        ['worldIds', 'world'],
+        ['campaignIds', 'record'],
+        ['genreIds', 'record'],
+        ['playerIds', 'record'],
+      ])
+        for (const id of value.data[field] || []) link(source, target, id);
+      if (value.data.global) retained.add(source);
+    }
+    // Preserve whole connected shared contexts, including foreign-key and live-library dependencies.
+    let size;
+    do {
+      size = retained.size;
+      for (const [left, right] of links)
+        if (retained.has(left) || retained.has(right)) {
+          retained.add(left);
+          retained.add(right);
+        }
+    } while (retained.size !== size);
+    const removed = resources.filter(
+      ({ type, value }) => owned.has(key(type, value.id)) && !retained.has(key(type, value.id))
+    );
+    const tables = {
+      record: 'heroes_management',
+      object: 'heroes_objects',
+      library: 'heroes_library',
+      world: 'heroes_worlds',
+    };
+    for (const type of ['record', 'object', 'library', 'world'])
+      for (const resource of removed.filter((item) => item.type === type))
+        db.run(`DELETE FROM ${tables[type]} WHERE id = ?`, [resource.value.id]);
+    validateManagementState(managementState(db));
+    return {
+      deleted: removed.map(({ type, value }) => ({ resourceType: type, resourceId: value.id })),
+      retained: resources.filter(
+        ({ type, value }) => owned.has(key(type, value.id)) && retained.has(key(type, value.id))
+      ).length,
+    };
+  });
+}
+
 export function saveHeroesManagement(source, id = null, filePath = heroesDatabasePath()) {
   let data;
   try {

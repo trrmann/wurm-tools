@@ -4,6 +4,7 @@ import {
   heroesPageHref,
   heroesAccessPages,
 } from './heroes-navigation.js';
+import { HEROES_ROLE_LABELS } from '../../tools/heroes/session.js';
 
 export function applyHeroesBranding(container, access = null) {
   document.documentElement.dataset.game = 'heroes';
@@ -12,7 +13,10 @@ export function applyHeroesBranding(container, access = null) {
   const logo = container.querySelector('.logo-badge img');
   const footer = container.querySelector('.footer-content > p');
   if (title) title.textContent = 'Heros Tools';
-  if (subtitle) subtitle.textContent = 'HERO System workspace';
+  if (subtitle)
+    subtitle.textContent = access?.user
+      ? `Signed in as ${access.user.username} - ${access.user.roles.map((role) => HEROES_ROLE_LABELS[role] || role).join(', ')}${access.stage === 'mfa' ? ' (verification required)' : ''}`
+      : 'HERO System workspace';
   if (logo) {
     logo.alt = 'Heros Tools';
     logo.src = '/images/heroes-logo.svg';
