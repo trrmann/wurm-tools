@@ -9,9 +9,10 @@ W3C milestones below are superseded by the user-confirmed environment split.
 Unit tests, formatting, lint, build, and local HTML/CSS checks remain mandatory
 for all three targets. Chrome audits run for preview and production, not dev.
 Full live W3C HTML/CSS checks now run automatically after a production push and
-deployment wait, followed by live Chrome verification. No-push and up-to-date
-production runs verify locally without auditing an unchanged live deployment.
-Legacy W3C flags do not narrow or enable the post-deployment suite. The previous
+deployment wait, followed by live Chrome verification even if W3C fails. Failed
+live checks are aggregated after both suites complete. No-push and up-to-date
+production runs verify locally unless `-w3c` explicitly reruns the full live W3C
+suite without pushing. Legacy W3C flags cannot narrow the suite. The previous
 milestones remain below as implementation history, not the current test policy.
 
 - [x] Migrate and refactor `/src/tools` to `/src/js/tools`

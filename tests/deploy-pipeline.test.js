@@ -187,7 +187,7 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
         },
         20000
       );
-      it('keeps production no-push verification local', () => {
+      it('allows an explicit full W3C rerun on production without pushing', () => {
         const result = fixture(
           shell,
           ['-prod', noOpen, noFormat, shell === 'bash' ? '--no-push' : '-NoPush', '-w3c'],
@@ -195,16 +195,18 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
         );
         expect(result.status, result.stderr || result.stdout).toBe(0);
         expect(result.commands.some((command) => command.includes('push'))).toBe(false);
-        expect(result.commands.some((command) => command.includes('test:w3c'))).toBe(false);
+        expect(result.commands.filter((command) => command.includes('test:w3c'))).toEqual([
+          ['npm', 'run', 'test:w3c'],
+        ]);
         expect(result.commands.some((command) => command[1]?.endsWith('test-chrome.js'))).toBe(
           false
         );
         expect(result.commands.some((command) => command[1]?.endsWith('run-with-server.js'))).toBe(
           true
         );
-        expect(result.stdout).toContain('NOT RUN (no production deployment)');
+        expect(result.stdout).toContain('PASSED (HTML and CSS, all live production pages)');
       }, 20000);
-      it('does not report success when post-deployment W3C fails', () => {
+      it('runs live Chrome and reports failure when post-deployment W3C fails', () => {
         const result = fixture(shell, ['-prod', noOpen, noFormat, '-RenderWait', '0'], {
           PUSH_COMMITS: '1',
           FAIL_STEP: 'test:w3c',
@@ -212,6 +214,9 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
         expect(result.status).toBe(1);
         expect(result.commands.some((command) => command.includes('push'))).toBe(true);
         expect(result.commands.some((command) => command.includes('test:w3c'))).toBe(true);
+        expect(result.commands.some((command) => command[1]?.endsWith('test-chrome.js'))).toBe(
+          true
+        );
         expect(result.stdout).not.toContain('Verification Completed');
       }, 20000);
       it('repeats all local gates after a rebase changes the source tree', () => {

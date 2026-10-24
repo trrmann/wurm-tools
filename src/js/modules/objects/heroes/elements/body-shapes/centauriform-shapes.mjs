@@ -15,8 +15,8 @@ export class Centauriform extends BodyShape {
   static defaultName = 'Centauriform';
   static defaultDefinition = Object.freeze({
     name: 'Centauriform',
-    generalShape: 'Unspecified',
-    shapeTypes: [],
+    generalShape: 'Equestrian',
+    shapeTypes: ['equestrian'],
   });
 
   constructor(options = {}) {

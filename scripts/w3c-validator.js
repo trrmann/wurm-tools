@@ -2,9 +2,14 @@
 // Validates all pages across the site against official W3C Nu HTML Checker & Jigsaw CSS Validator
 
 import { projectPagePaths } from './project-pages.js';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const SITE_PAGES = projectPagePaths();
 const DEFAULT_BASE_URL = 'https://wurm-tools.onrender.com';
+const unavailableValidators = new Map();
+const SERVICE_RETRIES = 3;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Parse arguments
 const args = process.argv.slice(2);
@@ -58,11 +63,19 @@ async function validateHtml(targetUrl) {
         return {
           success: false,
           isAntiBot: true,
+          statusCode: res.status,
+          retryAfterMs: parseRetryAfter(res),
           error: `W3C HTTP ${res.status}: Rate limit or anti-bot challenge triggered. Complete verification at: ${nuUrl}`,
           messages: [],
         };
       }
-      return { success: false, error: `W3C HTTP ${res.status}: ${res.statusText}`, messages: [] };
+      return {
+        success: false,
+        statusCode: res.status,
+        retryAfterMs: parseRetryAfter(res),
+        error: `W3C HTTP ${res.status}: ${res.statusText}`,
+        messages: [],
+      };
     }
 
     let data;
@@ -121,10 +134,17 @@ async function validateCss(targetUrl) {
         return {
           success: false,
           isAntiBot: true,
+          statusCode: res.status,
+          retryAfterMs: parseRetryAfter(res),
           error: `CSS Validator HTTP ${res.status}: Rate limit or challenge. Verify at: ${cssUrl}`,
         };
       }
-      return { success: false, error: `CSS Validator HTTP ${res.status}: ${res.statusText}` };
+      return {
+        success: false,
+        statusCode: res.status,
+        retryAfterMs: parseRetryAfter(res),
+        error: `CSS Validator HTTP ${res.status}: ${res.statusText}`,
+      };
     }
 
     let data;
@@ -156,19 +176,52 @@ async function validateCss(targetUrl) {
   }
 }
 
+function parseRetryAfter(response) {
+  const header = response.headers?.get('retry-after');
+  if (!header) return null;
+  if (/^\d+(?:\.\d+)?$/.test(header.trim())) return Math.ceil(Number(header) * 1000);
+  const timestamp = Date.parse(header);
+  return Number.isFinite(timestamp) ? Math.max(0, timestamp - Date.now()) : null;
+}
+
 const WAIT_TIMEOUT_MS = parseInt(process.env.W3C_WAIT_TIMEOUT_MS || '300000', 10);
 const WAIT_INTERVAL_MS = 10000;
-const SERVICE_RETRIES = 3;
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Retries W3C service calls that fail with transient 5xx or network errors
-async function withRetry(fn) {
+async function withRetry(service, pagePath, fn) {
+  const unavailable = unavailableValidators.get(service);
+  if (unavailable) {
+    return {
+      success: false,
+      skipped: true,
+      error: `${service} requests skipped after HTTP ${unavailable.statusCode} at ${unavailable.pagePath}; remaining pages were not submitted.`,
+    };
+  }
+
   let result;
   for (let attempt = 1; attempt <= SERVICE_RETRIES; attempt++) {
     result = await fn();
-    const transient = result.error && /HTTP 5\d\d|fetch failed|ECONN|ETIMEDOUT/i.test(result.error);
+    const rateLimited = result.statusCode === 429;
+    const blocked = result.statusCode === 403 || result.isAntiBot;
+    if (blocked) {
+      unavailableValidators.set(service, {
+        statusCode: result.statusCode ?? 'anti-bot challenge',
+        pagePath,
+      });
+      return result;
+    }
+    const transient =
+      rateLimited ||
+      (result.error && /HTTP 5\d\d|fetch failed|ECONN|ETIMEDOUT/i.test(result.error));
     if (!transient) return result;
-    if (attempt < SERVICE_RETRIES) await sleep(3000 * attempt);
+    if (attempt < SERVICE_RETRIES) {
+      const delay = result.retryAfterMs ?? 3000 * 2 ** (attempt - 1);
+      console.log(
+        `[INFO] ${service} returned HTTP ${result.statusCode ?? 'network error'} for ${pagePath}; retrying in ${Math.ceil(delay / 1000)} second(s) (${attempt + 1}/${SERVICE_RETRIES}).`
+      );
+      await sleep(delay);
+    } else if (rateLimited || blocked) {
+      unavailableValidators.set(service, { statusCode: result.statusCode, pagePath });
+    }
   }
   return result;
 }
@@ -218,9 +271,12 @@ async function run() {
     // 1. HTML Validation
     if (checkHtml) {
       process.stdout.write('  • Nu HTML Checker: ');
-      const htmlResult = await withRetry(() => validateHtml(fullUrl));
+      const htmlResult = await withRetry('Nu HTML Checker', pagePath, () => validateHtml(fullUrl));
 
-      if (htmlResult.error) {
+      if (htmlResult.skipped) {
+        console.log(`[SKIP] ${htmlResult.error}`);
+        anyErrors = true;
+      } else if (htmlResult.error) {
         console.log(`[FAIL] Connection/Service Error (${htmlResult.error})`);
         anyErrors = true;
       } else if (!htmlResult.success) {
@@ -244,9 +300,14 @@ async function run() {
     // 2. CSS Validation
     if (checkCss) {
       process.stdout.write('  • Jigsaw CSS Validator: ');
-      const cssResult = await withRetry(() => validateCss(fullUrl));
+      const cssResult = await withRetry('Jigsaw CSS Validator', pagePath, () =>
+        validateCss(fullUrl)
+      );
 
-      if (cssResult.error) {
+      if (cssResult.skipped) {
+        console.log(`[SKIP] ${cssResult.error}`);
+        anyErrors = true;
+      } else if (cssResult.error) {
         console.log(`[FAIL] Connection/Service Error (${cssResult.error})`);
         anyErrors = true;
       } else if (!cssResult.success) {
@@ -267,6 +328,11 @@ async function run() {
   console.log('==========================================================');
   if (anyErrors) {
     console.log('  [FAIL] W3C Validation found errors across one or more pages.');
+    for (const [service, result] of unavailableValidators) {
+      console.log(
+        `  [BLOCKED] ${service} returned HTTP ${result.statusCode} at ${result.pagePath}; later pages were not submitted to that service.`
+      );
+    }
     console.log('==========================================================\n');
     process.exit(1);
   } else {
@@ -276,7 +342,13 @@ async function run() {
   }
 }
 
-run().catch((err) => {
-  console.error('[FATAL] Unexpected error in W3C validation:', err);
-  process.exit(1);
-});
+const isMain =
+  process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (isMain) {
+  run().catch((err) => {
+    console.error('[FATAL] Unexpected error in W3C validation:', err);
+    process.exit(1);
+  });
+}
+
+export { parseRetryAfter, validateHtml, validateCss, withRetry };

@@ -254,7 +254,7 @@ Both scripts run the exact same verification pipeline and **safely halt immediat
 - For `-dev` and `-preview`: Local only, push is completely skipped.
 - For `-prod`: Fetches remote tracking refs. If there are new commits ahead of `origin/main`, pushes to `origin main` triggering Render static site deployment. If the repository is clean and already up to date, pushing is skipped with an informational notice.
 
-11. **Post-Deployment W3C and Chrome Validation (Production)**: After a production push and the Render deployment wait, automatically runs full W3C HTML/CSS validation across all live pages, then all live Chrome suites. A failure stops the workflow and prevents a success report; it cannot undo the already-pushed deployment.
+11. **Post-Deployment W3C and Chrome Validation (Production)**: After a production push and the Render deployment wait, automatically runs full W3C HTML/CSS validation across all live pages, then attempts all live Chrome suites even if W3C fails. Failures are aggregated and reported after both live gates; they cannot undo the already-pushed deployment.
 12. **Live Site Launch in Google Chrome (Production)**: For `-prod`, automatically opens `https://wurm-tools.onrender.com` in Google Chrome (with system browser fallback).
 13. **Summary & Live Monitoring**: Reports target environment status, Chrome/W3C test status, GitHub Actions CI status, Render live site link, and W3C validation URLs.
 
@@ -264,11 +264,15 @@ does not. `--skip-tests` / `-SkipTests` and
 individual Chrome-suite deployment flags are rejected; use standalone `npm run test:lighthouse`,
 `npm run test:css-overview`, or `npm run test:memory` for focused troubleshooting.
 `-Chrome` / `--chrome` remains accepted but is redundant. `--no-push` does not skip local
-verification (it does not audit an unchanged live production site).
+verification and does not audit an unchanged live production site unless `-w3c` is explicitly
+requested.
 External W3C HTML/CSS validation is **automatic after a production push and deployment wait**.
-It does not run for development, preview, no-push, or up-to-date production runs.
-`-w3c`, `-w3c-HTML`, and `-w3c-CSS` remain compatibility flags but cannot narrow the
-mandatory full suite or cause external validation for a local/no-deployment run.
+It does not run for development or preview. On a production no-push or up-to-date run,
+`-w3c` explicitly reruns the full live HTML + CSS suite without pushing again;
+`-w3c-HTML` and `-w3c-CSS` are compatibility aliases and cannot narrow it.
+The validator retries transient failures and honors `Retry-After`; persistent rate
+limits and anti-bot blocks stop further requests to that service, report unvalidated
+pages as skipped, and fail the gate rather than reporting a pass.
 Use standalone `npm run test:w3c:html` or `npm run test:w3c:css` for focused live checks.
 External services cannot access localhost and are not used by local validation.
 
@@ -328,8 +332,12 @@ allow it for the Render site.
   point rules, backups, and server-side permissions are unchanged.
 - **HERO reusable definitions:** `/site/heroes/library/` provides a standalone anatomy builder and shared
   local library for saved parts, shapes, and world-object templates. Save custom/compound anatomy
-  there before using it in an object. Choose independent copy or live reference when inserting a
-  saved definition; deleting a definition converts its saved uses to copies. Library/world/object
+  there before using it in an object. The model catalog includes humanoid/bipedal, equestrian,
+  canine/feline/quadrupedal, limbless, vehicle, surface-area/base/city-town, box, sphere, rod, and
+  library-authored compound shapes. Older `nonpedal` tags remain readable; new definitions use
+  `limbless`. These categories do not infer anatomy, dimensions, or rules calculations. Choose
+  independent copy or live reference when inserting a saved definition; deleting a definition
+  converts its saved uses to copies. Library/world/object
   JSON exports contain portable copies. After updating helper code, restart it with
   `npm run helper:stop` followed by `npm run helper` (or restart via `npm run dev` /
   `npm run preview`) to enable the library routes without changing existing HERO data.

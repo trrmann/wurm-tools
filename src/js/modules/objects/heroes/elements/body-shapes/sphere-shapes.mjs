@@ -10,8 +10,8 @@ export class Sphere extends Ellipsoid {
   static defaultName = 'Sphere';
   static defaultDefinition = Object.freeze({
     name: 'Sphere',
-    generalShape: 'Unspecified',
-    shapeTypes: [],
+    generalShape: 'Sphere',
+    shapeTypes: ['sphere'],
   });
 
   constructor(options = {}) {

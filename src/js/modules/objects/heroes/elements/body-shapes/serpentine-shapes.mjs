@@ -12,8 +12,8 @@ export class Serpentine extends BodyShape {
   static defaultName = 'Serpentine';
   static defaultDefinition = Object.freeze({
     name: 'Serpentine',
-    generalShape: 'Unspecified',
-    shapeTypes: [],
+    generalShape: 'Limbless',
+    shapeTypes: ['limbless'],
   });
 
   constructor(options = {}) {

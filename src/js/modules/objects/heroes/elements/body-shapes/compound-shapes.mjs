@@ -9,8 +9,8 @@ export class CompoundShape extends BodyShape {
   static defaultName = 'CompoundShape';
   static defaultDefinition = Object.freeze({
     name: 'CompoundShape',
-    generalShape: 'Unspecified',
-    shapeTypes: [],
+    generalShape: 'Compound',
+    shapeTypes: ['compound'],
   });
   #shapes;
   constructor(options = {}) {

@@ -40,11 +40,11 @@
 .PARAMETER NoVersionInCommit
     Override attaching the project version to the git commit message.
 .PARAMETER w3c
-    Compatibility flag; full W3C HTML/CSS validation is automatic after a production push and deployment wait.
+    Rerun full W3C HTML/CSS validation against the live production site, even when no push is needed.
 .PARAMETER w3c-HTML
-    Compatibility flag; cannot narrow the full post-deployment W3C suite.
+    Compatibility flag; full HTML + CSS validation still runs and cannot be narrowed.
 .PARAMETER w3c-CSS
-    Compatibility flag; cannot narrow the full post-deployment W3C suite.
+    Compatibility flag; full HTML + CSS validation still runs and cannot be narrowed.
 .PARAMETER Chrome
     Compatibility flag; full Chrome testing is mandatory for preview and production, not development.
 .PARAMETER Lighthouse
@@ -109,6 +109,7 @@ if ($SkipTests -or $Lighthouse -or $CssOverview -or $Memory) {
     Write-Host "[FAIL] Deployment verification requires all tests. Skip-tests and individual Chrome-suite flags are not supported; use standalone npm test commands for focused checks." -ForegroundColor Red
     exit 2
 }
+$W3CRequested = $w3c -or ${w3c-HTML} -or ${w3c-CSS}
 
 # Validate environment target switches: exactly 1 required
 $targetList = @()
@@ -176,8 +177,33 @@ function Invoke-SafeStep {
         Write-Host "[ABORT] Deployment aborted safely. Please fix the issue and retry." -ForegroundColor Red
         exit $stepExit
     }
-
     Write-Host "[PASS] $Name completed successfully.`n" -ForegroundColor Green
+}
+
+$script:PostDeploymentFailures = [System.Collections.Generic.List[string]]::new()
+function Invoke-PostDeploymentStep {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Action
+    )
+
+    Write-Host ">>> [$Name] Starting..." -ForegroundColor Cyan
+    try {
+        & $Action | Out-Host
+        $stepExit = $LASTEXITCODE
+    } catch {
+        $stepExit = 1
+        Write-Host $_ -ForegroundColor Red
+    }
+    if ($stepExit -ne 0) {
+        Write-Host "[FAIL] Step '$Name' failed with exit code $stepExit; continuing remaining live checks.`n" -ForegroundColor Red
+        $script:PostDeploymentFailures.Add("$Name (status $stepExit)")
+        return $false
+    }
+    Write-Host "[PASS] $Name completed successfully.`n" -ForegroundColor Green
+    return $true
 }
 
 function Get-ChromePath {
@@ -441,22 +467,42 @@ if ($TargetEnv -eq "prod" -and $hasPushed -and $RenderWait -gt 0) {
 
 # 6. W3C Standards Validation Suite
 $W3cResult = "NOT RUN (no production deployment)"
-if ($TargetEnv -eq "prod" -and $hasPushed) {
+if ($TargetEnv -eq "prod" -and ($hasPushed -or $W3CRequested)) {
     Write-Host ">>> [W3C Standards Check] Testing site pages against official W3C validators..." -ForegroundColor Cyan
-    Invoke-SafeStep "W3C Full Validation Suite (HTML5 & CSS across All Pages)" {
-        npm run test:w3c
+    $w3cStep = if ($hasPushed) {
+        "W3C Full Validation Suite (HTML5 & CSS across All Pages)"
+    } else {
+        "W3C Full Validation Suite (Explicit Live Recheck)"
     }
-    $W3cResult = "PASSED (HTML and CSS, all live production pages)"
+    if (Invoke-PostDeploymentStep $w3cStep {
+        npm run test:w3c
+    }) {
+        $W3cResult = "PASSED (HTML and CSS, all live production pages)"
+    } else {
+        $W3cResult = "FAILED (see W3C output; other live checks will continue)"
+    }
 } else {
-    Write-Host "[INFO] External W3C validation runs only after a production push and deployment wait.`n" -ForegroundColor Cyan
+    Write-Host "[INFO] External W3C validation runs only after a production push and deployment wait, or when explicitly rerun with -w3c.`n" -ForegroundColor Cyan
 }
 
 # 7. Chrome Automated Testing Suite (Lighthouse, CSS Overview, Memory)
 if ($TargetEnv -eq "prod" -and $hasPushed) {
-    Invoke-SafeStep "Chrome Tests against Render (https://wurm-tools.onrender.com)" {
+    if (Invoke-PostDeploymentStep "Chrome Tests against Render (https://wurm-tools.onrender.com)" {
         node "$PSScriptRoot\test-chrome.js" --all
+    }) {
+        $ChromeResult = "PASSED (all suites, all pages, local preview and Render)"
+    } else {
+        $ChromeResult = "FAILED (see live Chrome audit output)"
     }
-    $ChromeResult = "PASSED (all suites, all pages, local preview and Render)"
+}
+
+if ($script:PostDeploymentFailures.Count -gt 0) {
+    Write-Host "[FAIL] Post-deployment validation failed:" -ForegroundColor Red
+    foreach ($failure in $script:PostDeploymentFailures) {
+        Write-Host "  - $failure" -ForegroundColor Red
+    }
+    Write-Host "[ABORT] At least one live gate failed. The production push already occurred; rerun failed live checks after resolving service issues.`n" -ForegroundColor Red
+    exit 1
 }
 
 # 8. Post-Deployment Summary & Actions

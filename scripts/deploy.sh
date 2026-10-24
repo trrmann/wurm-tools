@@ -34,6 +34,7 @@ COMMIT_MESSAGE=""
 AUTO_FORMAT=true
 NO_LAUNCH=false
 NO_PUSH=false
+W3C_REQUESTED=false
 
 BUMP_TYPE=""
 NO_VERSION_COMMIT=false
@@ -97,6 +98,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -w3c|--w3c|-w3c-HTML|--w3c-html|-w3c-html|-w3c-CSS|--w3c-css|-w3c-css)
+      W3C_REQUESTED=true
       shift
       ;;
     -Chrome|--chrome|-chrome)
@@ -135,10 +137,11 @@ while [[ $# -gt 0 ]]; do
       echo "  --no-auto-format      Skip Prettier auto-formatting (enabled by default)"
       echo "  All targets require unit tests and local HTML/CSS checks; preview/prod also require all-page Chrome tests."
       echo "  Production pushes require full live W3C HTML/CSS validation after the Render deployment wait."
+      echo "  Use -w3c to rerun the full live W3C suite after a prior W3C service failure (without pushing again)."
       echo "  --no-open             Skip opening the live Render site in Google Chrome on prod deployment"
       echo "  --no-push             Verify and build without pushing to GitHub"
-      echo "  -w3c, --w3c           Compatibility flag; full W3C validation is automatic after a production push"
-      echo "  -w3c-HTML, -w3c-CSS   Compatibility flags; cannot narrow the full post-deployment W3C suite"
+      echo "  -w3c, --w3c           Rerun the full live W3C suite on prod; never narrows checks"
+      echo "  -w3c-HTML, -w3c-CSS   Compatibility flags; full HTML + CSS validation still runs"
       echo "  -Chrome, --chrome     Compatibility flag; Chrome tests run for preview/prod, not dev"
       echo "  Skip-tests and individual Chrome-suite flags are rejected."
       echo "  -RenderWait <secs>    Seconds to wait after a prod push for Render to publish (default 300, 0 = none)"
@@ -210,6 +213,22 @@ invoke_step() {
     exit 1
   fi
   echo -e "${GREEN}[PASS] ${step_name} completed successfully.${NC}\n"
+}
+
+POST_DEPLOYMENT_FAILURES=()
+invoke_post_deployment_step() {
+  local step_name="$1"
+  shift
+  echo -e "${CYAN}>>> [${step_name}] Starting...${NC}"
+  if "$@"; then
+    echo -e "${GREEN}[PASS] ${step_name} completed successfully.${NC}\n"
+    return 0
+  else
+    local status=$?
+    echo -e "\n${RED}[FAIL] Step '${step_name}' failed with status ${status}; continuing remaining live checks.${NC}\n"
+    POST_DEPLOYMENT_FAILURES+=("${step_name} (status ${status})")
+    return 1
+  fi
 }
 
 launch_when_ready() {
@@ -369,19 +388,38 @@ fi
 
 # 6. W3C Standards Validation Suite
 W3C_RESULT="NOT RUN (no production deployment)"
-if [ "${TARGET_ENV}" = "prod" ] && [ "${HAS_PUSHED}" = true ]; then
+if [ "${TARGET_ENV}" = "prod" ] && { [ "${HAS_PUSHED}" = true ] || [ "${W3C_REQUESTED}" = true ]; }; then
   echo -e "${CYAN}>>> [W3C Standards Check] Testing site pages against official W3C validators...${NC}"
-  invoke_step "W3C Full Validation Suite (HTML5 & CSS across All Pages)" npm run test:w3c
-  W3C_RESULT="PASSED (HTML and CSS, all live production pages)"
+  if [ "${HAS_PUSHED}" = true ]; then
+    W3C_STEP="W3C Full Validation Suite (HTML5 & CSS across All Pages)"
+  else
+    W3C_STEP="W3C Full Validation Suite (Explicit Live Recheck)"
+  fi
+  if invoke_post_deployment_step "${W3C_STEP}" npm run test:w3c; then
+    W3C_RESULT="PASSED (HTML and CSS, all live production pages)"
+  else
+    W3C_RESULT="FAILED (see W3C output; other live checks will continue)"
+  fi
 else
   echo -e "${CYAN}[INFO] External W3C validation runs only after a production push and deployment wait.${NC}\n"
 fi
 
 # 7. Chrome Automated Testing Suite (Lighthouse, CSS Overview, Memory)
 if [ "${TARGET_ENV}" = "prod" ] && [ "${HAS_PUSHED}" = true ]; then
-  invoke_step "Chrome Tests against Render (https://wurm-tools.onrender.com)" \
+  if invoke_post_deployment_step "Chrome Tests against Render (https://wurm-tools.onrender.com)" \
     node "${SCRIPT_DIR}/test-chrome.js" --all
-  CHROME_RESULT="PASSED (all suites, all pages, local preview and Render)"
+  then
+    CHROME_RESULT="PASSED (all suites, all pages, local preview and Render)"
+  else
+    CHROME_RESULT="FAILED (see live Chrome audit output)"
+  fi
+fi
+
+if [ "${#POST_DEPLOYMENT_FAILURES[@]}" -gt 0 ]; then
+  echo -e "${RED}[FAIL] Post-deployment validation failed:${NC}"
+  printf '  - %s\n' "${POST_DEPLOYMENT_FAILURES[@]}"
+  echo -e "${RED}[ABORT] At least one live gate failed. The production push already occurred; rerun failed live checks after resolving service issues.${NC}\n"
+  exit 1
 fi
 
 # Ensure the local helper is running for every target (idempotent, detaches itself)

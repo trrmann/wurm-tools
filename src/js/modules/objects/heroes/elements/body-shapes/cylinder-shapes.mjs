@@ -10,8 +10,8 @@ export class Cylinder extends BodyShape {
   static defaultName = 'Cylinder';
   static defaultDefinition = Object.freeze({
     name: 'Cylinder',
-    generalShape: 'Unspecified',
-    shapeTypes: [],
+    generalShape: 'Rod',
+    shapeTypes: ['rod'],
   });
 
   constructor(options = {}) {

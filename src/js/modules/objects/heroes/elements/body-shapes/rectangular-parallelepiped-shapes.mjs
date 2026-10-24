@@ -10,8 +10,8 @@ export class RectangularParallelepiped extends BodyShape {
   static defaultName = 'Rectangular Parallelepiped';
   static defaultDefinition = Object.freeze({
     name: 'Rectangular Parallelepiped',
-    generalShape: 'Unspecified',
-    shapeTypes: [],
+    generalShape: 'Box',
+    shapeTypes: ['box'],
   });
 
   constructor(options = {}) {

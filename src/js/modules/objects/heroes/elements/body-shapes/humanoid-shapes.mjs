@@ -15,8 +15,8 @@ export class Humanoid extends BodyShape {
   static defaultName = 'Humanoid';
   static defaultDefinition = Object.freeze({
     name: 'Humanoid',
-    generalShape: 'Unspecified',
-    shapeTypes: [],
+    generalShape: 'Humanoid',
+    shapeTypes: ['humanoid', 'bipedal'],
   });
 
   constructor(options = {}) {

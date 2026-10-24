@@ -15,8 +15,8 @@ export class Quadruped extends BodyShape {
   static defaultName = 'Quadruped';
   static defaultDefinition = Object.freeze({
     name: 'Quadruped',
-    generalShape: 'Unspecified',
-    shapeTypes: [],
+    generalShape: 'Quadruped',
+    shapeTypes: ['quadrupedal'],
   });
 
   constructor(options = {}) {

@@ -201,6 +201,7 @@ export class HerosCalledShots extends ThingNames {
 export const HEROS_BODY_SHAPE_TYPES = Object.freeze({
   humanoid: 'humanoid',
   bipedal: 'bipedal',
+  limbless: 'limbless',
   equestrian: 'equestrian',
   canine: 'canine',
   feline: 'feline',
@@ -208,6 +209,8 @@ export const HEROS_BODY_SHAPE_TYPES = Object.freeze({
   nonpedal: 'nonpedal',
   vehicle: 'vehicle',
   surface: 'surface',
+  surfaceArea: 'surface-area',
+  base: 'base',
   cityTown: 'city/town',
   box: 'box',
   sphere: 'sphere',
