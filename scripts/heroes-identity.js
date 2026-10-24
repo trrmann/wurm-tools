@@ -1345,6 +1345,7 @@ function sharingPrincipal(state, current, roles = []) {
       .map((user) => ({
         id: user.id,
         username: user.username,
+        displayName: publicUser(user, state).displayName,
         roles: [...user.roles],
         discoverable: Boolean(
           current &&
@@ -1353,6 +1354,11 @@ function sharingPrincipal(state, current, roles = []) {
             user.roles.includes('admin') ||
             user.listedAsPlayer ||
             user.listedAsGameMaster ||
+            state.messages?.some(
+              (message) =>
+                (message.from === current.id && message.to === user.id) ||
+                (message.to === current.id && message.from === user.id)
+            ) ||
             state.ownership?.some(
               (item) =>
                 item.userId === current.id &&

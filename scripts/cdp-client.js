@@ -1,11 +1,13 @@
 // Lightweight Chrome DevTools Protocol (CDP) client using native Node & ws
 import { spawn } from 'child_process';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import WebSocket from 'ws';
 import { findChromePath } from './chrome-finder.js';
 
 export class CdpSession {
-  constructor({ port = 9222, headless = true } = {}) {
-    this.port = port;
+  constructor({ headless = true } = {}) {
     this.headless = headless;
     this.chromeProc = null;
     this.ws = null;
@@ -15,9 +17,11 @@ export class CdpSession {
 
   async launch() {
     const chromePath = process.env.CHROME_PATH || findChromePath();
+    this.profileDir = await mkdtemp(path.join(tmpdir(), 'wurm-chrome-audit-'));
     const args = [
       this.headless ? '--headless=new' : '--headless=false',
-      `--remote-debugging-port=${this.port}`,
+      '--remote-debugging-port=0',
+      `--user-data-dir=${this.profileDir}`,
       '--no-first-run',
       '--no-default-browser-check',
       '--disable-background-networking',
@@ -36,27 +40,38 @@ export class CdpSession {
     ];
 
     this.chromeProc = spawn(chromePath, args, { stdio: ['ignore', 'ignore', 'ignore'] });
+    let launchError;
+    this.chromeProc.once('error', (error) => {
+      launchError = error;
+    });
 
     // Wait for CDP endpoint to be ready
-    let attempts = 0;
+    const started = Date.now();
     let wsUrl = null;
-    while (attempts < 30) {
+    while (Date.now() - started < 30000) {
+      if (launchError) throw launchError;
+      if (this.chromeProc.exitCode !== null || this.chromeProc.signalCode !== null)
+        throw new Error('Chrome exited before its audit endpoint became ready.');
       try {
-        const res = await fetch(`http://127.0.0.1:${this.port}/json/version`);
-        if (res.ok) {
-          const data = await res.json();
-          wsUrl = data.webSocketDebuggerUrl;
+        const [port, endpoint] = (
+          await readFile(path.join(this.profileDir, 'DevToolsActivePort'), 'utf8')
+        )
+          .trim()
+          .split('\n');
+        if (/^\d+$/.test(port) && endpoint?.startsWith('/devtools/browser/')) {
+          wsUrl = `ws://127.0.0.1:${port}${endpoint}`;
           break;
         }
-      } catch {
-        /* wait for Chrome startup */
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
       }
       await new Promise((r) => setTimeout(r, 200));
-      attempts++;
     }
 
     if (!wsUrl) {
-      throw new Error(`Failed to connect to Chrome CDP on port ${this.port} after launch.`);
+      throw new Error(
+        'Chrome startup failed: its isolated audit endpoint was not ready within 30000ms (no page was tested).'
+      );
     }
 
     // Connect to WebSocket
@@ -114,18 +129,42 @@ export class CdpSession {
   }
 
   async navigate(url, { waitUntil = 'load', timeoutMs = 20000 } = {}) {
-    await this.send('Page.navigate', { url });
-
-    // Wait for page load event
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeoutMs) {
-      const readyState = await this.evaluate('document.readyState');
-      if (readyState === 'complete' || (waitUntil === 'interactive' && readyState !== 'loading')) {
-        // Allow a small tick for dynamic scripts/modules to initialize
-        await new Promise((r) => setTimeout(r, 600));
-        return;
+    let mainFrame;
+    const idleLoaders = new Set();
+    const onMessage = (raw) => {
+      const event = JSON.parse(raw.toString());
+      if (event.sessionId !== this.sessionId) return;
+      if (event.method === 'Page.frameNavigated' && !event.params.frame.parentId)
+        mainFrame = event.params.frame;
+      if (event.method === 'Page.lifecycleEvent' && event.params.name === 'networkIdle')
+        idleLoaders.add(event.params.loaderId);
+    };
+    this.ws.on('message', onMessage);
+    try {
+      await this.send('Page.setLifecycleEventsEnabled', { enabled: true });
+      const navigation = await this.send('Page.navigate', { url });
+      if (navigation.errorText)
+        throw new Error(`Navigation to ${url} failed: ${navigation.errorText}`);
+      const startTime = Date.now();
+      while (Date.now() - startTime < timeoutMs) {
+        const loaderId = mainFrame?.loaderId || navigation.loaderId;
+        if (loaderId && idleLoaders.has(loaderId)) {
+          const readyState = await this.evaluate('document.readyState');
+          if (
+            readyState === 'complete' ||
+            (waitUntil === 'interactive' && readyState === 'interactive')
+          )
+            return;
+        }
+        await new Promise((r) => setTimeout(r, 100));
       }
-      await new Promise((r) => setTimeout(r, 100));
+      throw new Error(
+        `Navigation to ${url} did not settle within ${timeoutMs}ms. ` +
+          `Last main-frame URL: ${mainFrame?.url || '(not reported)'}; ` +
+          `loader: ${mainFrame?.loaderId || navigation.loaderId || '(not reported)'}.`
+      );
+    } finally {
+      this.ws.off('message', onMessage);
     }
   }
 
@@ -157,19 +196,20 @@ export class CdpSession {
   }
 
   async close() {
-    if (this.ws) {
-      try {
-        this.ws.close();
-      } catch {
-        /* ignore close errors */
-      }
+    this.ws?.terminate();
+    if (
+      this.chromeProc &&
+      this.chromeProc.exitCode === null &&
+      this.chromeProc.signalCode === null
+    ) {
+      const exited = new Promise((resolve) => this.chromeProc.once('close', resolve));
+      this.chromeProc.kill();
+      const timer = setTimeout(() => this.chromeProc.kill('SIGKILL'), 5000);
+      timer.unref();
+      await exited;
+      clearTimeout(timer);
     }
-    if (this.chromeProc) {
-      try {
-        this.chromeProc.kill();
-      } catch {
-        /* ignore termination errors */
-      }
-    }
+    if (this.profileDir)
+      await rm(this.profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }

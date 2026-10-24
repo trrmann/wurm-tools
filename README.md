@@ -244,14 +244,43 @@ Both scripts run the exact same verification pipeline and **safely halt immediat
 2. **Dependency Verification**: Ensures `node_modules` are installed.
 3. **Prettier Code Formatting**: Runs `npm run format:check` (auto-fixed by default; skip with `--no-auto-format` / `-NoAutoFormat`).
 4. **ESLint Quality Check**: Runs `npm run lint`.
-5. **Vitest Unit Test Suite**: Runs `npm test` (or optional `--skip-tests` / `-SkipTests`).
+5. **Vitest Unit Test Suite**: Runs `npm test`; skipping tests is not permitted.
 6. **Vite Target Build**: Builds the application for the targeted mode (`development`, `preview`, or `production`).
-7. **Git Status & Commit Guard**: Checks repository state. For `-prod`, strictly requires a non-empty string message argument (`-m` / `-CommitMessage`) if uncommitted changes exist, stages files, and commits with co-authorship.
-8. **Intelligent Push to GitHub**:
-   - For `-dev` and `-preview`: Local only, push is completely skipped.
-   - For `-prod`: Fetches remote tracking refs. If there are new commits ahead of `origin/main`, pushes to `origin main` triggering Render static site deployment. If the repository is clean and already up to date, pushing is skipped with an informational notice.
-9. **Live Site Launch in Google Chrome (Production)**: For `-prod`, automatically opens `https://wurm-tools.onrender.com` in Google Chrome (with system browser fallback).
-10. **Summary & Live Monitoring**: Reports target environment status, GitHub Actions CI status, Render live site link, and W3C validation URLs.
+7. **Local HTML/CSS Validation**: Runs `npm run test:standards` on every HTML build entry and project stylesheets using the existing HTML/CSS ESLint rules. This is local source validation, not the external W3C Nu/Jigsaw service or a W3C conformance certification.
+8. **All-Page Chrome Gate (Preview and Production)**: Runs **all** Lighthouse-style, CSS Overview, and Memory/leak suites on every dynamically discovered page against a local preview of the just-built target, **before any commit or push**. Development does not run Chrome audits. A production push additionally runs all three suites against the live Render site after the deployment wait.
+9. **Git Status & Commit Guard**: Checks repository state. For `-prod`, strictly requires a non-empty string message argument (`-m` / `-CommitMessage`) if uncommitted changes exist, stages files, and commits with co-authorship.
+10. **Intelligent Push to GitHub**:
+
+- For `-dev` and `-preview`: Local only, push is completely skipped.
+- For `-prod`: Fetches remote tracking refs. If there are new commits ahead of `origin/main`, pushes to `origin main` triggering Render static site deployment. If the repository is clean and already up to date, pushing is skipped with an informational notice.
+
+11. **Post-Deployment W3C and Chrome Validation (Production)**: After a production push and the Render deployment wait, automatically runs full W3C HTML/CSS validation across all live pages, then all live Chrome suites. A failure stops the workflow and prevents a success report; it cannot undo the already-pushed deployment.
+12. **Live Site Launch in Google Chrome (Production)**: For `-prod`, automatically opens `https://wurm-tools.onrender.com` in Google Chrome (with system browser fallback).
+13. **Summary & Live Monitoring**: Reports target environment status, Chrome/W3C test status, GitHub Actions CI status, Render live site link, and W3C validation URLs.
+
+Every deployment target requires unit tests, formatting, lint, build, and local HTML/CSS
+checks. Preview and production additionally require all-page Chrome audits; development
+does not. `--skip-tests` / `-SkipTests` and
+individual Chrome-suite deployment flags are rejected; use standalone `npm run test:lighthouse`,
+`npm run test:css-overview`, or `npm run test:memory` for focused troubleshooting.
+`-Chrome` / `--chrome` remains accepted but is redundant. `--no-push` does not skip local
+verification (it does not audit an unchanged live production site).
+External W3C HTML/CSS validation is **automatic after a production push and deployment wait**.
+It does not run for development, preview, no-push, or up-to-date production runs.
+`-w3c`, `-w3c-HTML`, and `-w3c-CSS` remain compatibility flags but cannot narrow the
+mandatory full suite or cause external validation for a local/no-deployment run.
+Use standalone `npm run test:w3c:html` or `npm run test:w3c:css` for focused live checks.
+External services cannot access localhost and are not used by local validation.
+
+Chrome's Lighthouse-style, CSS Overview and Memory suites, and W3C validation all
+discover their page list from Vite's HTML build entries. There is no separate three-page list
+to maintain: adding a build entry automatically adds it to every audit, including HERO builders,
+Wurm and Map Explorer. Partials and assets are not standalone pages. Chrome checks each
+requested page's HTTP response before auditing and fails on missing/error responses.
+Each audit uses a disposable, isolated Chrome profile and waits for the main document and
+its network requests/redirects to settle. It never attaches to an existing browser or reuses
+account sessions. Protected routes therefore test signed-out access/login flows, not the
+protected editor's signed-in behavior.
 
 ---
 
@@ -319,6 +348,20 @@ allow it for the Render site.
   ownership, and subscriptions. Character assignments inherit campaign/genre through their selected
   world context; they do not choose an independent campaign. Unconfigured worlds appear in the all-records Worlds list.
   External GMs/players can be named without creating profiles, and characters may remain unowned.
+- **Separate collections and builders:** Player characters, Non-player characters and Objects
+  open saved-entry lists with a Create button. Creating, editing or viewing an entry opens its
+  category's separate `/build/` page; **Back to saved entries** returns to the collection.
+  World/profile context follows these links. Saved builder URLs retain the object ID so reload
+  reopens the entry. PC and NPC types are locked; Objects allows all other model-defined kinds.
+  The same sheet, anatomy, point, import/export and permission capabilities remain in place.
+- **Registered participant names:** builders select Game Master and Player accounts from the
+  permitted account directory, not free text or organizational profiles. PCs require a Player
+  and may leave GM unassigned. NPCs may leave GM unassigned and have no Player assignment.
+  Other objects require a GM; Player is optional. These are descriptive account associations,
+  not ownership transfers, subscriptions or access grants. Selections persist in the definition's
+  `participants` field. Legacy definitions without that field remain supported and may be edited
+  without inventing missing assignments. Existing unavailable selections are retained; changing
+  an assignment requires a discoverable registered account with the matching assigned role.
 - **Shared object availability:** `/site/heroes/object-availability/` links the same saved object to
   multiple genres, campaigns, and worlds, or marks it global. Genre/campaign availability includes
   descendant worlds. These links share one definition: editing changes every use, not copies.
@@ -356,7 +399,11 @@ allow it for the Render site.
   Visitors are read-only even with an old write grant. GM, Player and Admin notes require their
   matching active role and cannot be published; administrator full-store backups remain a
   privileged maintenance exception. The signed-in name appears once, under the Heros brand.
-  Appearance offers light/dark modes retained per account. The last selected assigned role is
+  A sun/moon icon switches to the opposite appearance, with a target-mode tooltip and accessible
+  label. Light/dark mode is retained per account and cached locally for synchronous initialization
+  before styles/modules load, avoiding a dark flash on light-mode reloads. Wurm pages are excluded.
+  Storage-disabled browsers still support the in-memory/account setting, but cannot retain a
+  prepaint cache across reloads. The last selected assigned role is
   remembered; otherwise the highest assigned role is used (Admin, GM, Player, Visitor).
   Switching roles restores that role's last location, or its directory; Visitors default to
   public content. Single-role accounts show role text rather than a selector.
@@ -418,7 +465,7 @@ allow it for the Render site.
   not copied into permanent ACL grants. Scope visibility, relationships, subscriptions and
   object-use revocations take effect immediately. Approved campaign/world objects appear in
   their world views; private dependencies remain private.
-  See [the completed interface checklist](./documentation/heroes-todo.md#interface-issues).
+  See [the completed interface checklist](./documentation/heroes-completed.md#interface-issues).
 - **First administrator:** restart the helper after updating, then run `npm run heroes:setup-code`
   in the project folder. Open `/site/heroes/setup/`, enter the one-use code within ten minutes and
   create an administrator with a distinct 12-256-character password. The code is shown only by the

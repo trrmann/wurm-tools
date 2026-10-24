@@ -1,3 +1,5 @@
+import { applyHeroesAccountTheme } from './theme.js';
+
 export const HEROES_SESSION_KEY = 'heros-session-v1';
 export const HEROES_LOGOUT_KEY = 'heros-logout-confirmed-v1';
 export const HEROES_ROLE_LABELS = Object.freeze({
@@ -76,5 +78,13 @@ export async function identityRequest(action, data) {
     error.status = response.status;
     throw error;
   }
+  if (
+    ['me', 'login', 'mfa/verify', 'mfa/confirm'].includes(action) &&
+    body.user &&
+    heroesSessionToken() === token
+  )
+    applyHeroesAccountTheme(body.user);
+  if (action === 'logout' && typeof document !== 'undefined')
+    delete document.documentElement.dataset.heroesThemeAccount;
   return body;
 }

@@ -14,6 +14,7 @@ import {
   heroesAccessRedirect,
   heroesWorkspaceRoutes,
   heroesNavigationLinks,
+  heroesObjectEditorHref,
 } from '../src/js/modules/pages/heroes-navigation.js';
 
 describe('Heros contextual pages', () => {
@@ -108,6 +109,7 @@ describe('Heros contextual pages', () => {
     };
     expect(heroesWorkspaceRoutes(['visitor'], resources, [])).toEqual([
       '/site/heroes/player-characters/',
+      '/site/heroes/player-characters/build/',
       '/site/heroes/people/players/',
     ]);
     expect(heroesWorkspaceRoutes(['visitor'], empty, [{}])).toEqual(['/site/heroes/library/']);
@@ -186,9 +188,9 @@ describe('Heros contextual pages', () => {
     }
   });
 
-  it('assigns every model-defined object kind to exactly one object editor', () => {
+  it('assigns every model-defined object kind to one collection and its separate builder', () => {
     const editors = HEROES_PAGES.filter(
-      (page) => page.editor && !['worlds', 'library'].includes(page.editor)
+      (page) => page.editor && !page.builder && !['worlds', 'library'].includes(page.editor)
     );
     for (const { type } of getHerosObjectTypes()) {
       const object = { kind: type };
@@ -198,6 +200,12 @@ describe('Heros contextual pages', () => {
       expect(matches[0].editor).toBe(
         ['player-character', 'non-player-character'].includes(type) ? type : 'objects'
       );
+      const builder = HEROES_PAGES.find(
+        (page) => page.builder && page.editor === matches[0].editor
+      );
+      expect(isObjectForHeroesPage(object, builder)).toBe(true);
+      expect(builder.collectionHref).toBe(matches[0].href);
+      expect(builder.navigation).toBe(false);
     }
     expect(
       getHeroesObjectPage({ kind: 'object', definition: { objectType: 'player-character' } }).editor
@@ -205,6 +213,22 @@ describe('Heros contextual pages', () => {
     expect(getHeroesObjectPage({ definition: { kind: 'non-player-character' } }).editor).toBe(
       'non-player-character'
     );
+  });
+
+  it('links create/edit/view to category builders without leaking unrelated query parameters', () => {
+    for (const path of ['player-characters', 'non-player-characters', 'objects']) {
+      const page = getHeroesPage(`/site/heroes/${path}/`);
+      expect(heroesObjectEditorHref(page, '?world=w1&profile=p1&object=old&token=secret')).toBe(
+        `/site/heroes/${path}/build/?world=w1&profile=p1`
+      );
+      expect(heroesObjectEditorHref(page, '?world=w1', 'object /?')).toBe(
+        `/site/heroes/${path}/build/?world=w1&object=object+%2F%3F`
+      );
+      const access = { stage: 'ready', user: { roles: ['admin'] }, routes: [] };
+      expect(heroesAccessRedirect(getHeroesPage(`/site/heroes/${path}/build/`), access)).toBe(
+        '/site/heroes/account/?notice=route-denied'
+      );
+    }
   });
 
   it('carries only organizational context between pages, never an object selection or secret', () => {
@@ -220,6 +244,9 @@ describe('Heros contextual pages', () => {
 
   it.each([
     ['/site/heroes/player-characters/', 'worlds', 'Player characters'],
+    ['/site/heroes/player-characters/build/', 'worlds', 'Player characters'],
+    ['/site/heroes/non-player-characters/build/', 'worlds', 'Non-player characters'],
+    ['/site/heroes/objects/build/', 'worlds', 'Objects'],
     ['/site/heroes/people/players/', 'people', 'Players'],
     ['/site/heroes/people/admins/index.html', 'people', 'System administrators'],
   ])('renders only contextual sidebar entries at %s', (pathname, group, activeTitle) => {

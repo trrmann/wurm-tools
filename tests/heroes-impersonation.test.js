@@ -69,6 +69,131 @@ afterEach(async () => {
 });
 
 describe('audited HERO impersonation', () => {
+  it('saves registered editor participants without granting scope access or changing ownership', async () => {
+    const registered = await call('register', { username: 'participant-gm', password });
+    await call(
+      'admin/user',
+      {
+        userId: registered.user.id,
+        roles: ['game-master'],
+        disabled: false,
+      },
+      admin.token
+    );
+    const gm = await call('login', { username: 'participant-gm', password });
+    expect(
+      (await request('/heroes/object-participants', player.token)).body.accounts.map((a) => a.id)
+    ).not.toContain(gm.user.id);
+    expect(
+      (
+        await request('/heroes/objects', player.token, 'POST', {
+          name: 'Forbidden GM',
+          kind: 'equipment',
+          participants: { gameMasterId: gm.user.id },
+        })
+      ).status
+    ).toBe(403);
+    await call('play/listing', { visible: true }, gm.token);
+    expect(
+      (await request('/heroes/object-participants', player.token)).body.accounts.map((a) => a.id)
+    ).toContain(gm.user.id);
+    for (const definition of [
+      { kind: 'player-character', participants: { playerId: player.user.id, gameMasterId: '' } },
+      { kind: 'non-player-character', participants: { playerId: '', gameMasterId: '' } },
+      { kind: 'equipment', participants: { playerId: '', gameMasterId: gm.user.id } },
+    ]) {
+      const created = await request('/heroes/objects', player.token, 'POST', {
+        name: `Assigned ${definition.kind}`,
+        ...definition,
+      });
+      expect(created.status).toBe(201);
+      const object = created.body.object;
+      expect(object.definition.participants).toEqual(definition.participants);
+      const loaded = (await request('/heroes/objects', player.token)).body.objects.find(
+        (o) => o.id === object.id
+      );
+      expect(loaded.definition.participants).toEqual(definition.participants);
+      expect(
+        (await request('/heroes/objects', gm.token)).body.objects.map((o) => o.id)
+      ).not.toContain(object.id);
+      expect((await request('/heroes/access', player.token)).body.owned.object).toContain(
+        object.id
+      );
+    }
+    for (const definition of [
+      { kind: 'player-character', participants: {} },
+      { kind: 'non-player-character', participants: { playerId: player.user.id } },
+      { kind: 'equipment', participants: {} },
+    ])
+      expect(
+        (
+          await request('/heroes/objects', player.token, 'POST', {
+            name: 'Missing or invalid assignment',
+            ...definition,
+          })
+        ).status
+      ).toBe(400);
+    expect(
+      (
+        await request('/heroes/objects', player.token, 'POST', {
+          name: 'Wrong role',
+          kind: 'player-character',
+          participants: { playerId: gm.user.id },
+        })
+      ).status
+    ).toBe(403);
+    const equipment = (await request('/heroes/objects', player.token)).body.objects.find(
+      (object) => object.name === 'Assigned equipment'
+    );
+    await call('play/listing', { visible: false }, gm.token);
+    expect(
+      (await request('/heroes/object-participants', player.token)).body.accounts.map((a) => a.id)
+    ).not.toContain(gm.user.id);
+    expect(
+      (
+        await request(`/heroes/objects/${equipment.id}`, player.token, 'PUT', {
+          ...equipment.definition,
+          name: 'Retained private GM association',
+        })
+      ).status
+    ).toBe(200);
+  });
+
+  it('retains old missing participants and unchanged unavailable account assignments during edits', async () => {
+    const legacy = await request('/heroes/objects', player.token, 'POST', {
+      name: 'Legacy PC',
+      kind: 'player-character',
+    });
+    expect(legacy.status).toBe(201);
+    expect(
+      (
+        await request(`/heroes/objects/${legacy.body.object.id}`, player.token, 'PUT', {
+          ...legacy.body.object.definition,
+          name: 'Edited legacy PC',
+        })
+      ).status
+    ).toBe(200);
+    const assigned = await request('/heroes/objects', player.token, 'POST', {
+      name: 'Assigned PC',
+      kind: 'player-character',
+      participants: { playerId: player.user.id, gameMasterId: '' },
+    });
+    const { participants, ...definition } = assigned.body.object.definition;
+    expect(participants.playerId).toBe(player.user.id);
+    expect(
+      (await request(`/heroes/objects/${assigned.body.object.id}`, player.token, 'PUT', definition))
+        .status
+    ).toBe(400);
+    expect(
+      (
+        await request(`/heroes/objects/${assigned.body.object.id}`, player.token, 'PUT', {
+          ...assigned.body.object.definition,
+          name: 'Retained account',
+        })
+      ).status
+    ).toBe(200);
+  });
+
   it('keeps active administrators out of game-content editors even when GM and Player roles are assigned', async () => {
     await call(
       'admin/user',

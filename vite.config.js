@@ -3,10 +3,12 @@ import { resolve, join } from 'path';
 import os from 'os';
 import { defineConfig } from 'vite';
 import { HEROES_PAGES } from './src/js/modules/pages/heroes-navigation.js';
+import { heroesThemePlugin } from './scripts/heroes-theme-plugin.js';
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
+  plugins: [heroesThemePlugin()],
   // Relocate Vite cache outside synced cloud folders (e.g. OneDrive) to prevent EPERM file-lock errors on Windows
   cacheDir: join(os.tmpdir(), 'vite-wurm-tools'),
   base: '/',

@@ -25,6 +25,19 @@ export const HEROES_PAGES = [
     editor: 'non-player-character',
   },
   { href: '/site/heroes/objects/', title: 'Objects', group: 'worlds', editor: 'objects' },
+  ...[
+    ['player-characters', 'player-character', 'Build player character'],
+    ['non-player-characters', 'non-player-character', 'Build non-player character'],
+    ['objects', 'objects', 'Build object'],
+  ].map(([path, editor, title]) => ({
+    href: `/site/heroes/${path}/build/`,
+    collectionHref: `/site/heroes/${path}/`,
+    title,
+    group: 'worlds',
+    editor,
+    builder: true,
+    navigation: false,
+  })),
   {
     href: '/site/heroes/public/',
     title: 'Public content',
@@ -169,7 +182,14 @@ export function getHeroesObjectPage(object) {
 }
 
 export function isObjectForHeroesPage(object, page) {
-  return page.editor === 'worlds' || getHeroesObjectPage(object).href === page.href;
+  return page.editor === 'worlds' || getHeroesObjectPage(object).editor === page.editor;
+}
+
+export function heroesObjectEditorHref(page, search = '', objectId = '') {
+  const builder = HEROES_PAGES.find((entry) => entry.builder && entry.editor === page.editor);
+  const url = new URL(heroesPageHref(builder, search), 'http://heroes.local');
+  if (objectId) url.searchParams.set('object', objectId);
+  return url.pathname + url.search;
 }
 
 // Receives only resources already filtered by the helper's authoritative ACL checks.
@@ -205,6 +225,7 @@ export function heroesWorkspaceRoutes(roles, state, library) {
 
 export function heroesRouteAllowed(page, access) {
   if (page.requiredRole && !access.user.roles.includes(page.requiredRole)) return false;
+  if (page.builder && !access.routes?.includes(page.collectionHref)) return false;
   return page.account
     ? !page.account.startsWith('admin') || access.user.roles.includes('admin')
     : access.routes?.includes(page.href) === true;
@@ -294,7 +315,8 @@ export function renderHeroesNavigation(container, filter = '', access = null) {
     link.className = 'nav-link';
     link.href = heroesPageHref(page, window.location.search);
     link.textContent = page.title;
-    if (current.href === page.href) link.setAttribute('aria-current', 'page');
+    if ((current.collectionHref || current.href) === page.href)
+      link.setAttribute('aria-current', 'page');
     container.append(link);
   }
 }

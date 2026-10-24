@@ -1,7 +1,7 @@
 // Chrome Unified Testing Suite for Wurm Tools
 // Executes Lighthouse, CSS Overview, and Memory Testing across all pages
 
-import { spawnSync } from 'child_process';
+import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -50,15 +50,45 @@ console.log(
     .join(', ')}\n`
 );
 
-function executeSuite(scriptName, label) {
+const failures = [];
+
+async function executeSuite(scriptName, label) {
   console.log(`>>> Running ${label}...`);
   const scriptPath = path.join(__dirname, scriptName);
-  const result = spawnSync(process.execPath, [scriptPath, ...customArgs], {
-    stdio: 'inherit',
+  const diagnostics = new Set();
+  const result = await new Promise((resolve) => {
+    const child = spawn(process.execPath, [scriptPath, ...customArgs], {
+      stdio: ['inherit', 'pipe', 'pipe'],
+    });
+    for (const [stream, destination] of [
+      [child.stdout, process.stdout],
+      [child.stderr, process.stderr],
+    ]) {
+      let pending = '';
+      const record = (line) => {
+        if (/^\s*\[(?:FAIL|FATAL)\]/.test(line)) diagnostics.add(line.trim());
+      };
+      stream.setEncoding('utf8');
+      stream.on('data', (chunk) => {
+        destination.write(chunk);
+        pending += chunk;
+        const lines = pending.split('\n');
+        pending = lines.pop();
+        for (const line of lines) record(line);
+      });
+      stream.on('end', () => record(pending));
+    }
+    child.once('error', (error) => {
+      diagnostics.add(`[FAIL] Could not start ${label}: ${error.message}`);
+      resolve({ code: null, signal: null });
+    });
+    child.once('close', (code, signal) => resolve({ code, signal }));
   });
 
-  if (result.status !== 0) {
-    console.error(`\n[FAIL] ${label} exited with status code ${result.status}.\n`);
+  if (result.code !== 0) {
+    const reason = result.signal ? `signal ${result.signal}` : `status code ${result.code}`;
+    console.error(`\n[FAIL] ${label} exited with ${reason}.\n`);
+    failures.push({ label, reason, diagnostics });
     return false;
   }
   return true;
@@ -67,17 +97,17 @@ function executeSuite(scriptName, label) {
 let allPassed = true;
 
 if (runLighthouse) {
-  const passed = executeSuite('test-lighthouse.js', 'Chrome Lighthouse Audit');
+  const passed = await executeSuite('test-lighthouse.js', 'Chrome Lighthouse Audit');
   if (!passed) allPassed = false;
 }
 
 if (runCssOverview) {
-  const passed = executeSuite('test-css-overview.js', 'Chrome CSS Overview Audit');
+  const passed = await executeSuite('test-css-overview.js', 'Chrome CSS Overview Audit');
   if (!passed) allPassed = false;
 }
 
 if (runMemory) {
-  const passed = executeSuite('test-memory.js', 'Chrome Memory Leak Audit');
+  const passed = await executeSuite('test-memory.js', 'Chrome Memory Leak Audit');
   if (!passed) allPassed = false;
 }
 
@@ -85,9 +115,12 @@ console.log('==========================================================');
 if (allPassed) {
   console.log('  [SUCCESS] All Chrome test suites completed successfully!');
   console.log('==========================================================\n');
-  process.exit(0);
 } else {
   console.log('  [FAIL] One or more Chrome test suites failed.');
+  for (const { label, reason, diagnostics } of failures) {
+    console.error(`  [FAIL] ${label} (${reason})`);
+    for (const diagnostic of diagnostics) console.error(`    ${diagnostic}`);
+  }
   console.log('==========================================================\n');
-  process.exit(1);
+  process.exitCode = 1;
 }

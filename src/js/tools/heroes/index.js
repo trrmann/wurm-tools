@@ -12,10 +12,12 @@ import {
 import { MixedNumber } from '../../modules/objects/mixed-numbers.mjs';
 import { mountDefinitionLibrary } from './library.js';
 import { createHeroesClient, downloadHeroesJson } from './helper-client.js';
-import { heroesSessionToken } from './session.js';
+import { heroesSessionToken, heroesAccountLabel } from './session.js';
+import { normalizeObjectParticipants } from '../../modules/objects/heroes/object-participants.mjs';
 import {
   getHeroesObjectPage,
   heroesPageHref,
+  heroesObjectEditorHref,
   isObjectForHeroesPage,
   updateHeroesContext,
 } from '../../modules/pages/heroes-navigation.js';
@@ -57,6 +59,10 @@ export function mount(
   const creator =
     administrator || accountRoles.some((role) => ['game-master', 'player'].includes(role));
   const canWrite = (type, id) => administrator || writable[type]?.includes(id) === true;
+  const separateCollection = Boolean(
+    page && ['player-character', 'non-player-character', 'objects'].includes(page.editor)
+  );
+  const builder = separateCollection && page.builder;
   const rememberCreated = (type, id) => {
     owned[type] ||= [];
     if (!owned[type].includes(id)) owned[type].push(id);
@@ -77,10 +83,25 @@ export function mount(
       ? 'Author and reuse shared anatomy and object templates across worlds.'
       : worldsOnly
         ? 'Create, import, and manage worlds; open objects on their dedicated pages.'
-        : 'Build and edit this category in a world or across all scopes. New objects in All scopes are global. Object availability links the same definition to genres, campaigns, and worlds; edits affect every use.';
+        : builder
+          ? 'Build or edit this entry, select registered participant accounts, and save. New entries in All scopes are global; editing a shared definition changes every use.'
+          : 'Browse your saved entries or select Create to open the separate builder. Choose a world or All scopes; edits to shared entries affect every use.';
     container.querySelector('#heroes-library').hidden = !libraryOnly;
     container.querySelector('.heroes-workspace-grid').hidden = libraryOnly;
     container.querySelector('.heroes-editor-panel').hidden = worldsOnly;
+    if (separateCollection) {
+      container.querySelector('.heroes-workspace').classList.add('heroes-worlds-page');
+      container.querySelector('.heroes-editor-panel').hidden = !builder;
+      container.querySelector('.heroes-world-panel').hidden = Boolean(builder);
+      if (builder) {
+        const panel = container.querySelector('.heroes-editor-panel');
+        const back = document.createElement('a');
+        back.className = 'btn';
+        back.textContent = 'Back to saved entries';
+        back.href = heroesPageHref({ href: page.collectionHref }, window.location.search);
+        panel.prepend(back, container.querySelector('#heroes-world-select').closest('label'));
+      }
+    }
     container.querySelector('#heroes-world-form').hidden = !worldsOnly;
     container.querySelector('.heroes-world-actions').hidden = !worldsOnly;
   }
@@ -93,6 +114,7 @@ export function mount(
       : objectTypes;
   const objectTypeById = new Map(objectTypes.map((type) => [type.type, type]));
   const objectKindSelect = container.querySelector('#heroes-object-kind');
+  const lockedObjectType = ['player-character', 'non-player-character'].includes(page?.editor);
   const pointLevelSelect = container.querySelector('#heroes-point-level');
   objectKindSelect.replaceChildren();
   for (const type of availableObjectTypes) {
@@ -154,6 +176,11 @@ export function mount(
   const worldImportInput = element('#heroes-world-import-file');
   const objectImportInput = element('#heroes-object-import-file');
   const objectForm = element('#heroes-object-form');
+  const gameMasterSelect = element('#heroes-object-gm');
+  const playerSelect = element('#heroes-object-player');
+  const participantHelp = document.createElement('p');
+  participantHelp.className = 'heroes-field-hint';
+  playerSelect.closest('label').after(participantHelp);
   const objectList = element('#heroes-object-list');
   const objectCount = element('#heroes-object-count');
   const objectSearch = element('#heroes-object-search');
@@ -164,8 +191,9 @@ export function mount(
       : page?.editor === 'non-player-character'
         ? 'non-player character'
         : 'object';
-  const collectionLabel =
-    page && !['worlds', 'library'].includes(page.editor) ? page.title : 'Objects';
+  const collectionLabel = separateCollection
+    ? getHeroesObjectPage({ kind: page.editor === 'objects' ? 'object' : page.editor }).title
+    : 'Objects';
   element('#heroes-collection-title').textContent = collectionLabel;
   if (page && !['worlds', 'library'].includes(page.editor))
     element('#heroes-world-title').textContent = `Saved ${collectionLabel.toLowerCase()}`;
@@ -191,6 +219,8 @@ export function mount(
   let generatedCharacter = null;
   let activeWorldId = null;
   let editingObjectId = null;
+  let legacyParticipants = false;
+  let participantAccounts = [];
   let editingNestedIndex = null;
   let editingEquationElement = null;
   const sendRequest = createHeroesClient({
@@ -276,6 +306,51 @@ export function mount(
     return sendRequest(route, options);
   }
 
+  function fillParticipants(selected = {}) {
+    for (const [select, field, role] of [
+      [gameMasterSelect, 'gameMasterId', 'game-master'],
+      [playerSelect, 'playerId', 'player'],
+    ]) {
+      select.replaceChildren(new Option('Unassigned', ''));
+      for (const account of participantAccounts.filter((account) => account.roles.includes(role)))
+        select.append(new Option(heroesAccountLabel(account), account.id));
+      if (
+        selected[field] &&
+        ![...select.options].some((option) => option.value === selected[field])
+      ) {
+        const previous = new Option(
+          'Unavailable account (existing assignment retained)',
+          selected[field]
+        );
+        previous.disabled = true;
+        select.append(previous);
+      }
+      select.value = selected[field] || '';
+    }
+    updateParticipantFields();
+  }
+
+  function updateParticipantFields() {
+    const type = objectKindSelect.value;
+    const npc = type === 'non-player-character';
+    element('#heroes-object-player-field').hidden = npc;
+    if (npc) playerSelect.value = '';
+    const required = !legacyParticipants || Boolean(gameMasterSelect.value || playerSelect.value);
+    gameMasterSelect.required =
+      required && !['player-character', 'non-player-character'].includes(type);
+    playerSelect.required = required && type === 'player-character';
+    participantHelp.textContent =
+      legacyParticipants && !required
+        ? 'Legacy entry: no account assignments were saved. Leave unchanged or select the required registered accounts.'
+        : type === 'player-character'
+          ? 'Select the Player account. The Game Master may be unassigned. These labels do not transfer ownership or grant access.'
+          : npc
+            ? 'The Game Master may be unassigned. Non-player characters have no Player assignment.'
+            : 'Select a Game Master account. The Player may be unassigned. These labels do not transfer ownership or grant access.';
+  }
+  gameMasterSelect.addEventListener('change', updateParticipantFields, { signal });
+  playerSelect.addEventListener('change', updateParticipantFields, { signal });
+
   function setEditorEnabled(enabled) {
     createObjectButton.disabled = !enabled || !creator;
     worldForm.querySelectorAll('input, button').forEach((control) => {
@@ -292,6 +367,7 @@ export function mount(
       control.disabled =
         !enabled || (editingObjectId ? !canWrite('object', editingObjectId) : !creator);
     });
+    if (lockedObjectType) objectKindSelect.disabled = true;
     objectForm.classList.toggle(
       'heroes-read-only',
       editingObjectId ? !canWrite('object', editingObjectId) : !creator
@@ -1147,6 +1223,9 @@ export function mount(
   function resetEditor() {
     editingObjectId = null;
     objectForm.reset();
+    legacyParticipants = false;
+    fillParticipants();
+    if (builder) updateHeroesContext({ object: null });
     objectKindSelect.value = defaultObjectType;
     pointLevelSelect.value = '';
     pointLevelCustomInput.value = '';
@@ -1200,6 +1279,8 @@ export function mount(
     resetEquationForm();
     editingObjectId = object.id;
     objectForm.reset();
+    legacyParticipants = !definition.participants;
+    fillParticipants(definition.participants);
     element('#heroes-object-name').value = object.name;
     element('#heroes-object-kind').value =
       definition.objectType ?? definition.kind ?? object.kind ?? 'object';
@@ -1265,6 +1346,10 @@ export function mount(
   createObjectButton.addEventListener(
     'click',
     () => {
+      if (separateCollection) {
+        window.location.assign(heroesObjectEditorHref(page, window.location.search));
+        return;
+      }
       if (
         element('#heroes-object-name').value.trim() &&
         !window.confirm('Discard the current unsaved form and start a new entry?')
@@ -1288,6 +1373,15 @@ export function mount(
       worldId ? `/heroes/worlds/${encodeURIComponent(worldId)}/objects` : '/heroes/objects'
     );
     const objects = result.objects.filter((object) => !page || isObjectForHeroesPage(object, page));
+    const requestedObjectId = new URLSearchParams(window.location.search).get('object');
+    if (
+      builder &&
+      requestedObjectId &&
+      !objects.some((object) => object.id === requestedObjectId)
+    ) {
+      setEditorEnabled(false);
+      throw new Error('The requested object is not in this world or page category.');
+    }
     objectCount.value = String(objects.length);
     if (!objects.length) {
       const empty = document.createElement('li');
@@ -1317,16 +1411,18 @@ export function mount(
       row.dataset.search = `${object.name} ${typeLabel}`.toLocaleLowerCase();
       detail.textContent = `${typeLabel} · ${equation.leftSideValue} = ${equation.rightSideValue}${equation.isBalanced ? '' : ` · difference ${equation.difference}`}${typedCount ? ` · ${typedCount} typed element(s)` : ''}`;
       content.append(name, detail);
-      const edit = document.createElement(page?.editor === 'worlds' ? 'a' : 'button');
+      const edit = document.createElement(
+        page?.editor === 'worlds' || separateCollection ? 'a' : 'button'
+      );
       if (edit.tagName === 'BUTTON') edit.type = 'button';
       edit.className = 'btn';
       edit.textContent = canWrite('object', object.id) ? 'Edit' : 'View';
       edit.setAttribute('aria-label', `${edit.textContent} ${object.name}`);
-      if (page?.editor === 'worlds') {
+      if (page?.editor === 'worlds' || separateCollection) {
         const query = new URLSearchParams(window.location.search);
         query.set('world', worldId || 'all');
         const url = new URL(
-          heroesPageHref(getHeroesObjectPage(object), query),
+          heroesObjectEditorHref(getHeroesObjectPage(object), query, object.id),
           window.location.origin
         );
         url.searchParams.set('object', object.id);
@@ -1405,18 +1501,22 @@ export function mount(
       objectList.append(row);
     }
     filterObjects();
-    const requestedObjectId = new URLSearchParams(window.location.search).get('object');
     if (requestedObjectId && !editingObjectId && page?.editor !== 'worlds') {
       const object = objects.find((object) => object.id === requestedObjectId);
-      if (object) beginEditing(object);
-      else setState('The requested object is not in this world or page category.', true);
-      const url = new URL(window.location.href);
-      url.searchParams.delete('object');
-      window.history.replaceState(null, '', url);
+      if (object && separateCollection && !builder)
+        window.location.replace(heroesObjectEditorHref(page, window.location.search, object.id));
+      else if (object) beginEditing(object);
+      else {
+        if (builder) setEditorEnabled(false);
+        throw new Error('The requested object is not in this world or page category.');
+      }
     }
   }
 
   async function loadWorlds(selectedId) {
+    const participants = await request('/heroes/object-participants');
+    participantAccounts = participants.accounts;
+    fillParticipants();
     await library.refresh();
     const { worlds } = await request('/heroes/worlds');
     worldSelect.replaceChildren();
@@ -1562,6 +1662,7 @@ export function mount(
 
   element('#heroes-object-kind').addEventListener('change', () => {
     const objectType = objectKindSelect.value;
+    updateParticipantFields();
     const availableDefaults = generateHerosObject({ objectType, edition: '5e' }).typedElements;
     const availableDefaultKeys = new Set(
       availableDefaults.map((item) => `${item.type}\u0000${item.name}`)
@@ -1842,7 +1943,13 @@ export function mount(
     setState(`Removed ${extras.length} non-base element(s).`);
   });
 
-  element('#heroes-cancel-edit').addEventListener('click', resetEditor);
+  element('#heroes-cancel-edit').addEventListener('click', () => {
+    if (builder) {
+      window.location.assign(heroesPageHref({ href: page.collectionHref }, window.location.search));
+      return;
+    }
+    resetEditor();
+  });
 
   element('#heroes-add-element').addEventListener('click', () => {
     const nameInput = element('#heroes-element-name');
@@ -1919,8 +2026,8 @@ export function mount(
       }
       const definition = {
         name: values.get('name').trim(),
-        kind: values.get('kind'),
-        objectType: values.get('kind'),
+        kind: objectKindSelect.value,
+        objectType: objectKindSelect.value,
         characterType: currentCharacterType(),
         pointLevelClassifications: pointLevels,
         objectModelTypes: currentModelTraits(),
@@ -1947,6 +2054,11 @@ export function mount(
         typedElements: typedElements.map((item) => ({ ...item })),
         containedObjects: structuredClone(containedObjects),
       };
+      if (!legacyParticipants || gameMasterSelect.value || playerSelect.value)
+        definition.participants = normalizeObjectParticipants(objectKindSelect.value, {
+          gameMasterId: gameMasterSelect.value,
+          playerId: playerSelect.value,
+        });
       const generatedObject = generateHerosObject({ ...definition, libraryEntries });
       definition.objectModelTypes = generatedObject.objectModelTypes.map(String);
       definition.typedElements = generatedObject.typedElements.map((item) => ({
@@ -1963,7 +2075,10 @@ export function mount(
         body: JSON.stringify(definition),
       });
       if (!wasEditing) rememberCreated('object', object.id);
-      resetEditor();
+      if (builder) {
+        updateHeroesContext({ object: object.id });
+        beginEditing(object);
+      } else resetEditor();
       objectSearch.value = '';
       await loadObjects(activeWorldId);
       setState(`${wasEditing ? 'Updated' : 'Saved'} ${object.name} in this local database.`);
@@ -1977,7 +2092,10 @@ export function mount(
   const hasToken = Boolean(heroesSessionToken());
   setEditorEnabled(hasToken);
   if (hasToken) {
-    loadWorlds().catch((error) => setState(error.message, true));
+    loadWorlds().catch((error) => {
+      setEditorEnabled(false);
+      setState(error.message, true);
+    });
   } else {
     setState('Sign in to Heros Tools to access permitted local data.');
   }

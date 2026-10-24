@@ -48,6 +48,19 @@
   order: 10;
 }
 
+.heroes-session-actions > .heroes-theme-toggle {
+  order: 0;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.heroes-theme-toggle:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
 .heroes-impersonation-controls {
   padding-inline: 1rem;
   overflow-wrap: anywhere;

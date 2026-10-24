@@ -32,21 +32,11 @@ PREVIEW_SET=false
 PROD_SET=false
 COMMIT_MESSAGE=""
 AUTO_FORMAT=true
-SKIP_TESTS=false
 NO_LAUNCH=false
 NO_PUSH=false
 
 BUMP_TYPE=""
 NO_VERSION_COMMIT=false
-
-W3C_ALL=false
-W3C_HTML=false
-W3C_CSS=false
-
-CHROME_ALL=false
-LIGHTHOUSE=false
-CSS_OVERVIEW=false
-MEMORY=false
 
 # Seconds to wait after a push for Render to build and publish (default 5 minutes, 0 = no wait)
 RENDER_WAIT=300
@@ -79,8 +69,8 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -s|--skip-tests|-SkipTests|--SkipTests)
-      SKIP_TESTS=true
-      shift
+      echo "Deployment verification requires all tests; --skip-tests is no longer supported." >&2
+      exit 2
       ;;
     --no-launch|-NoLaunch|--no-open|-NoOpen)
       NO_LAUNCH=true
@@ -106,33 +96,23 @@ while [[ $# -gt 0 ]]; do
       NO_VERSION_COMMIT=true
       shift
       ;;
-    -w3c|--w3c)
-      W3C_ALL=true
-      shift
-      ;;
-    -w3c-HTML|--w3c-html|-w3c-html)
-      W3C_HTML=true
-      shift
-      ;;
-    -w3c-CSS|--w3c-css|-w3c-css)
-      W3C_CSS=true
+    -w3c|--w3c|-w3c-HTML|--w3c-html|-w3c-html|-w3c-CSS|--w3c-css|-w3c-css)
       shift
       ;;
     -Chrome|--chrome|-chrome)
-      CHROME_ALL=true
       shift
       ;;
     -Lighthouse|--lighthouse|-lighthouse)
-      LIGHTHOUSE=true
-      shift
+      echo "Preview and production verification require all Chrome suites; individual-suite flags are not supported. Use npm run test:lighthouse for a standalone audit." >&2
+      exit 2
       ;;
     -CssOverview|--css-overview|-css-overview)
-      CSS_OVERVIEW=true
-      shift
+      echo "Preview and production verification require all Chrome suites; individual-suite flags are not supported. Use npm run test:css-overview for a standalone audit." >&2
+      exit 2
       ;;
     -Memory|--memory|-memory)
-      MEMORY=true
-      shift
+      echo "Preview and production verification require all Chrome suites; individual-suite flags are not supported. Use npm run test:memory for a standalone audit." >&2
+      exit 2
       ;;
     -RenderWait|--render-wait|-render-wait)
       if [ -z "${2:-}" ] || ! [[ "$2" =~ ^[0-9]+$ ]]; then
@@ -153,16 +133,14 @@ while [[ $# -gt 0 ]]; do
       echo "Options:"
       echo "  -m, --message <msg>   Commit message for pending changes (REQUIRED for -prod if uncommitted changes exist)"
       echo "  --no-auto-format      Skip Prettier auto-formatting (enabled by default)"
-      echo "  -s, --skip-tests      Skip the unit test suite"
+      echo "  All targets require unit tests and local HTML/CSS checks; preview/prod also require all-page Chrome tests."
+      echo "  Production pushes require full live W3C HTML/CSS validation after the Render deployment wait."
       echo "  --no-open             Skip opening the live Render site in Google Chrome on prod deployment"
       echo "  --no-push             Verify and build without pushing to GitHub"
-      echo "  -w3c, --w3c           Run full W3C validation (HTML + CSS) against live production site"
-      echo "  -w3c-HTML             Run W3C HTML5 validation only against live production site"
-      echo "  -w3c-CSS              Run W3C CSS validation only against live production site"
-      echo "  -Chrome, --chrome     Run full Chrome test suite (Lighthouse, CSS Overview, Memory)"
-      echo "  -Lighthouse           Run Chrome Lighthouse audit (Performance, Accessibility, Best Practices, SEO)"
-      echo "  -CssOverview          Run Chrome CSS Overview audit"
-      echo "  -Memory               Run Chrome Memory & DOM node leak testing"
+      echo "  -w3c, --w3c           Compatibility flag; full W3C validation is automatic after a production push"
+      echo "  -w3c-HTML, -w3c-CSS   Compatibility flags; cannot narrow the full post-deployment W3C suite"
+      echo "  -Chrome, --chrome     Compatibility flag; Chrome tests run for preview/prod, not dev"
+      echo "  Skip-tests and individual Chrome-suite flags are rejected."
       echo "  -RenderWait <secs>    Seconds to wait after a prod push for Render to publish (default 300, 0 = none)"
       echo "  -h, --help            Show this help dialog"
       exit 0
@@ -191,7 +169,7 @@ fi
 
 if [ ${TARGET_COUNT} -eq 0 ]; then
   echo -e "\n${RED}[FAIL] Missing environment target switch. Exactly one target is required: -dev, -preview, or -prod.${NC}"
-  echo -e "${YELLOW}Usage: ./deploy.sh {-dev | -preview | -prod} [-m <message>] [--auto-format] [--skip-tests] [--no-open] [--no-push]${NC}\n"
+  echo -e "${YELLOW}Usage: ./deploy.sh {-dev | -preview | -prod} [-m <message>] [--no-auto-format] [--no-open] [--no-push]${NC}\n"
   exit 1
 fi
 
@@ -253,27 +231,29 @@ if [ -d "node_modules/.vite" ]; then
 fi
 
 # 1. Formatting Check (AutoFormat is default true unless --no-auto-format is passed)
-if [ "${AUTO_FORMAT}" = true ]; then
-  invoke_step "Auto-Format Code (Prettier)" npm run format
-else
-  echo -e "${GRAY}[INFO] Skipping auto-format (--no-auto-format flag specified).${NC}"
-fi
-
-invoke_step "Prettier Code Style Check" npm run format:check
-
-# 2. Linting Check
-invoke_step "ESLint Code Quality Check" npm run lint
-
-# 3. Unit Tests
-if [ "${SKIP_TESTS}" = false ]; then
+verify_target() {
+  if [ "${AUTO_FORMAT}" = true ]; then
+    invoke_step "Auto-Format Code (Prettier)" npm run format
+  else
+    echo -e "${GRAY}[INFO] Skipping auto-format (--no-auto-format flag specified).${NC}"
+  fi
+  invoke_step "Prettier Code Style Check" npm run format:check
+  invoke_step "ESLint Code Quality Check" npm run lint
   invoke_step "Vitest Unit Test Suite" npm test
-else
-  echo -e "${YELLOW}[WARN] Skipping unit tests (--skip-tests flag set).${NC}\n"
-fi
+  invoke_step "Vite Build (${DISPLAY_NAME} / mode: ${VITE_MODE})" npm run build -- --mode "${VITE_MODE}"
+  invoke_step "Local HTML & CSS Validation (All Pages)" npm run test:standards
+  if [ "${TARGET_ENV}" = "dev" ]; then
+    CHROME_RESULT="NOT REQUIRED (development target)"
+    echo -e "${CYAN}[INFO] Development verification does not run Chrome audits.${NC}"
+  else
+    invoke_step "All Chrome Tests against local preview (All Pages)" \
+      node "${SCRIPT_DIR}/run-with-server.js" preview 4173 -- \
+      node "${SCRIPT_DIR}/test-chrome.js" --all --url "http://localhost:4173"
+    CHROME_RESULT="PASSED (all suites, all pages, local preview)"
+  fi
+}
 
-# 4. Vite Build for Target Environment
-invoke_step "Vite Build (${DISPLAY_NAME} / mode: ${VITE_MODE})" npm run build -- --mode "${VITE_MODE}"
-
+verify_target
 # 5. Git Status & Verification
 echo -e "${CYAN}>>> [Git Status Check] Verifying repository state...${NC}"
 
@@ -335,6 +315,8 @@ ${TRAILER}"
       echo -e "${RED}[FAIL] Rebase onto origin/main hit conflicts and was aborted. Resolve manually, then re-run.${NC}"
       exit 1
     fi
+    # A rebase changes the source tree; the pushed code must pass the same full gate.
+    verify_target
   fi
 
   AHEAD_COUNT=0
@@ -386,71 +368,20 @@ if [ "${TARGET_ENV}" = "prod" ] && [ "${HAS_PUSHED}" = true ] && [ "${RENDER_WAI
 fi
 
 # 6. W3C Standards Validation Suite
-# Automatically run for production when code was pushed to origin/main.
-# Not run if no code was pushed to prod, unless an explicit switch (-w3c, -w3c-HTML, or -w3c-CSS) was passed.
-RUN_W3C=false
-W3C_MODE="all"
-
-if [ "${W3C_HTML}" = true ]; then
-  RUN_W3C=true
-  W3C_MODE="html"
-elif [ "${W3C_CSS}" = true ]; then
-  RUN_W3C=true
-  W3C_MODE="css"
-elif [ "${W3C_ALL}" = true ]; then
-  RUN_W3C=true
-  W3C_MODE="all"
-elif [ "${TARGET_ENV}" = "prod" ] && [ "${HAS_PUSHED}" = true ]; then
-  # Automatic post-deploy W3C test on newly deployed code
-  RUN_W3C=true
-  W3C_MODE="all"
-fi
-
-if [ "${RUN_W3C}" = true ]; then
+W3C_RESULT="NOT RUN (no production deployment)"
+if [ "${TARGET_ENV}" = "prod" ] && [ "${HAS_PUSHED}" = true ]; then
   echo -e "${CYAN}>>> [W3C Standards Check] Testing site pages against official W3C validators...${NC}"
-  case "${W3C_MODE}" in
-    html)
-      invoke_step "W3C HTML5 Validation Suite (All Pages)" npm run test:w3c:html
-      ;;
-    css)
-      invoke_step "W3C CSS Validation Suite (All Pages)" npm run test:w3c:css
-      ;;
-    *)
-      invoke_step "W3C Full Validation Suite (HTML5 & CSS across All Pages)" npm run test:w3c
-      ;;
-  esac
-elif [ "${TARGET_ENV}" = "prod" ] && [ "${HAS_PUSHED}" = false ]; then
-  echo -e "${CYAN}[INFO] No code was pushed to prod. W3C testing skipped (use -w3c, -w3c-HTML, or -w3c-CSS to run on demand).${NC}\n"
+  invoke_step "W3C Full Validation Suite (HTML5 & CSS across All Pages)" npm run test:w3c
+  W3C_RESULT="PASSED (HTML and CSS, all live production pages)"
+else
+  echo -e "${CYAN}[INFO] External W3C validation runs only after a production push and deployment wait.${NC}\n"
 fi
 
 # 7. Chrome Automated Testing Suite (Lighthouse, CSS Overview, Memory)
-CHROME_RESULT="NOT RUN (use --chrome, --lighthouse, --css-overview, --memory)"
-CHROME_FLAGS=()
-if [ "${CHROME_ALL}" = true ] || { [ "${LIGHTHOUSE}" = true ] && [ "${CSS_OVERVIEW}" = true ] && [ "${MEMORY}" = true ]; }; then
-  CHROME_FLAGS=(--all)
-else
-  [ "${LIGHTHOUSE}" = true ] && CHROME_FLAGS+=(--lighthouse)
-  [ "${CSS_OVERVIEW}" = true ] && CHROME_FLAGS+=(--css-overview)
-  [ "${MEMORY}" = true ] && CHROME_FLAGS+=(--memory)
-fi
-# Preview runs the full Chrome suite automatically against the local preview build
-if [ ${#CHROME_FLAGS[@]} -eq 0 ] && [ "${TARGET_ENV}" = "preview" ]; then
-  CHROME_FLAGS=(--all)
-fi
-
-if [ ${#CHROME_FLAGS[@]} -gt 0 ]; then
-  echo -e "${CYAN}>>> [Chrome Testing] Executing headless Chrome automated test suites (${CHROME_FLAGS[*]})...${NC}"
-  if [ "${TARGET_ENV}" = "prod" ]; then
-    invoke_step "Chrome Tests against Render (https://wurm-tools.onrender.com)" \
-      node "${SCRIPT_DIR}/test-chrome.js" "${CHROME_FLAGS[@]}"
-  else
-    LOCAL_MODE="dev"; LOCAL_PORT=3000
-    if [ "${TARGET_ENV}" = "preview" ]; then LOCAL_MODE="preview"; LOCAL_PORT=4173; fi
-    invoke_step "Chrome Tests against local ${LOCAL_MODE} (http://localhost:${LOCAL_PORT})" \
-      node "${SCRIPT_DIR}/run-with-server.js" "${LOCAL_MODE}" "${LOCAL_PORT}" -- \
-      node "${SCRIPT_DIR}/test-chrome.js" "${CHROME_FLAGS[@]}" --url "http://localhost:${LOCAL_PORT}"
-  fi
-  CHROME_RESULT="PASSED (${CHROME_FLAGS[*]})"
+if [ "${TARGET_ENV}" = "prod" ] && [ "${HAS_PUSHED}" = true ]; then
+  invoke_step "Chrome Tests against Render (https://wurm-tools.onrender.com)" \
+    node "${SCRIPT_DIR}/test-chrome.js" --all
+  CHROME_RESULT="PASSED (all suites, all pages, local preview and Render)"
 fi
 
 # Ensure the local helper is running for every target (idempotent, detaches itself)
@@ -467,6 +398,7 @@ echo -e "${GREEN}==========================================================${NC}
 echo -e "Environment : ${DISPLAY_NAME} (${TARGET_ENV})"
 echo -e "Target Mode : Vite mode '${VITE_MODE}'"
 echo -e "Chrome Tests: ${CHROME_RESULT}"
+echo -e "W3C Tests   : ${W3C_RESULT}"
 
 if [ "${TARGET_ENV}" = "prod" ]; then
   if [ "${HAS_PUSHED}" = true ]; then
@@ -520,4 +452,3 @@ else
   echo -e "\n${CYAN}>>> Starting Vite development server (running in foreground; press Ctrl+C to stop)...${NC}\n"
   npm run dev
 fi
-

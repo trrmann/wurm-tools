@@ -9,6 +9,7 @@ import {
   heroesSubscriptionWorldObjects,
 } from './heroes-subscriptions.js';
 import { handleHeroesCopies } from './heroes-copies.js';
+import { normalizeObjectParticipants } from '../src/js/modules/objects/heroes/object-participants.mjs';
 
 export async function handleAuthorizedHeroes(req, url, file, principal, identityFile, dispatch) {
   const admin = principal.roles.includes('admin');
@@ -132,6 +133,16 @@ export async function handleAuthorizedHeroes(req, url, file, principal, identity
   };
   const recordReadable = (record) =>
     roleReadable(record) && read('record', record.id) && referencesReadable(record.data);
+  const participantAccounts = (principal.accounts || []).filter((account) => account.discoverable);
+  if (req.method === 'GET' && parts[0] === 'object-participants' && parts.length === 1)
+    return {
+      accounts: participantAccounts.map(({ id, username, displayName, roles }) => ({
+        id,
+        username,
+        displayName,
+        roles,
+      })),
+    };
   const permittedLibrary = () =>
     library.filter((entry) => read('library', entry.id) && definitionsReadable(entry.definition));
   const permittedState = () => ({
@@ -547,6 +558,36 @@ export async function handleAuthorizedHeroes(req, url, file, principal, identity
       throw httpError(400, 'Invalid JSON');
     }
     require(definitionsReadable(requestBody));
+    if (type === 'object' && parts.at(-1) !== 'import') {
+      const previous = state.objects.find((object) => object.id === id)?.definition.participants;
+      if (previous && !Object.hasOwn(requestBody, 'participants'))
+        throw httpError(400, 'Keep or update the registered GM and Player assignments');
+      if (Object.hasOwn(requestBody, 'participants')) {
+        try {
+          requestBody.participants = normalizeObjectParticipants(
+            requestBody.objectType ?? requestBody.kind,
+            requestBody.participants
+          );
+        } catch (error) {
+          if (!(error instanceof TypeError || error instanceof RangeError)) throw error;
+          throw httpError(400, error.message);
+        }
+        for (const [field, role] of [
+          ['gameMasterId', 'game-master'],
+          ['playerId', 'player'],
+        ]) {
+          const selected = requestBody.participants[field];
+          if (
+            selected &&
+            selected !== previous?.[field] &&
+            !participantAccounts.some(
+              (account) => account.id === selected && account.roles.includes(role)
+            )
+          )
+            throw httpError(403, 'Select a permitted registered account with the matching role');
+        }
+      }
+    }
     if (admin && type === 'record' && !['profile', 'admin-note'].includes(requestBody.kind))
       throw httpError(
         403,

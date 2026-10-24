@@ -36,10 +36,25 @@ In addition to manual W3C online validation, the project includes automated CI c
 The cross-platform deployment automation scripts (`scripts/deploy.ps1` and `scripts/deploy.sh`) enforce targeted quality gates per environment switch:
 
 - **Target Switch Validation**: Requires exactly one target switch from `{-dev; -preview; -prod; }`. Any attempt to combine multiple target switches or omit the target causes an immediate safe abort.
-- **Pre-deployment Verification**: Every target executes Prettier formatting, ESLint validation, Vitest test suite, and Vite mode-specific compilation prior to touching Git.
+- **Pre-deployment Verification**: Every target executes Prettier formatting/checking, ESLint validation, the full Vitest suite, and Vite mode-specific compilation prior to touching Git.
+- **Local HTML/CSS Validation**: Every target runs `npm run test:standards` against all HTML build entries and project stylesheets using the existing HTML/CSS ESLint rules. These source checks run locally without external services; they are not W3C conformance certification.
+- **Environment-Specific All-Page Chrome Tests**: Preview and prod run all Lighthouse-style, CSS Overview, and Memory/leak suites against every Vite HTML build entry using a local preview of their just-built output. Dev runs unit tests and source checks without Chrome audits. All applicable local gates must pass before committing or pushing, and run again if a production rebase changes the source tree. Missing/error page responses fail verification.
+- **No Partial Deployment Verification**: Skip-tests and individual Chrome-suite deployment flags are rejected. Standalone npm audit commands remain available for focused troubleshooting.
+- **Automatic Post-Deployment W3C Checks**: After a production push and the Render deployment wait, full W3C HTML/CSS validation runs against every live page before live Chrome verification. Errors, anti-bot challenges, or service failures stop the workflow rather than reporting success; the deployment has already been pushed and is not rolled back. W3C checks do not run for dev, preview, no-push, or up-to-date production runs. Legacy `-w3c`, `-w3c-HTML`, and `-w3c-CSS` flags are redundant and cannot narrow the full suite or trigger external checks without a production push. Use standalone npm W3C commands for focused live checks; external services cannot reach localhost.
 - **Local Scope for `-dev` and `-preview`**: Aligned with `npm run dev` and `npm run preview`, `-dev` and `-preview` are strictly local environments and will never push code to GitHub.
 - **Production Git Commit Guard**: When deploying with `-prod`, the script inspects repository status for uncommitted changes (`git status --porcelain`). If changes are detected, a non-empty message argument (`-m` / `-CommitMessage`) is strictly required; deployments without an explicit message argument abort immediately with exit code 1.
 - **Smart Push-to-Prod**: For `-prod`, if the working tree is clean and the local branch is already up to date with `origin/main`, the script skips pushing to GitHub.
-- **Live Render Verification in Chrome**: Once production verification/deployment completes, the script automatically opens the live Render site (`https://wurm-tools.onrender.com`) in Google Chrome.
+- **Live Render Verification in Chrome**: After a production push and deployment wait, all three Chrome suites additionally audit every page on Render. No-push runs verify the local production build rather than an unchanged live site. The script then opens the live Render site (`https://wurm-tools.onrender.com`) in Google Chrome unless opening is disabled.
+
+Each suite uses a disposable Chrome profile and its own debugging endpoint, waits for
+main-document network-idle (including redirects), and cleans up its browser/profile.
+Protected pages test signed-out access/login behavior, not authenticated editor internals.
+Threshold failures print the full page URL and are repeated in the suite's failure
+summary; Lighthouse also identifies each failing category and score. Fatal page
+errors identify the active page, while browser-startup failures explicitly state
+that no page was tested. The unified Chrome runner streams output and repeats
+failed-suite diagnostics in its final summary, even when later suites pass.
+Chrome has a separate 30-second startup deadline;
+page-navigation and audit thresholds remain unchanged.
 
 ---

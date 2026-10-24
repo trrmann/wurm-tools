@@ -22,7 +22,7 @@
 .PARAMETER NoAutoFormat
     Skip automatic Prettier formatting (Prettier auto-formatting is enabled by default).
 .PARAMETER SkipTests
-    Skip the unit test step (not recommended for production deployments).
+    Rejected: deployment verification requires the complete test suite.
 .PARAMETER NoLaunch
     Skip opening the site in Google Chrome (Chrome launch is enabled by default for -dev, -preview, and -prod).
 .PARAMETER NoOpen
@@ -40,19 +40,19 @@
 .PARAMETER NoVersionInCommit
     Override attaching the project version to the git commit message.
 .PARAMETER w3c
-    Run full W3C validation (HTML + CSS) against the live production site across all pages.
+    Compatibility flag; full W3C HTML/CSS validation is automatic after a production push and deployment wait.
 .PARAMETER w3c-HTML
-    Run W3C HTML5 validation only against the live production site across all pages.
+    Compatibility flag; cannot narrow the full post-deployment W3C suite.
 .PARAMETER w3c-CSS
-    Run W3C CSS validation only against the live production site across all pages.
+    Compatibility flag; cannot narrow the full post-deployment W3C suite.
 .PARAMETER Chrome
-    Run full Chrome automated testing suite (Lighthouse, CSS Overview, and Memory leak detection).
+    Compatibility flag; full Chrome testing is mandatory for preview and production, not development.
 .PARAMETER Lighthouse
-    Run Chrome Lighthouse audit (Performance, Accessibility, Best Practices, SEO) across all pages.
+    Rejected: individual-suite flags cannot narrow deployment verification.
 .PARAMETER CssOverview
-    Run Chrome CSS Overview audit (typography, colors, media queries, unused rules) across all pages.
+    Rejected: individual-suite flags cannot narrow deployment verification.
 .PARAMETER Memory
-    Run Chrome Memory & DOM node leak testing across all pages.
+    Rejected: individual-suite flags cannot narrow deployment verification.
 .EXAMPLE
     deploy -dev
     deploy -preview
@@ -105,6 +105,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+if ($SkipTests -or $Lighthouse -or $CssOverview -or $Memory) {
+    Write-Host "[FAIL] Deployment verification requires all tests. Skip-tests and individual Chrome-suite flags are not supported; use standalone npm test commands for focused checks." -ForegroundColor Red
+    exit 2
+}
+
 # Validate environment target switches: exactly 1 required
 $targetList = @()
 if ($Dev) { $targetList += "dev" }
@@ -113,7 +118,7 @@ if ($Prod) { $targetList += "prod" }
 
 if ($targetList.Count -eq 0) {
     Write-Host "`n[FAIL] Missing environment target switch. Exactly one target is required: -dev, -preview, or -prod." -ForegroundColor Red
-    Write-Host "Usage: deploy {-dev | -preview | -prod} [-m <message>] [-NoAutoFormat] [-SkipTests] [-NoOpen] [-NoPush]`n" -ForegroundColor Yellow
+    Write-Host "Usage: deploy {-dev | -preview | -prod} [-m <message>] [-NoAutoFormat] [-NoOpen] [-NoPush]`n" -ForegroundColor Yellow
     exit 1
 }
 
@@ -265,36 +270,41 @@ if (Test-Path "node_modules\.vite") {
 }
 
 # 1. Formatting (AutoFormat is default unless -NoAutoFormat is specified)
-if (-not $NoAutoFormat) {
-    Invoke-SafeStep "Auto-Format Code (Prettier)" {
-        npm run format
+function Test-Target {
+    if (-not $NoAutoFormat) {
+        Invoke-SafeStep "Auto-Format Code (Prettier)" {
+            npm run format
+        }
+    } else {
+        Write-Host "[INFO] Skipping auto-format (-NoAutoFormat flag specified)." -ForegroundColor DarkGray
     }
-} else {
-    Write-Host "[INFO] Skipping auto-format (-NoAutoFormat flag specified)." -ForegroundColor DarkGray
-}
-
-Invoke-SafeStep "Prettier Code Style Check" {
-    npm run format:check
-}
-
-# 2. Linting
-Invoke-SafeStep "ESLint Code Quality Check" {
-    npm run lint
-}
-
-# 3. Unit Tests
-if (-not $SkipTests) {
+    Invoke-SafeStep "Prettier Code Style Check" {
+        npm run format:check
+    }
+    Invoke-SafeStep "ESLint Code Quality Check" {
+        npm run lint
+    }
     Invoke-SafeStep "Vitest Unit Test Suite" {
         npm test
     }
-} else {
-    Write-Host "[WARN] Skipping unit test suite (-SkipTests flag set).`n" -ForegroundColor Yellow
+    Invoke-SafeStep "Vite Build ($DisplayName / mode: $ViteMode)" {
+        npm run build -- --mode $ViteMode
+    }
+    Invoke-SafeStep "Local HTML & CSS Validation (All Pages)" {
+        npm run test:standards
+    }
+    if ($TargetEnv -eq "dev") {
+        $script:ChromeResult = "NOT REQUIRED (development target)"
+        Write-Host "[INFO] Development verification does not run Chrome audits." -ForegroundColor Cyan
+    } else {
+        Invoke-SafeStep "All Chrome Tests against local preview (All Pages)" {
+            node "$PSScriptRoot\run-with-server.js" preview 4173 -- node "$PSScriptRoot\test-chrome.js" --all --url "http://localhost:4173"
+        }
+        $script:ChromeResult = "PASSED (all suites, all pages, local preview)"
+    }
 }
 
-# 4. Vite Build for Target Environment
-Invoke-SafeStep "Vite Build ($DisplayName / mode: $ViteMode)" {
-    npm run build -- --mode $ViteMode
-}
+Test-Target
 
 # 5. Git Status and Verification
 Write-Host ">>> [Git Status Check] Verifying git repository state..." -ForegroundColor Cyan
@@ -368,6 +378,8 @@ if ($TargetEnv -eq "prod") {
             Write-Host "[FAIL] Rebase onto origin/main hit conflicts and was aborted. Resolve manually, then re-run." -ForegroundColor Red
             exit 1
         }
+        # A rebase changes the source tree; the pushed code must pass the same full gate.
+        Test-Target
     }
 
     $aheadCount = 0
@@ -428,79 +440,23 @@ if ($TargetEnv -eq "prod" -and $hasPushed -and $RenderWait -gt 0) {
 }
 
 # 6. W3C Standards Validation Suite
-# Automatically run for production when code was pushed to origin/main.
-# Not run if no code was pushed to prod, unless an explicit switch (-w3c, -w3c-HTML, or -w3c-CSS) was passed.
-$runW3c = $false
-$w3cMode = "all"
-
-if (${w3c-HTML}) {
-    $runW3c = $true
-    $w3cMode = "html"
-} elseif (${w3c-CSS}) {
-    $runW3c = $true
-    $w3cMode = "css"
-} elseif ($w3c) {
-    $runW3c = $true
-    $w3cMode = "all"
-} elseif ($TargetEnv -eq "prod" -and $hasPushed) {
-    # Automatic post-deploy W3C test on newly deployed code
-    $runW3c = $true
-    $w3cMode = "all"
-}
-
-if ($runW3c) {
+$W3cResult = "NOT RUN (no production deployment)"
+if ($TargetEnv -eq "prod" -and $hasPushed) {
     Write-Host ">>> [W3C Standards Check] Testing site pages against official W3C validators..." -ForegroundColor Cyan
-    switch ($w3cMode) {
-        "html" {
-            Invoke-SafeStep "W3C HTML5 Validation Suite (All Pages)" {
-                npm run test:w3c:html
-            }
-        }
-        "css" {
-            Invoke-SafeStep "W3C CSS Validation Suite (All Pages)" {
-                npm run test:w3c:css
-            }
-        }
-        default {
-            Invoke-SafeStep "W3C Full Validation Suite (HTML5 & CSS across All Pages)" {
-                npm run test:w3c
-            }
-        }
+    Invoke-SafeStep "W3C Full Validation Suite (HTML5 & CSS across All Pages)" {
+        npm run test:w3c
     }
-} elseif ($TargetEnv -eq "prod" -and (-not $hasPushed)) {
-    Write-Host "[INFO] No code was pushed to prod. W3C testing skipped (use -w3c, -w3c-HTML, or -w3c-CSS to run on demand).`n" -ForegroundColor Cyan
+    $W3cResult = "PASSED (HTML and CSS, all live production pages)"
+} else {
+    Write-Host "[INFO] External W3C validation runs only after a production push and deployment wait.`n" -ForegroundColor Cyan
 }
 
 # 7. Chrome Automated Testing Suite (Lighthouse, CSS Overview, Memory)
-$ChromeResult = "NOT RUN (use -Chrome, -Lighthouse, -CssOverview, -Memory)"
-$chromeFlags = @()
-if ($Chrome -or ($Lighthouse -and $CssOverview -and $Memory)) {
-    $chromeFlags = @("--all")
-} else {
-    if ($Lighthouse) { $chromeFlags += "--lighthouse" }
-    if ($CssOverview) { $chromeFlags += "--css-overview" }
-    if ($Memory) { $chromeFlags += "--memory" }
-}
-# Preview runs the full Chrome suite automatically against the local preview build
-if ($chromeFlags.Count -eq 0 -and $TargetEnv -eq "preview") {
-    $chromeFlags = @("--all")
-}
-
-if ($chromeFlags.Count -gt 0) {
-    Write-Host ">>> [Chrome Testing] Executing headless Chrome automated test suites ($($chromeFlags -join ' '))..." -ForegroundColor Cyan
-
-    if ($TargetEnv -eq "prod") {
-        Invoke-SafeStep "Chrome Tests against Render (https://wurm-tools.onrender.com)" {
-            node "$PSScriptRoot\test-chrome.js" @chromeFlags
-        }
-    } else {
-        $localMode = if ($TargetEnv -eq "preview") { "preview" } else { "dev" }
-        $localPort = if ($TargetEnv -eq "preview") { 4173 } else { 3000 }
-        Invoke-SafeStep "Chrome Tests against local $localMode (http://localhost:$localPort)" {
-            node "$PSScriptRoot\run-with-server.js" $localMode $localPort -- node "$PSScriptRoot\test-chrome.js" @chromeFlags --url "http://localhost:$localPort"
-        }
+if ($TargetEnv -eq "prod" -and $hasPushed) {
+    Invoke-SafeStep "Chrome Tests against Render (https://wurm-tools.onrender.com)" {
+        node "$PSScriptRoot\test-chrome.js" --all
     }
-    $ChromeResult = "PASSED ($($chromeFlags -join ' '))"
+    $ChromeResult = "PASSED (all suites, all pages, local preview and Render)"
 }
 
 # 8. Post-Deployment Summary & Actions
@@ -510,6 +466,7 @@ Write-Host "==========================================================" -Foregro
 Write-Host "Environment : $DisplayName ($TargetEnv)" -ForegroundColor White
 Write-Host "Target Mode : Vite mode '$ViteMode'" -ForegroundColor White
 Write-Host "Chrome Tests: $ChromeResult" -ForegroundColor White
+Write-Host "W3C Tests   : $W3cResult" -ForegroundColor White
 
 if ($TargetEnv -eq "prod") {
     if ($hasPushed) {
@@ -565,5 +522,3 @@ if ($TargetEnv -eq "prod") {
     Write-Host "`n>>> Starting Vite development server (running in foreground; press Ctrl+C to stop)...`n" -ForegroundColor Cyan
     npm run dev
 }
-
-

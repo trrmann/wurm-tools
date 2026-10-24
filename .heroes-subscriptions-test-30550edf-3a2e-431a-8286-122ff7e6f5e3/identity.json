@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "sessions": [],
+  "grants": [],
+  "attempts": {},
+  "users": [
+    { "id": "gm", "username": "game-master", "roles": ["game-master", "player"] },
+    { "id": "other-gm", "username": "other-gm", "roles": ["game-master"] },
+    {
+      "id": "player",
+      "username": "actual-player",
+      "displayName": "Actual Player",
+      "roles": ["player"]
+    },
+    { "id": "second-player", "username": "second-player", "roles": ["player"] },
+    { "id": "stranger", "username": "private-account", "roles": ["player"] },
+    { "id": "admin", "username": "administrator", "roles": ["admin"] },
+    { "id": "visitor", "username": "visitor", "roles": ["visitor"] }
+  ],
+  "playRelationships": [
+    {
+      "id": "1d6afb4e-fe49-4b6a-abba-5579df00ac1d",
+      "gameMasterId": "gm",
+      "playerId": "player",
+      "status": "approved"
+    },
+    {
+      "id": "cf589300-4d74-4aad-833c-84521bdc68ba",
+      "gameMasterId": "gm",
+      "playerId": "second-player",
+      "status": "approved"
+    }
+  ],
+  "ownership": [
+    { "resourceType": "world", "resourceId": "world", "userId": "gm", "creatorId": "gm" },
+    {
+      "resourceType": "world",
+      "resourceId": "other-world",
+      "userId": "other-gm",
+      "creatorId": "other-gm"
+    },
+    { "resourceType": "record", "resourceId": "campaign", "userId": "gm", "creatorId": "gm" },
+    {
+      "resourceType": "record",
+      "resourceId": "private-genre",
+      "userId": "other-gm",
+      "creatorId": "other-gm"
+    },
+    { "resourceType": "object", "resourceId": "pc", "userId": "player", "creatorId": "player" },
+    { "resourceType": "object", "resourceId": "item", "userId": "player", "creatorId": "player" },
+    {
+      "resourceType": "object",
+      "resourceId": "foreign",
+      "userId": "second-player",
+      "creatorId": "second-player"
+    },
+    { "resourceType": "object", "resourceId": "gm-object", "userId": "gm", "creatorId": "gm" },
+    {
+      "resourceType": "object",
+      "resourceId": "private-definition",
+      "userId": "player",
+      "creatorId": "player"
+    }
+  ]
+}

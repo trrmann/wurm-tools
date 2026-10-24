@@ -36,4 +36,12 @@ describe('HERO object and character editor guidance', () => {
     expect(template).toContain('id="heroes-contained-objects"');
     expect(template).toContain('id="heroes-equation-elements"');
   });
+
+  it('uses labelled registered-account selectors for Game Master and Player', () => {
+    for (const id of ['heroes-object-gm', 'heroes-object-player']) {
+      expect(template).toContain(`for="${id}"`);
+      expect(template).toContain(`<select id="${id}"`);
+    }
+    expect(template).toContain('id="heroes-object-player-field"');
+  });
 });

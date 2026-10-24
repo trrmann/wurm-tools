@@ -4,6 +4,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import initSqlJs from 'sql.js';
 import { replaceDatabaseFile } from './replace-database-file.js';
+import { normalizeObjectParticipants } from '../src/js/modules/objects/heroes/object-participants.mjs';
 import {
   normalizeManagementRecord,
   validateManagementRelations,
@@ -206,9 +207,26 @@ function normalizeDefinition(definition) {
   const name = requireName(definition.name, 'object name');
   const kind = typeof definition.kind === 'string' ? definition.kind : '';
   if (!OBJECT_KINDS.has(kind)) throw httpError(400, 'Invalid object kind');
+  let participants;
+  if (Object.hasOwn(definition, 'participants')) {
+    try {
+      participants = normalizeObjectParticipants(
+        definition.objectType ?? kind,
+        definition.participants
+      );
+    } catch (error) {
+      if (!(error instanceof TypeError || error instanceof RangeError)) throw error;
+      throw httpError(400, error.message);
+    }
+  }
   let definitionJson;
   try {
-    definitionJson = JSON.stringify({ ...definition, name, kind });
+    definitionJson = JSON.stringify({
+      ...definition,
+      name,
+      kind,
+      ...(participants ? { participants } : {}),
+    });
   } catch {
     throw httpError(400, 'Object definition must be JSON serializable');
   }

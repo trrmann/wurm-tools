@@ -1,7 +1,7 @@
 {
   "name": "wurm-tools",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.5.1",
   "type": "module",
   "description": "A modular toolkit and dashboard for Wurm Online and Wurm Unlimited players",
   "scripts": {
@@ -26,6 +26,7 @@
     "test:css-overview": "node scripts/test-css-overview.js",
     "test:memory": "node scripts/test-memory.js",
     "test:chrome": "node scripts/test-chrome.js",
+    "test:standards": "node scripts/test-standards.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

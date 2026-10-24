@@ -2,8 +2,9 @@
 // Audits Performance, Accessibility, Best Practices, and SEO using Chrome DevTools Protocol
 
 import { CdpSession } from './cdp-client.js';
+import { projectPagePaths, verifyPageResponse } from './project-pages.js';
 
-const DEFAULT_PAGES = ['/', '/site/concepts/', '/site/server-status/'];
+const pages = projectPagePaths();
 const DEFAULT_BASE_URL = 'https://wurm-tools.onrender.com';
 
 // Parse command line arguments
@@ -28,15 +29,16 @@ console.log('         Wurm Tools — Chrome Lighthouse Audit Suite');
 console.log('==========================================================');
 console.log(`Target Base URL  : ${baseUrl}`);
 console.log(`Pass Threshold   : ${minScore}/100 per category`);
-console.log(`Pages To Audit   : ${DEFAULT_PAGES.length}\n`);
+console.log(`Pages To Audit   : ${pages.length} (from Vite build entries)\n`);
 
 async function auditPage(cdp, pagePath) {
   const fullUrl = `${baseUrl}${pagePath}`;
+  await verifyPageResponse(fullUrl);
   const consoleMessages = [];
 
   // Track console events
   await cdp.send('Runtime.enable');
-  cdp.ws.on('message', (raw) => {
+  const onConsoleMessage = (raw) => {
     try {
       const msg = JSON.parse(raw.toString());
       if (msg.method === 'Runtime.consoleAPICalled') {
@@ -49,12 +51,14 @@ async function auditPage(cdp, pagePath) {
     } catch {
       /* ignore non-console CDP messages */
     }
-  });
+  };
+  cdp.ws.on('message', onConsoleMessage);
 
-  await cdp.navigate(fullUrl, { timeoutMs: 25000 });
+  try {
+    await cdp.navigate(fullUrl, { timeoutMs: 25000 });
 
-  // 1. PERFORMANCE METRICS (Web Vitals / Navigation Timing)
-  const perfData = await cdp.evaluate(`
+    // 1. PERFORMANCE METRICS (Web Vitals / Navigation Timing)
+    const perfData = await cdp.evaluate(`
     (() => {
       const nav = performance.getEntriesByType('navigation')[0] || {};
       const paint = performance.getEntriesByType('paint') || [];
@@ -72,16 +76,16 @@ async function auditPage(cdp, pagePath) {
     })()
   `);
 
-  // Calculate performance score (0-100)
-  let perfScore = 100;
-  if (perfData.fcp > 2500) perfScore -= 20;
-  else if (perfData.fcp > 1800) perfScore -= 10;
-  if (perfData.domComplete > 3500) perfScore -= 15;
-  if (perfData.ttfb > 1200) perfScore -= 15;
-  perfScore = Math.max(perfScore, 60);
+    // Calculate performance score (0-100)
+    let perfScore = 100;
+    if (perfData.fcp > 2500) perfScore -= 20;
+    else if (perfData.fcp > 1800) perfScore -= 10;
+    if (perfData.domComplete > 3500) perfScore -= 15;
+    if (perfData.ttfb > 1200) perfScore -= 15;
+    perfScore = Math.max(perfScore, 60);
 
-  // 2. ACCESSIBILITY CHECKS
-  const a11yData = await cdp.evaluate(`
+    // 2. ACCESSIBILITY CHECKS
+    const a11yData = await cdp.evaluate(`
     (() => {
       const issues = [];
       if (!document.documentElement.lang) issues.push('Missing <html lang> attribute');
@@ -126,10 +130,10 @@ async function auditPage(cdp, pagePath) {
     })()
   `);
 
-  let a11yScore = Math.max(0, Math.round(100 - a11yData.issues.length * 15));
+    let a11yScore = Math.max(0, Math.round(100 - a11yData.issues.length * 15));
 
-  // 3. BEST PRACTICES CHECKS
-  const bpData = await cdp.evaluate(`
+    // 3. BEST PRACTICES CHECKS
+    const bpData = await cdp.evaluate(`
     (() => {
       const issues = [];
       if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
@@ -142,16 +146,16 @@ async function auditPage(cdp, pagePath) {
     })()
   `);
 
-  if (consoleMessages.some((m) => m.type === 'error')) {
-    bpData.issues.push(
-      `${consoleMessages.filter((m) => m.type === 'error').length} console error(s) logged`
-    );
-  }
+    if (consoleMessages.some((m) => m.type === 'error')) {
+      bpData.issues.push(
+        `${consoleMessages.filter((m) => m.type === 'error').length} console error(s) logged`
+      );
+    }
 
-  let bpScore = Math.max(0, Math.round(100 - bpData.issues.length * 15));
+    let bpScore = Math.max(0, Math.round(100 - bpData.issues.length * 15));
 
-  // 4. SEO CHECKS
-  const seoData = await cdp.evaluate(`
+    // 4. SEO CHECKS
+    const seoData = await cdp.evaluate(`
     (() => {
       const issues = [];
       const title = document.title || '';
@@ -170,33 +174,38 @@ async function auditPage(cdp, pagePath) {
     })()
   `);
 
-  let seoScore = Math.max(0, Math.round(100 - seoData.issues.length * 20));
+    let seoScore = Math.max(0, Math.round(100 - seoData.issues.length * 20));
 
-  return {
-    pagePath,
-    fullUrl,
-    scores: {
-      performance: perfScore,
-      accessibility: a11yScore,
-      bestPractices: bpScore,
-      seo: seoScore,
-    },
-    perfData,
-    a11yData,
-    bpData,
-    seoData,
-    consoleMessages,
-  };
+    return {
+      pagePath,
+      fullUrl,
+      scores: {
+        performance: perfScore,
+        accessibility: a11yScore,
+        bestPractices: bpScore,
+        seo: seoScore,
+      },
+      perfData,
+      a11yData,
+      bpData,
+      seoData,
+      consoleMessages,
+    };
+  } finally {
+    cdp.ws.off('message', onConsoleMessage);
+  }
 }
 
 async function run() {
-  const cdp = new CdpSession({ port: 9222, headless: true });
-  let anyFailed = false;
+  const cdp = new CdpSession({ headless: true });
+  const failedPages = [];
+  let currentPage = null;
 
   try {
     await cdp.launch();
 
-    for (const pagePath of DEFAULT_PAGES) {
+    for (const pagePath of pages) {
+      currentPage = `${baseUrl}${pagePath}`;
       console.log(`>>> Auditing: ${pagePath} (${baseUrl}${pagePath})`);
       const result = await auditPage(cdp, pagePath);
       const { performance: p, accessibility: a, bestPractices: bp, seo: s } = result.scores;
@@ -233,27 +242,42 @@ async function run() {
       }
 
       if (p < minScore || a < minScore || bp < minScore || s < minScore) {
-        anyFailed = true;
+        const categories = [
+          ['Performance', p],
+          ['Accessibility', a],
+          ['Best Practices', bp],
+          ['SEO', s],
+        ]
+          .filter(([, score]) => score < minScore)
+          .map(([category, score]) => `${category} ${score}% < ${minScore}%`);
+        const failure = `${currentPage}: ${categories.join('; ')}`;
+        failedPages.push(failure);
+        console.error(`[FAIL] Lighthouse: ${failure}`);
       }
       console.log('');
     }
+  } catch (error) {
+    throw new Error(
+      `Lighthouse audit failed at ${currentPage || 'Chrome startup (before testing any page)'}: ${error.message}`,
+      { cause: error }
+    );
   } finally {
     await cdp.close();
   }
 
   console.log('==========================================================');
-  if (anyFailed) {
-    console.log(`  [WARN] One or more categories fell below ${minScore}% target threshold.`);
+  if (failedPages.length) {
+    console.log(`  [FAIL] One or more categories fell below ${minScore}% target threshold.`);
+    for (const failure of failedPages) console.error(`  [FAIL] Lighthouse: ${failure}`);
     console.log('==========================================================\n');
-    process.exit(1);
+    process.exitCode = 1;
   } else {
     console.log('  [SUCCESS] All pages passed Chrome Lighthouse audit!');
     console.log('==========================================================\n');
-    process.exit(0);
   }
 }
 
-run().catch((err) => {
+await run().catch((err) => {
   console.error('[FATAL] Lighthouse runner failed:', err);
-  process.exit(1);
+  process.exitCode = 1;
 });

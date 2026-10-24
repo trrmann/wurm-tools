@@ -7,13 +7,18 @@ import {
 import {
   HEROES_ROLE_LABELS,
   heroesAccountLabel,
+  heroesSessionToken,
   identityRequest,
 } from '../../tools/heroes/session.js';
 import { heroesRoleLocation } from '../../tools/heroes/preferences.js';
+import { applyHeroesAccountTheme, initializeHeroesTheme } from '../../tools/heroes/theme.js';
 
 export function applyHeroesBranding(container, access = null) {
   document.documentElement.dataset.game = 'heroes';
-  document.documentElement.dataset.heroesTheme = access?.user?.preferences?.theme || 'dark';
+  if (access?.user) applyHeroesAccountTheme(access.user);
+  else if (!document.documentElement.dataset.heroesTheme) initializeHeroesTheme();
+  if (access && !access.user && access.stage !== 'checking')
+    delete document.documentElement.dataset.heroesThemeAccount;
   const title = container.querySelector('.sidebar-title');
   const subtitle = container.querySelector('.sidebar-subtitle');
   const logo = container.querySelector('.logo-badge img');
@@ -66,32 +71,48 @@ export function applyHeroesBranding(container, access = null) {
     top.querySelector('.heroes-session-actions')?.remove();
     const actions = document.createElement('div');
     actions.className = 'heroes-session-actions';
-    const themeLabel = document.createElement('label');
-    themeLabel.textContent = 'Appearance ';
-    const theme = document.createElement('select');
-    theme.setAttribute('aria-label', 'Appearance');
-    for (const value of ['dark', 'light']) {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = value === 'dark' ? 'Dark' : 'Light';
-      theme.append(option);
-    }
-    theme.value = access.user.preferences?.theme || 'dark';
+    const theme = document.createElement('button');
+    theme.type = 'button';
+    theme.className = 'btn heroes-theme-toggle';
+    const icon = document.createElement('span');
+    icon.setAttribute('aria-hidden', 'true');
+    theme.append(icon);
+    const updateThemeButton = () => {
+      const target = document.documentElement.dataset.heroesTheme === 'light' ? 'dark' : 'light';
+      const label = `Switch to ${target} mode`;
+      theme.title = label;
+      theme.setAttribute('aria-label', label);
+      icon.textContent = target === 'light' ? '☀' : '☾';
+    };
+    updateThemeButton();
     const status = document.createElement('span');
     status.setAttribute('role', 'status');
-    theme.addEventListener('change', async () => {
+    theme.addEventListener('click', async () => {
+      const target = document.documentElement.dataset.heroesTheme === 'light' ? 'dark' : 'light';
+      const account = document.documentElement.dataset.heroesThemeAccount;
+      const session = heroesSessionToken();
       theme.disabled = true;
+      status.textContent = '';
       try {
-        await identityRequest('preferences/save', { theme: theme.value });
-        document.documentElement.dataset.heroesTheme = theme.value;
+        const result = await identityRequest('preferences/save', { theme: target });
+        if (result.preferences?.theme !== target)
+          throw new Error('The helper did not confirm the appearance preference. Please retry.');
+        if (
+          document.documentElement.dataset.heroesThemeAccount !== account ||
+          heroesSessionToken() !== session
+        )
+          return;
+        access.user.preferences = { ...access.user.preferences, theme: target };
+        applyHeroesAccountTheme(access.user);
+        updateThemeButton();
+        status.textContent = 'Appearance saved.';
       } catch (error) {
         status.textContent = error.message;
       } finally {
         theme.disabled = false;
       }
     });
-    themeLabel.append(theme);
-    actions.append(themeLabel, status);
+    actions.append(theme, status);
     const exit = document.createElement(access.user.impersonation ? 'button' : 'a');
     exit.className = 'btn';
     exit.textContent = access.user.impersonation ? 'Release' : 'Logout';

@@ -2,8 +2,9 @@
 // Connects via Chrome DevTools Protocol to measure heap allocations, DOM node counts, and leak resilience across interactions
 
 import { CdpSession } from './cdp-client.js';
+import { projectPagePaths, verifyPageResponse } from './project-pages.js';
 
-const DEFAULT_PAGES = ['/', '/site/concepts/', '/site/server-status/'];
+const pages = projectPagePaths();
 const DEFAULT_BASE_URL = 'https://wurm-tools.onrender.com';
 const MAX_ALLOWED_HEAP_DELTA_MB = 10; // Max allowed heap growth after GC
 const MAX_ALLOWED_NODE_DELTA = 150; // Max allowed detached node growth after GC
@@ -25,6 +26,7 @@ console.log('==========================================================');
 console.log('         Wurm Tools — Chrome Memory & Leak Testing');
 console.log('==========================================================');
 console.log(`Target Base URL      : ${baseUrl}`);
+console.log(`Pages To Test        : ${pages.length} (from Vite build entries)`);
 console.log(`Max Heap Growth Allow: ${MAX_ALLOWED_HEAP_DELTA_MB} MB`);
 console.log(`Max Node Growth Allow: ${MAX_ALLOWED_NODE_DELTA} DOM nodes\n`);
 
@@ -34,6 +36,7 @@ function formatBytes(bytes) {
 
 async function testPageMemory(cdp, pagePath) {
   const fullUrl = `${baseUrl}${pagePath}`;
+  await verifyPageResponse(fullUrl);
   await cdp.navigate(fullUrl, { timeoutMs: 25000 });
 
   // Let initial rendering settle and trigger GC for a clean baseline
@@ -130,13 +133,15 @@ async function testPageMemory(cdp, pagePath) {
 }
 
 async function run() {
-  const cdp = new CdpSession({ port: 9222, headless: true });
-  let anyFailed = false;
+  const cdp = new CdpSession({ headless: true });
+  const failedPages = [];
+  let currentPage = null;
 
   try {
     await cdp.launch();
 
-    for (const pagePath of DEFAULT_PAGES) {
+    for (const pagePath of pages) {
+      currentPage = `${baseUrl}${pagePath}`;
       console.log(`>>> Testing Memory on: ${pagePath} (${baseUrl}${pagePath})`);
       const res = await testPageMemory(cdp, pagePath);
 
@@ -176,26 +181,32 @@ async function run() {
       );
 
       if (!res.passed) {
-        anyFailed = true;
+        failedPages.push(currentPage);
+        console.error(`[FAIL] Memory thresholds exceeded: ${currentPage}`);
       }
     }
 
     console.log('==========================================================');
-    if (anyFailed) {
+    if (failedPages.length) {
       console.log('  [FAIL] One or more pages exceeded memory growth thresholds.');
+      for (const url of failedPages) console.error(`  [FAIL] Memory: ${url}`);
       console.log('==========================================================\n');
-      process.exit(1);
+      process.exitCode = 1;
     } else {
       console.log('  [SUCCESS] All pages passed Chrome Memory leak tests!');
       console.log('==========================================================\n');
-      process.exit(0);
     }
+  } catch (error) {
+    throw new Error(
+      `Memory audit failed at ${currentPage || 'Chrome startup (before testing any page)'}: ${error.message}`,
+      { cause: error }
+    );
   } finally {
     await cdp.close();
   }
 }
 
-run().catch((err) => {
+await run().catch((err) => {
   console.error('[FATAL] Memory test runner failed:', err);
-  process.exit(1);
+  process.exitCode = 1;
 });

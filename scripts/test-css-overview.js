@@ -2,8 +2,9 @@
 // Emulates Chrome DevTools CSS Overview panel: colors, contrast, typography, media queries, and unused rules
 
 import { CdpSession } from './cdp-client.js';
+import { projectPagePaths, verifyPageResponse } from './project-pages.js';
 
-const DEFAULT_PAGES = ['/', '/site/concepts/', '/site/server-status/'];
+const pages = projectPagePaths();
 const DEFAULT_BASE_URL = 'https://wurm-tools.onrender.com';
 
 const args = process.argv.slice(2);
@@ -23,10 +24,11 @@ console.log('==========================================================');
 console.log('         Wurm Tools — Chrome CSS Overview Audit');
 console.log('==========================================================');
 console.log(`Target Base URL  : ${baseUrl}`);
-console.log(`Pages To Analyze : ${DEFAULT_PAGES.length}\n`);
+console.log(`Pages To Analyze : ${pages.length} (from Vite build entries)\n`);
 
 async function analyzeCssOverview(cdp, pagePath) {
   const fullUrl = `${baseUrl}${pagePath}`;
+  await verifyPageResponse(fullUrl);
   await cdp.navigate(fullUrl, { timeoutMs: 25000 });
 
   const overview = await cdp.evaluate(`
@@ -149,12 +151,14 @@ async function analyzeCssOverview(cdp, pagePath) {
 }
 
 async function run() {
-  const cdp = new CdpSession({ port: 9222, headless: true });
+  const cdp = new CdpSession({ headless: true });
+  let currentPage = null;
 
   try {
     await cdp.launch();
 
-    for (const pagePath of DEFAULT_PAGES) {
+    for (const pagePath of pages) {
+      currentPage = `${baseUrl}${pagePath}`;
       console.log(`>>> CSS Overview for: ${pagePath} (${baseUrl}${pagePath})`);
       const data = await analyzeCssOverview(cdp, pagePath);
 
@@ -198,12 +202,17 @@ async function run() {
     console.log('==========================================================');
     console.log('  [SUCCESS] Chrome CSS Overview audit completed!');
     console.log('==========================================================\n');
+  } catch (error) {
+    throw new Error(
+      `CSS Overview audit failed at ${currentPage || 'Chrome startup (before testing any page)'}: ${error.message}`,
+      { cause: error }
+    );
   } finally {
     await cdp.close();
   }
 }
 
-run().catch((err) => {
+await run().catch((err) => {
   console.error('[FATAL] CSS Overview runner failed:', err);
-  process.exit(1);
+  process.exitCode = 1;
 });
