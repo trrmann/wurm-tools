@@ -7,6 +7,10 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const serviceOutput = Array.from(
+  { length: 300 },
+  (_, index) => `Service detail ${index}: URL=/site/heroes/ HTTP=429 cause=validator challenge`
+).join('\n');
 const folders = [];
 afterEach(() => {
   for (const folder of folders.splice(0)) rmSync(folder, { recursive: true, force: true });
@@ -21,6 +25,8 @@ function fixture(shell, args, extraEnv = {}) {
   const script = shell === 'bash' ? 'deploy.sh' : 'deploy.ps1';
   copyFileSync(path.join(root, 'scripts', script), path.join(folder, 'scripts', script));
   const log = path.join(folder, 'commands.tsv');
+  const deploymentLog = path.join(folder, '.deploy.log');
+  writeFileSync(deploymentLog, 'STALE PREVIOUS RUN\n');
   writeFileSync(log, '');
   for (const command of ['npm', 'node', 'git', 'gh', 'sleep']) {
     writeFileSync(
@@ -29,7 +35,15 @@ function fixture(shell, args, extraEnv = {}) {
 printf '%s\\t' '${command}' "$@" >> "$DEPLOY_LOG"
 printf '\\n' >> "$DEPLOY_LOG"
 if [ -n "$FAIL_STEP" ]; then
-  case "$*" in *"$FAIL_STEP"*) exit 1 ;; esac
+  case "$*" in *"$FAIL_STEP"*)
+    echo "Fixture diagnostic stdout: $FAIL_STEP"
+    echo "Fixture diagnostic stderr: $FAIL_STEP" >&2
+    if [ -n "$SERVICE_OUTPUT" ]; then
+      printf '%s\\n' "$SERVICE_OUTPUT"
+      printf '%s\\n' "$SERVICE_OUTPUT" | sed 's/^/stderr: /' >&2
+    fi
+    exit 1 ;;
+  esac
 fi
 if [ '${command}' = git ] && [ "$1" = rev-list ]; then
   if [ "$3" = HEAD..origin/main ]; then
@@ -57,14 +71,19 @@ exit 0
         ...extraEnv,
       },
       encoding: 'utf8',
-      timeout: 20000,
+      timeout: extraEnv.SERVICE_OUTPUT ? 60000 : 20000,
     }
   );
   const commands = readFileSync(log, 'utf8')
     .split('\n')
     .filter(Boolean)
     .map((line) => line.replace(/\t$/, '').split('\t'));
-  return { ...result, commands };
+  return {
+    ...result,
+    commands,
+    deploymentLogPath: deploymentLog,
+    deploymentLog: readFileSync(deploymentLog, 'utf8'),
+  };
 }
 
 const hasPowerShell = spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0']).status === 0;
@@ -83,6 +102,8 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
         (target, buildMode, mode, port) => {
           const result = fixture(shell, [`-${target}`, noOpen, noFormat]);
           expect(result.status, result.stderr || result.stdout).toBe(0);
+          expect(result.deploymentLog).not.toContain('STALE PREVIOUS RUN');
+          expect(result.deploymentLog).toContain('Verification Completed');
           const commands = result.commands;
           for (const command of [
             ['npm', 'run', 'format:check'],
@@ -128,6 +149,11 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
         const result = fixture(shell, ['-dev', flag]);
         expect(result.status).toBe(2);
         expect(result.commands).toEqual([]);
+        expect(result.deploymentLog).toContain('[FAIL]');
+        expect(result.deploymentLog).toContain(
+          `[INFO] Deployment log: ${result.deploymentLogPath}`
+        );
+        expect(result.deploymentLog).not.toContain('STALE PREVIOUS RUN');
       });
       it.each([
         'format:check',
@@ -143,6 +169,10 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
           expect(result.status).toBe(1);
           expect(result.commands.some((command) => command[0] === 'git')).toBe(false);
           expect(result.stdout).not.toContain('Verification Completed');
+          expect(result.deploymentLog).toContain(`Fixture diagnostic stdout: ${step}`);
+          expect(result.deploymentLog).toContain(`Fixture diagnostic stderr: ${step}`);
+          expect(result.deploymentLog).toContain('[ABORT]');
+          expect(result.stdout).toContain(`[INFO] Deployment log: ${result.deploymentLogPath}`);
         },
         20000
       );
@@ -218,7 +248,31 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
           true
         );
         expect(result.stdout).not.toContain('Verification Completed');
+        expect(result.deploymentLog).toContain('Fixture diagnostic stderr: test:w3c');
+        expect(result.deploymentLog).toContain('Fixture diagnostic stdout: test:w3c');
+        expect(result.deploymentLog).toContain('Chrome Tests against Render');
+        expect(result.deploymentLog).toContain('Post-deployment validation failed:');
+        expect(result.deploymentLog).toContain('[ABORT]');
+        expect(result.stdout).toContain(`[INFO] Deployment log: ${result.deploymentLogPath}`);
       }, 20000);
+      it('captures complete multiline failed-service stdout and stderr without truncation', () => {
+        const result = fixture(shell, ['-prod', noOpen, noFormat, '-RenderWait', '0'], {
+          PUSH_COMMITS: '1',
+          FAIL_STEP: 'test:w3c',
+          SERVICE_OUTPUT: serviceOutput,
+        });
+        expect(
+          result.status,
+          `${result.error || ''}\n${result.stderr}\n${result.deploymentLog.slice(-2000)}`
+        ).toBe(1);
+        const normalized = result.deploymentLog.replace(/\r\n/g, '\n');
+        for (const line of serviceOutput.split('\n')) {
+          expect(normalized.split('\n')).toContain(line);
+          expect(normalized.split('\n')).toContain(`stderr: ${line}`);
+        }
+        expect(normalized).toContain('Post-deployment validation failed:');
+        expect(normalized).toContain(`[INFO] Deployment log: ${result.deploymentLogPath}`);
+      }, 60000);
       it('repeats all local gates after a rebase changes the source tree', () => {
         const result = fixture(shell, ['-prod', noOpen, noFormat, '-RenderWait', '0'], {
           PUSH_COMMITS: '1',

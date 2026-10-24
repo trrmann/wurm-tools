@@ -17,3 +17,4 @@ dist-ssr
 
 .setup-complete
 .wurm-helper.semaphore
+.deploy.log

@@ -27,6 +27,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${PROJECT_ROOT}"
 
+DEPLOY_LOG_PATH="${PROJECT_ROOT}/.deploy.log"
+if ! (umask 077; : > "${DEPLOY_LOG_PATH}"); then
+  echo "[FAIL] Cannot overwrite deployment log: ${DEPLOY_LOG_PATH}" >&2
+  exit 1
+fi
+
+deploy_main() {
+trap 'status=$?; if [ "$status" -ne 0 ]; then printf "\n[FAIL] Deployment exited with status %s.\n[INFO] Deployment log: %s\n" "$status" "$DEPLOY_LOG_PATH"; fi' EXIT
+echo "[INFO] Deployment log (overwritten each run): ${DEPLOY_LOG_PATH}"
+echo "[INFO] Run started: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
 DEV_SET=false
 PREVIEW_SET=false
 PROD_SET=false
@@ -490,3 +501,6 @@ else
   echo -e "\n${CYAN}>>> Starting Vite development server (running in foreground; press Ctrl+C to stop)...${NC}\n"
   npm run dev
 fi
+}
+
+deploy_main "$@" 2>&1 | tee "${DEPLOY_LOG_PATH}"

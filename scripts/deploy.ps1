@@ -105,6 +105,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+$DeployLog = Join-Path (Split-Path $PSScriptRoot -Parent) ".deploy.log"
+Start-Transcript -Path $DeployLog -Force | Out-Host
+try {
+& {
+Write-Host "[INFO] Deployment log (overwritten each run): $DeployLog"
+
 if ($SkipTests -or $Lighthouse -or $CssOverview -or $Memory) {
     Write-Host "[FAIL] Deployment verification requires all tests. Skip-tests and individual Chrome-suite flags are not supported; use standalone npm test commands for focused checks." -ForegroundColor Red
     exit 2
@@ -169,7 +175,7 @@ function Invoke-SafeStep {
     )
 
     Write-Host ">>> [$Name] Starting..." -ForegroundColor Cyan
-    & $Action
+    & $Action *>&1 | Out-Host
     $stepExit = $LASTEXITCODE
 
     if ($stepExit -ne 0) {
@@ -191,7 +197,7 @@ function Invoke-PostDeploymentStep {
 
     Write-Host ">>> [$Name] Starting..." -ForegroundColor Cyan
     try {
-        & $Action | Out-Host
+        & $Action *>&1 | Out-Host
         $stepExit = $LASTEXITCODE
     } catch {
         $stepExit = 1
@@ -567,4 +573,13 @@ if ($TargetEnv -eq "prod") {
 
     Write-Host "`n>>> Starting Vite development server (running in foreground; press Ctrl+C to stop)...`n" -ForegroundColor Cyan
     npm run dev
+}
+} *>&1 | Out-Host
+} catch {
+    Write-Host "[FAIL] Unhandled deployment error: $_" -ForegroundColor Red
+    Write-Host $_.ScriptStackTrace -ForegroundColor Red
+    exit 1
+} finally {
+    Write-Host "[INFO] Deployment log: $DeployLog"
+    Stop-Transcript | Out-Host
 }

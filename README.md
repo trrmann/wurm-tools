@@ -258,6 +258,11 @@ Both scripts run the exact same verification pipeline and **safely halt immediat
 12. **Live Site Launch in Google Chrome (Production)**: For `-prod`, automatically opens `https://wurm-tools.onrender.com` in Google Chrome (with system browser fallback).
 13. **Summary & Live Monitoring**: Reports target environment status, Chrome/W3C test status, GitHub Actions CI status, Render live site link, and W3C validation URLs.
 
+Both deployment scripts save terminal output and command errors to `.deploy.log` in
+the repository root and print its absolute location when deployment aborts. Each
+run overwrites the previous log; read it before retrying. The log is Git-ignored,
+not uploaded, and may contain sensitive diagnostics that need redaction before sharing.
+
 Every deployment target requires unit tests, formatting, lint, build, and local HTML/CSS
 checks. Preview and production additionally require all-page Chrome audits; development
 does not. `--skip-tests` / `-SkipTests` and
