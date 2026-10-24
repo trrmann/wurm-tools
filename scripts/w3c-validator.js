@@ -38,15 +38,6 @@ for (let i = 0; i < args.length; i++) {
 // Clean trailing slash for base URL
 baseUrl = baseUrl.replace(/\/+$/, '');
 
-console.log('==========================================================');
-console.log('         Wurm Tools — W3C Standards Validation Suite');
-console.log('==========================================================');
-console.log(`Target Base URL : ${baseUrl}`);
-console.log(
-  `Validation Scope: ${checkHtml && checkCss ? 'HTML + CSS' : checkHtml ? 'HTML only' : 'CSS only'}`
-);
-console.log(`Pages To Validate: ${SITE_PAGES.length} pages\n`);
-
 async function validateHtml(targetUrl) {
   const nuUrl = `https://validator.w3.org/nu/?doc=${encodeURIComponent(targetUrl)}&out=json`;
   try {
@@ -60,12 +51,13 @@ async function validateHtml(targetUrl) {
 
     if (!res.ok) {
       if (res.status === 403 || res.status === 429) {
+        const challenge = res.headers.get('cf-mitigated') === 'challenge';
         return {
           success: false,
-          isAntiBot: true,
+          isAntiBot: res.status === 403 || challenge,
           statusCode: res.status,
           retryAfterMs: parseRetryAfter(res),
-          error: `W3C HTTP ${res.status}: Rate limit or anti-bot challenge triggered. Complete verification at: ${nuUrl}`,
+          error: `W3C HTTP ${res.status}: ${challenge ? 'Cloudflare browser challenge; command-line validation is blocked' : 'Rate limit or access denial'}. Validator URL: ${nuUrl}`,
           messages: [],
         };
       }
@@ -131,12 +123,13 @@ async function validateCss(targetUrl) {
 
     if (!res.ok) {
       if (res.status === 403 || res.status === 429) {
+        const challenge = res.headers.get('cf-mitigated') === 'challenge';
         return {
           success: false,
-          isAntiBot: true,
+          isAntiBot: res.status === 403 || challenge,
           statusCode: res.status,
           retryAfterMs: parseRetryAfter(res),
-          error: `CSS Validator HTTP ${res.status}: Rate limit or challenge. Verify at: ${cssUrl}`,
+          error: `CSS Validator HTTP ${res.status}: ${challenge ? 'Cloudflare browser challenge; command-line validation is blocked' : 'Rate limit or access denial'}. Validator URL: ${cssUrl}`,
         };
       }
       return {
@@ -206,6 +199,7 @@ async function withRetry(service, pagePath, fn) {
       unavailableValidators.set(service, {
         statusCode: result.statusCode ?? 'anti-bot challenge',
         pagePath,
+        error: result.error,
       });
       return result;
     }
@@ -219,8 +213,12 @@ async function withRetry(service, pagePath, fn) {
         `[INFO] ${service} returned HTTP ${result.statusCode ?? 'network error'} for ${pagePath}; retrying in ${Math.ceil(delay / 1000)} second(s) (${attempt + 1}/${SERVICE_RETRIES}).`
       );
       await sleep(delay);
-    } else if (rateLimited || blocked) {
-      unavailableValidators.set(service, { statusCode: result.statusCode, pagePath });
+    } else if (rateLimited) {
+      unavailableValidators.set(service, {
+        statusCode: result.statusCode,
+        pagePath,
+        error: result.error,
+      });
     }
   }
   return result;
@@ -259,9 +257,19 @@ async function waitForDeployment() {
 }
 
 async function run() {
+  unavailableValidators.clear();
+  console.log('==========================================================');
+  console.log('         Wurm Tools — W3C Standards Validation Suite');
+  console.log('==========================================================');
+  console.log(`Target Base URL : ${baseUrl}`);
+  console.log(
+    `Validation Scope: ${checkHtml && checkCss ? 'HTML + CSS' : checkHtml ? 'HTML only' : 'CSS only'}`
+  );
+  console.log(`Pages To Validate: ${SITE_PAGES.length} pages\n`);
   let anyErrors = false;
+  const results = { passed: 0, invalid: 0, unavailable: 0, skipped: 0 };
 
-  if (!(await waitForDeployment())) process.exit(1);
+  if (!(await waitForDeployment())) return 1;
   console.log('All pages are live.\n');
 
   for (const pagePath of SITE_PAGES) {
@@ -274,12 +282,15 @@ async function run() {
       const htmlResult = await withRetry('Nu HTML Checker', pagePath, () => validateHtml(fullUrl));
 
       if (htmlResult.skipped) {
+        results.skipped++;
         console.log(`[SKIP] ${htmlResult.error}`);
         anyErrors = true;
       } else if (htmlResult.error) {
+        results.unavailable++;
         console.log(`[FAIL] Connection/Service Error (${htmlResult.error})`);
         anyErrors = true;
       } else if (!htmlResult.success) {
+        results.invalid++;
         console.log(`[FAIL] ${htmlResult.errors.length} error(s) found`);
         anyErrors = true;
         htmlResult.errors.forEach((err, idx) => {
@@ -291,6 +302,7 @@ async function run() {
           }
         });
       } else {
+        results.passed++;
         const infoNote =
           htmlResult.infos.length > 0 ? ` (${htmlResult.infos.length} info notes)` : '';
         console.log(`[PASS] Valid HTML5${infoNote}`);
@@ -305,18 +317,22 @@ async function run() {
       );
 
       if (cssResult.skipped) {
+        results.skipped++;
         console.log(`[SKIP] ${cssResult.error}`);
         anyErrors = true;
       } else if (cssResult.error) {
+        results.unavailable++;
         console.log(`[FAIL] Connection/Service Error (${cssResult.error})`);
         anyErrors = true;
       } else if (!cssResult.success) {
+        results.invalid++;
         console.log(`[FAIL] ${cssResult.errors.length} CSS error(s) found`);
         anyErrors = true;
         cssResult.errors.forEach((err, idx) => {
           console.log(`     ${idx + 1}. [Line ${err.line || '?'}] ${err.message}`);
         });
       } else {
+        results.passed++;
         const warnCount = cssResult.warnings?.length || 0;
         console.log(`[PASS] Valid CSS (${warnCount} vendor warnings)`);
       }
@@ -326,29 +342,42 @@ async function run() {
   }
 
   console.log('==========================================================');
+  console.log(
+    `  Page/service checks: ${results.passed} passed, ${results.invalid} invalid, ${results.unavailable} service failures, ${results.skipped} skipped.`
+  );
   if (anyErrors) {
-    console.log('  [FAIL] W3C Validation found errors across one or more pages.');
+    console.log('  [FAIL] W3C validation incomplete or invalid; not all required checks passed.');
     for (const [service, result] of unavailableValidators) {
       console.log(
         `  [BLOCKED] ${service} returned HTTP ${result.statusCode} at ${result.pagePath}; later pages were not submitted to that service.`
       );
+      if (result.error) console.log(`    Cause: ${result.error}`);
+    }
+    if (results.unavailable || results.skipped) {
+      console.log(
+        '  Service failures/skipped checks are not HTML/CSS conformance results. Resolve the reported service issue before retrying npm run test:w3c; no new deployment is required.'
+      );
     }
     console.log('==========================================================\n');
-    process.exit(1);
+    return 1;
   } else {
     console.log('  [SUCCESS] All pages passed W3C validation successfully!');
     console.log('==========================================================\n');
-    process.exit(0);
+    return 0;
   }
 }
 
 const isMain =
   process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 if (isMain) {
-  run().catch((err) => {
-    console.error('[FATAL] Unexpected error in W3C validation:', err);
-    process.exit(1);
-  });
+  run()
+    .then((code) => {
+      process.exitCode = code;
+    })
+    .catch((err) => {
+      console.error('[FATAL] Unexpected error in W3C validation:', err);
+      process.exitCode = 1;
+    });
 }
 
-export { parseRetryAfter, validateHtml, validateCss, withRetry };
+export { parseRetryAfter, validateHtml, validateCss, withRetry, run };

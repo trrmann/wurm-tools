@@ -57,4 +57,25 @@ failed-suite diagnostics in its final summary, even when later suites pass.
 Chrome has a separate 30-second startup deadline;
 page-navigation and audit thresholds remain unchanged.
 
+### W3C service failures versus conformance errors
+
+The W3C runner prints separate counts for passed checks, invalid page/service checks,
+service failures, and skipped checks. Each page requires both HTML and CSS checks in
+the full suite. Service failures and skipped checks are **not conformance results**.
+
+Ordinary HTTP 429 rate limits retry up to three attempts, honoring `Retry-After`
+or using 3- and 6-second backoff when it is absent. A confirmed Cloudflare browser
+challenge (`cf-mitigated: challenge`) or HTTP 403 stops requests to that validator
+immediately; repeatedly retrying cannot complete an interactive challenge.
+The failure summary repeats the blocked service, HTTP status, page, and cause.
+
+If the public services block command-line access, the gate remains failed even if
+Chrome passes. Rebuilding or pushing the website does not fix the validator's
+access policy. After service access is restored, run `npm run test:w3c` to recheck
+all live pages without deploying again. A manual browser check can help diagnose
+access but does not replace the automated all-page gate. If reliable public API
+access cannot be obtained, explicitly plan deployment of maintained Nu/Jigsaw
+validator instances and corresponding runner support; do not bypass challenges,
+silently switch validators, skip checks, or label local lint as W3C certification.
+
 ---
