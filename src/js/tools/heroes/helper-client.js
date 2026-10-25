@@ -37,7 +37,7 @@ export function createHeroesClient({ signal, onUnauthorized = () => {} } = {}) {
         !options.method
       ) {
         throw new Error(
-          'The running helper needs an update. Restart it with npm run helper:stop, then npm run helper.'
+          'The running helper needs an update. Restart it with pnpm run helper:stop, then pnpm run helper.'
         );
       }
       throw new Error(body?.error || `Local helper returned ${response.status}`);

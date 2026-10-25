@@ -9,11 +9,11 @@
     "PATH": "${workspaceFolder}/scripts:${env:PATH}"
   },
   "chat.tools.terminal.autoApprove": {
-    "/^npm install$/": {
+    "/^pnpm install$/": {
       "approve": true,
       "matchCommandLine": true
     },
-    "/^npm run build$/": {
+    "/^pnpm run build$/": {
       "approve": true,
       "matchCommandLine": true
     },

@@ -1329,7 +1329,7 @@ describe('first-time HERO setup guidance', () => {
       descendants(container)
         .map((node) => node.textContent)
         .join('\n')
-    ).toContain('npm run heroes:setup-code');
+    ).toContain('pnpm run heroes:setup-code');
     expect(
       descendants(container).some((node) => node.href === 'https://nodejs.org/en/download')
     ).toBe(true);
@@ -1342,7 +1342,7 @@ describe('first-time HERO setup guidance', () => {
       descendants(container)
         .map((node) => node.textContent)
         .join('\n')
-    ).toContain('npm.cmd install');
+    ).toContain('pnpm.cmd install');
     expect(descendants(container).filter((node) => node.tag === 'form')).toHaveLength(1);
     expect(descendants(container).find((node) => node.type === 'submit').disabled).toBe(true);
     const content = container.children[0].children[2];

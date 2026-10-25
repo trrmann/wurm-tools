@@ -2,7 +2,7 @@
 .SYNOPSIS
     Prepare official local W3C developer tools on Windows.
 .DESCRIPTION
-    Requires the project's Node/npm dependencies to be installed first.
+    Requires the project's Node/pnpm dependencies to be installed first.
     Installs Temurin 21 with winget if Java 17+ is missing, then downloads
     missing checksum-verified validator jars. Does not run deployment.
 #>
@@ -19,11 +19,11 @@ function Test-JavaVersion {
 }
 
 try {
-    if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
-        throw "Node.js/npm is required. Install the supported Node LTS and reopen your terminal."
+    if (-not (Get-Command pnpm.cmd -ErrorAction SilentlyContinue)) {
+        throw "Node.js/pnpm is required. Install the supported Node LTS and reopen your terminal."
     }
     if (-not (Test-Path "node_modules/vite/package.json")) {
-        throw "Restore project dependencies with npm.cmd ci first."
+        throw "Restore project dependencies with pnpm.cmd install --frozen-lockfile first."
     }
     if (-not (Test-JavaVersion)) {
         if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
@@ -36,7 +36,7 @@ try {
             throw "Java 17+ is still not active. Reopen your terminal or correct PATH, then rerun setup."
         }
     }
-    & npm.cmd run test:w3c:setup
+    & pnpm.cmd run test:w3c:setup
     if ($LASTEXITCODE -ne 0) { throw "W3C tool setup failed (exit $LASTEXITCODE)." }
 } catch {
     Write-Error $_

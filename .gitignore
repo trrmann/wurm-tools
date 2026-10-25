@@ -19,3 +19,5 @@ dist-ssr
 .wurm-helper.semaphore
 .deploy.log
 .w3c-tools/
+.installer-cache/
+artifacts/

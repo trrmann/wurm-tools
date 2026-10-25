@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-time Fedora environment setup for Wurm Tools.
-# Installs git/Node.js/Chrome (if missing), makes scripts executable and runs npm install.
+# Uses nvm-managed Node LTS and pinned pnpm; installs missing Fedora developer prerequisites.
 # Rechecks prerequisites each run; --force also restores project dependencies.
 #
 # Usage: scripts/setup.sh [--force] [--no-chrome] [--helper-service] [-h|--help]
@@ -10,7 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SEMAPHORE="${PROJECT_ROOT}/.setup-complete"
-MIN_NODE_MAJOR=20
+MIN_NODE_MAJOR=24
 
 FORCE=false
 INSTALL_CHROME=true
@@ -57,16 +57,18 @@ else
   ${SUDO} dnf install -y git
 fi
 
-# 2. Node.js >= MIN_NODE_MAJOR
+# 2. Use the checkout's nvm-managed Node and pinned pnpm.
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+[ -s "$NVM_DIR/nvm.sh" ] || fail "nvm is missing. Follow README Quick Start to provision nvm, Node LTS and pnpm."
+source "$NVM_DIR/nvm.sh" --no-use
+nvm use --silent "$(cat "${PROJECT_ROOT}/.nvmrc")" || fail "Run nvm install in the project first."
 node_major() { node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0; }
-if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1 || [ "$(node_major)" -lt "${MIN_NODE_MAJOR}" ]; then
-  info "Installing Node.js and npm..."
-  ${SUDO} dnf install -y nodejs npm
-fi
 if [ "$(node_major)" -lt "${MIN_NODE_MAJOR}" ]; then
-  fail "Node.js ${MIN_NODE_MAJOR}+ required, found $(node -v 2>/dev/null || echo none). Install a newer version (e.g. 'dnf module' or nvm) and re-run."
+  fail "Node.js ${MIN_NODE_MAJOR}+ required, found $(node -v 2>/dev/null || echo none). Run nvm install and re-run."
 fi
-info "Node $(node -v), npm $(npm -v)"
+command -v pnpm >/dev/null 2>&1 || fail "pnpm is missing. Run npm install --global pnpm@12.15.0 using nvm Node."
+[ "$(pnpm --version)" = "12.15.0" ] || fail "pnpm 12.15.0 is required; provision the pinned version first."
+info "Node $(node -v), pnpm $(pnpm -v)"
 
 # 3. Chrome / Chromium (needed for the Chrome tests and opening the site)
 if [ "${INSTALL_CHROME}" = true ]; then
@@ -89,7 +91,7 @@ fi
 # 5. Dependencies
 if [ ! -f "${SEMAPHORE}" ] || [ "${FORCE}" = true ] || [ ! -d "${PROJECT_ROOT}/node_modules" ]; then
   info "Restoring lockfile-defined project dependencies..."
-  (cd "${PROJECT_ROOT}" && npm ci)
+  (cd "${PROJECT_ROOT}" && pnpm install --frozen-lockfile)
 fi
 
 # W3C tools are developer prerequisites, not part of the end-user helper.
@@ -108,7 +110,7 @@ if [[ ! "${JAVA_MAJOR}" =~ ^[0-9]+$ ]] || [ "${JAVA_MAJOR}" -lt 17 ]; then
   fail "Java 17+ is required. Check the active Java alternative and PATH, then rerun setup."
 fi
 info "Preparing checksum-verified local W3C validators (downloads missing jars)..."
-(cd "${PROJECT_ROOT}" && npm run test:w3c:setup)
+(cd "${PROJECT_ROOT}" && pnpm run test:w3c:setup)
 
 # 6. Local Wurm helper: report install detection, optionally install a systemd user service
 info "Checking for a local Wurm server install..."
@@ -121,8 +123,8 @@ import('./scripts/wurm-local.js').then(async (m) => {
 
 if [ "${HELPER_SERVICE}" = true ]; then
   info "Installing opt-in systemd user service 'wurm-helper'..."
-  (cd "${PROJECT_ROOT}" && npm run helper:startup:install) \
-    || info "Could not install the service; run 'npm run helper' manually."
+  (cd "${PROJECT_ROOT}" && pnpm run helper:startup:install) \
+    || info "Could not install the service; run 'pnpm run helper' manually."
   info "Set WURM_SERVER_DIR / WURM_ALLOWED_ORIGINS via 'systemctl --user edit wurm-helper'."
 fi
 

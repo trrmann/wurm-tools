@@ -112,7 +112,7 @@ try {
 Write-Host "[INFO] Deployment log (overwritten each run): $DeployLog"
 
 if ($SkipTests -or $Lighthouse -or $CssOverview -or $Memory) {
-    Write-Host "[FAIL] Deployment verification requires all tests. Skip-tests and individual Chrome-suite flags are not supported; use standalone npm test commands for focused checks." -ForegroundColor Red
+    Write-Host "[FAIL] Deployment verification requires all tests. Skip-tests and individual Chrome-suite flags are not supported; use standalone pnpm test commands for focused checks." -ForegroundColor Red
     exit 2
 }
 $W3CRequested = $w3c -or ${w3c-HTML} -or ${w3c-CSS}
@@ -282,7 +282,7 @@ function Launch-WhenReady {
 # 0. Check dependencies
 if (-not (Test-Path "node_modules")) {
     Invoke-SafeStep "Install Dependencies" {
-        npm install
+        pnpm install --frozen-lockfile
     }
 }
 
@@ -310,25 +310,25 @@ function Test-Target {
     }
     if (-not $NoAutoFormat) {
         Invoke-SafeStep "Auto-Format Code (Prettier)" {
-            npm run format
+            pnpm run format
         }
     } else {
         Write-Host "[INFO] Skipping auto-format (-NoAutoFormat flag specified)." -ForegroundColor DarkGray
     }
     Invoke-SafeStep "Prettier Code Style Check" {
-        npm run format:check
+        pnpm run format:check
     }
     Invoke-SafeStep "ESLint Code Quality Check" {
-        npm run lint
+        pnpm run lint
     }
     Invoke-SafeStep "Vitest Unit Test Suite" {
-        npm test
+        pnpm test
     }
     Invoke-SafeStep "Vite Build ($DisplayName / mode: $ViteMode)" {
-        npm run build -- --mode $ViteMode
+        pnpm run build --mode $ViteMode
     }
     Invoke-SafeStep "Local HTML & CSS Validation (All Pages)" {
-        npm run test:standards
+        pnpm run test:standards
     }
     if ($TargetEnv -eq "dev") {
         $script:ChromeResult = "NOT REQUIRED (development target)"
@@ -460,7 +460,7 @@ if ($TargetEnv -eq "prod") {
     } else {
         Write-Host "Working tree clean." -ForegroundColor DarkGray
     }
-    Write-Host "[INFO] Environment is local $DisplayName (matches 'npm run $TargetEnv'). Skipping push to GitHub.`n" -ForegroundColor Cyan
+    Write-Host "[INFO] Environment is local $DisplayName (matches 'pnpm run $TargetEnv'). Skipping push to GitHub.`n" -ForegroundColor Cyan
 }
 
 # Wait for Render to pull the new commit from GitHub and publish it before any live-site testing
@@ -486,7 +486,7 @@ if ($TargetEnv -eq "prod" -and ($hasPushed -or $W3CRequested)) {
         "W3C Full Validation Suite (Explicit Live Recheck)"
     }
     if (Invoke-PostDeploymentStep $w3cStep {
-        npm run test:w3c
+        pnpm run test:w3c
     }) {
         $W3cResult = "PASSED (HTML and CSS, all live production pages)"
     } else {
@@ -563,7 +563,7 @@ if ($TargetEnv -eq "prod") {
     }
 
     Write-Host "`n>>> Starting Vite preview server (running in foreground; press Ctrl+C to stop)...`n" -ForegroundColor Cyan
-    npm run preview
+    pnpm run preview
 
 } else {
     Write-Host "GitHub Push : Skipped (local development environment)" -ForegroundColor DarkGray
@@ -577,7 +577,7 @@ if ($TargetEnv -eq "prod") {
     }
 
     Write-Host "`n>>> Starting Vite development server (running in foreground; press Ctrl+C to stop)...`n" -ForegroundColor Cyan
-    npm run dev
+    pnpm run dev
 }
 } *>&1 | Out-Host
 } catch {

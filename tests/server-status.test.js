@@ -62,6 +62,23 @@ describe('wurm-local helper', () => {
     }
   });
 
+  it('stops a detached helper without requiring a systemd user session', async () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'wurm-helper-stop-'));
+    const file = path.join(temp, 'helper.semaphore');
+    const runCommand = vi.fn().mockRejectedValue(new Error('No systemd user session'));
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      fs.writeFileSync(file, JSON.stringify({ token: 'test-token', pid: 2147483647 }));
+      await stopDetachedHelper({ file, runCommand });
+      expect(runCommand).not.toHaveBeenCalled();
+      expect(fs.existsSync(file)).toBe(false);
+      expect(log).toHaveBeenCalledWith('Wurm local helper stopped gracefully.');
+    } finally {
+      log.mockRestore();
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it('starts detached and shuts down when its semaphore is removed', async () => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'wurm-helper-'));
     const semaphore = path.join(temp, 'helper.semaphore');

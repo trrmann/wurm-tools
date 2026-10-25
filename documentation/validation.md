@@ -28,10 +28,10 @@ This document tracks HTML, CSS, and standards validation for the **Wurm Tools** 
 
 In addition to manual W3C online validation, the project includes automated CI checks executed on every push and pull request via GitHub Actions, covering all **HTML**, **CSS**, and **JavaScript** files:
 
-- **Prettier Code Formatting**: `npm run format:check` (validates all `.html`, `.css`, and `.js` files)
-- **ESLint Code Quality**: `npm run lint` (multi-language linting covering `.html` via `@html-eslint`, `.css` via `@eslint/css`, and `.js` via `@eslint/js`)
-- **Vitest Unit Test Suite**: `npm test`
-- **Vite Production Build Verification**: `npm run build`
+- **Prettier Code Formatting**: `pnpm run format:check` (validates all `.html`, `.css`, and `.js` files)
+- **ESLint Code Quality**: `pnpm run lint` (multi-language linting covering `.html` via `@html-eslint`, `.css` via `@eslint/css`, and `.js` via `@eslint/js`)
+- **Vitest Unit Test Suite**: `pnpm test`
+- **Vite Production Build Verification**: `pnpm run build`
 
 ---
 
@@ -43,11 +43,11 @@ The cross-platform deployment automation scripts (`scripts/deploy.ps1` and `scri
   - This applies to every target (`-dev`, `-preview`, `-prod`) on Fedora/Bash and Windows/PowerShell. The `scripts/deploy` Bash wrapper forwards to `deploy.sh`; Windows `deploy.cmd` forwards to `deploy.ps1`, so both inherit the same logging. Complete emitted service diagnostics are captured, not just the exit status or final summary; response bodies not emitted by a test tool cannot be recovered by deployment logging. Regression tests verify both stdout and stderr, including multiline output larger than the terminal summary. PowerShell is exercised on Fedora; native Windows behavior still requires validation on Windows.
 - **Target Switch Validation**: Requires exactly one target switch from `{-dev; -preview; -prod; }`. Any attempt to combine multiple target switches or omit the target causes an immediate safe abort.
 - **Pre-deployment Verification**: Every target executes Prettier formatting/checking, ESLint validation, the full Vitest suite, and Vite mode-specific compilation prior to touching Git.
-- **Local HTML/CSS Validation**: Every target runs `npm run test:standards` against all HTML build entries and project stylesheets using the existing HTML/CSS ESLint rules. These source checks run locally without external services; they are not W3C conformance certification.
+- **Local HTML/CSS Validation**: Every target runs `pnpm run test:standards` against all HTML build entries and project stylesheets using the existing HTML/CSS ESLint rules. These source checks run locally without external services; they are not W3C conformance certification.
 - **Environment-Specific All-Page Chrome Tests**: Preview and prod run all Lighthouse-style, CSS Overview, and Memory/leak suites against every Vite HTML build entry using a local preview of their just-built output. Dev runs unit tests and source checks without Chrome audits. All applicable local gates must pass before committing or pushing, and run again if a production rebase changes the source tree. Missing/error page responses fail verification.
-- **No Partial Deployment Verification**: Skip-tests and individual Chrome-suite deployment flags are rejected. Standalone npm audit commands remain available for focused troubleshooting.
+- **No Partial Deployment Verification**: Skip-tests and individual Chrome-suite deployment flags are rejected. Standalone pnpm audit commands remain available for focused troubleshooting.
 - **Post-Deployment W3C Checks**: After a production push and the Render deployment wait, local official Nu HTML and W3C CSS validators check every live page. Public online validator services are disabled. Production preflight checks Java and verified tools before Git operations. On no-push or up-to-date production runs, `-w3c` explicitly reruns the full live suite; compatibility aliases cannot narrow it. A production push attempts live Chrome even if W3C fails and aggregates failures afterward. Deployment W3C checks do not run for dev or preview; standalone commands can validate local preview explicitly.
-- **Local Scope for `-dev` and `-preview`**: Aligned with `npm run dev` and `npm run preview`, `-dev` and `-preview` are strictly local environments and will never push code to GitHub.
+- **Local Scope for `-dev` and `-preview`**: Aligned with `pnpm run dev` and `pnpm run preview`, `-dev` and `-preview` are strictly local environments and will never push code to GitHub.
 - **Production Git Commit Guard**: When deploying with `-prod`, the script inspects repository status for uncommitted changes (`git status --porcelain`). If changes are detected, a non-empty message argument (`-m` / `-CommitMessage`) is strictly required; deployments without an explicit message argument abort immediately with exit code 1.
 - **Smart Push-to-Prod**: For `-prod`, if the working tree is clean and the local branch is already up to date with `origin/main`, the script skips pushing to GitHub.
 - **Live Render Verification in Chrome**: After a production push and deployment wait, all three Chrome suites additionally audit every page on Render. No-push runs verify the local production build rather than an unchanged live site. The script then opens the live Render site (`https://wurm-tools.onrender.com`) in Google Chrome unless opening is disabled.
@@ -69,16 +69,16 @@ Run commands from the repository root after completing the
 [developer prerequisites](#local-official-w3c-validators).
 These commands use local official validators, not public W3C validator endpoints.
 
-| Goal                                                                | Command                                           |
-| ------------------------------------------------------------------- | ------------------------------------------------- |
-| Check all live production pages, HTML and CSS                       | `npm run test:w3c`                                |
-| Check all pages on an already-running local preview                 | `npm run test:w3c -- --url http://localhost:4173` |
-| Check only live HTML                                                | `npm run test:w3c:html`                           |
-| Check only live CSS                                                 | `npm run test:w3c:css`                            |
-| Verify Java and cached validator tools without checking pages       | `npm run test:w3c:ready`                          |
-| Download missing official validator jars and verify their checksums | `npm run test:w3c:setup`                          |
+| Goal                                                                | Command                                         |
+| ------------------------------------------------------------------- | ----------------------------------------------- |
+| Check all live production pages, HTML and CSS                       | `pnpm run test:w3c`                             |
+| Check all pages on an already-running local preview                 | `pnpm run test:w3c --url http://localhost:4173` |
+| Check only live HTML                                                | `pnpm run test:w3c:html`                        |
+| Check only live CSS                                                 | `pnpm run test:w3c:css`                         |
+| Verify Java and cached validator tools without checking pages       | `pnpm run test:w3c:ready`                       |
+| Download missing official validator jars and verify their checksums | `pnpm run test:w3c:setup`                       |
 
-**Standalone npm validation never commits, pushes, or deploys.** All-page scope
+**Standalone pnpm validation never commits, pushes, or deploys.** All-page scope
 comes from the Vite HTML build entries. Focused HTML/CSS commands are troubleshooting
 tools; they do not replace the mandatory full deployment gate.
 
@@ -86,10 +86,10 @@ To check your current changes rather than the existing live deployment:
 
 ```sh
 # Terminal 1: build the changes, then leave preview running.
-npm run build
-npm run preview
+pnpm run build
+pnpm run preview
 # Terminal 2: validate all preview pages.
-npm run test:w3c -- --url http://localhost:4173
+pnpm run test:w3c --url http://localhost:4173
 ```
 
 Use the actual preview port printed by Vite if 4173 is unavailable. A successful
@@ -111,25 +111,25 @@ bash scripts/deploy.sh -prod --no-push -w3c --no-open
 
 These still run the normal production verification and Git checks. `--no-push` /
 `-NoPush` prevents pushing, not all other Git operations; dirty production worktrees
-still require a commit message under the deployment policy. Use `npm run test:w3c`
+still require a commit message under the deployment policy. Use `pnpm run test:w3c`
 when you want **only validation, with no Git changes**. Deployment aliases
 `-w3c-HTML` and `-w3c-CSS` cannot narrow the mandatory full HTML + CSS check.
 
 #### Keeping standalone output for diagnosis
 
 Deploy scripts automatically overwrite `.deploy.log` and print its absolute path
-on abort. Standalone npm commands do **not** automatically write that deployment log.
+on abort. Standalone pnpm commands do **not** automatically write that deployment log.
 To capture a standalone run in the same single-run log:
 
 ```sh
 # Fedora/Bash: preserve a failing validator exit status through tee.
 set -o pipefail
-npm run test:w3c 2>&1 | tee .deploy.log
+pnpm run test:w3c 2>&1 | tee .deploy.log
 ```
 
 ```powershell
 # PowerShell: capture both streams; inspect $LASTEXITCODE after completion.
-npm.cmd run test:w3c 2>&1 | Tee-Object -FilePath .deploy.log
+pnpm.cmd run test:w3c 2>&1 | Tee-Object -FilePath .deploy.log
 $LASTEXITCODE
 ```
 
@@ -145,21 +145,21 @@ Windows: a supported Java distribution with `java` on PATH), then run:
 Fedora developer setup (`bash scripts/setup.sh`) installs OpenJDK 21 if the active
 Java is missing/older than 17 and downloads missing verified jars automatically.
 Existing `.setup-complete` markers do not skip prerequisite checks. Project
-dependencies use `npm ci` for initial/forced setup or a missing `node_modules`.
-On Windows, after `npm.cmd ci`, run `.\scripts\setup-w3c.ps1`: it uses winget to
+dependencies use `pnpm install --frozen-lockfile` for initial/forced setup or a missing `node_modules`.
+On Windows, after `pnpm.cmd install --frozen-lockfile`, run `.\scripts\setup-w3c.ps1`: it uses winget to
 install Temurin 21 when needed and prepares the same verified jars. Package-manager
 permission/license prompts remain interactive; unavailable installation tools,
 failed downloads, incompatible PATH selections, or checksum mismatches fail visibly.
 These setup scripts are developer tooling, not the future end-user installer.
 
 ```sh
-npm run test:w3c:setup
-npm run test:w3c:ready
-npm run test:w3c
+pnpm run test:w3c:setup
+pnpm run test:w3c:ready
+pnpm run test:w3c
 # Optional local preview or focused scope:
-npm run test:w3c -- --url http://localhost:4173
-npm run test:w3c:html
-npm run test:w3c:css
+pnpm run test:w3c --url http://localhost:4173
+pnpm run test:w3c:html
+pnpm run test:w3c:css
 ```
 
 Setup explicitly downloads official upstream jars into Git-ignored `.w3c-tools/`.
@@ -167,7 +167,7 @@ Validation itself never downloads missing tools or contacts public validator API
 Nu version 26.10.12 and W3C CSS release cssval-20250226 are SHA-256 pinned in
 `scripts/w3c-local.js`; every run checks integrity. Nu's upstream `latest` URL can
 change: a checksum mismatch fails closed until the version/digest is reviewed,
-not silently updated. Standalone npm setup does not install Java; the developer
+not silently updated. Standalone pnpm setup does not install Java; the developer
 setup scripts above can install it when missing. Windows uses the same
 Node/Java runner; native Windows validation remains required.
 

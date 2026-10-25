@@ -28,7 +28,7 @@ function fixture(shell, args, extraEnv = {}) {
   const deploymentLog = path.join(folder, '.deploy.log');
   writeFileSync(deploymentLog, 'STALE PREVIOUS RUN\n');
   writeFileSync(log, '');
-  for (const command of ['npm', 'node', 'git', 'gh', 'sleep']) {
+  for (const command of ['pnpm', 'node', 'git', 'gh', 'sleep']) {
     writeFileSync(
       path.join(folder, 'bin', command),
       `#!/bin/sh
@@ -106,11 +106,11 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
           expect(result.deploymentLog).toContain('Verification Completed');
           const commands = result.commands;
           for (const command of [
-            ['npm', 'run', 'format:check'],
-            ['npm', 'run', 'lint'],
-            ['npm', 'test'],
-            ['npm', 'run', 'build', '--', '--mode', buildMode],
-            ['npm', 'run', 'test:standards'],
+            ['pnpm', 'run', 'format:check'],
+            ['pnpm', 'run', 'lint'],
+            ['pnpm', 'test'],
+            ['pnpm', 'run', 'build', '--mode', buildMode],
+            ['pnpm', 'run', 'test:standards'],
           ])
             expect(commands).toContainEqual(command);
           const chrome = commands.findIndex((command) =>
@@ -188,7 +188,7 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
         expect(push).toBeGreaterThan(-1);
         expect(w3c).toBeGreaterThan(push);
         expect(live).toBeGreaterThan(w3c);
-        expect(result.commands[w3c]).toEqual(['npm', 'run', 'test:w3c']);
+        expect(result.commands[w3c]).toEqual(['pnpm', 'run', 'test:w3c']);
         expect(result.commands[live].slice(2)).toEqual(['--all']);
         expect(result.stdout.indexOf('Render wait complete.')).toBeGreaterThan(-1);
         expect(result.stdout.indexOf('[W3C Standards Check]')).toBeGreaterThan(
@@ -205,7 +205,7 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
           expect(result.status, result.stderr || result.stdout).toBe(0);
           expect(
             result.commands.filter((command) => command.some((arg) => arg.startsWith('test:w3c')))
-          ).toEqual([['npm', 'run', 'test:w3c']]);
+          ).toEqual([['pnpm', 'run', 'test:w3c']]);
         },
         20000
       );
@@ -227,7 +227,7 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
         expect(result.status, result.stderr || result.stdout).toBe(0);
         expect(result.commands.some((command) => command.includes('push'))).toBe(false);
         expect(result.commands.filter((command) => command.includes('test:w3c'))).toEqual([
-          ['npm', 'run', 'test:w3c'],
+          ['pnpm', 'run', 'test:w3c'],
         ]);
         expect(result.commands.some((command) => command[1]?.endsWith('test-chrome.js'))).toBe(
           false

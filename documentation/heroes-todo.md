@@ -22,22 +22,93 @@ Calculations remain limited to existing, researched 5th Edition rules; labels do
 
 #### Installation Investigation and Implementation Plan (2026-10-24)
 
-**Planning only:** This section records investigation findings and future work, not implemented installation support. Do not begin installer code, packaging, scaffolding, or machine changes until the pending production deployment passes all required gates, including full live W3C and live Chrome validation, with results recorded for its deployed commit. A blocked external validator is not a pass. This gate does not lift the broader non-web/C#/desktop/engine development hold.
+**Production-validation prerequisite satisfied (2026-10-25):** The user confirmed that the latest production deployment was 100% successful, satisfying the previously pending production gate, including required full live W3C HTML/CSS and live Chrome validation. This acceptance is user-reported; the deployed commit and detailed run results were not supplied with the confirmation. Preserve that distinction rather than substitute a local-preview result or assume the current checkout is the deployed commit. A blocked external validator would not qualify as a pass.
+
+- [x] Complete the production deployment successfully before proceeding beyond installer planning — accepted by user confirmation on 2026-10-25.
+
+The installation requirements below remain open; satisfying this prerequisite does not mark the installer built, released, or tested. This status update performs no implementation and does not lift the broader non-web/C#/desktop/engine development hold.
+
+**Installer implementation authorized separately:** The user requested the installer next after
+accepting production. This authorizes this Node-helper packaging work only, not the held
+native/C#/desktop-engine work. Confirmed scope: Fedora **44 KDE x64 first**, then Windows **11 x64**
+per-user **NSIS `.exe`**, with Windows testing after production deployment. Distribution will use
+versioned GitHub Releases linked from the website; install/update is user-approved, offline-capable,
+and startup is opt-in. Unsigned maintainer artifacts may be tested now, but public release remains
+blocked until signing is provisioned. Review the supported Node LTS monthly and rebuild urgently
+for security patches. The user requested ongoing help with signing.
+
+**Fedora implementation progress:** The [installer guide](helper-installer.md) documents the
+offline self-extracting test package, pinned bundled Node 24.22.1, payload integrity, per-user
+lifecycle, consistent backups/recovery and data-preserving uninstall. The
+[signing guide](helper-signing.md) records Fedora OpenPGP and future Windows Authenticode steps,
+trust bootstrap, secure custody and rotation/revocation. Automated isolated Fedora acceptance
+passes; startup tests use a `systemctl` fixture, not an actual desktop login. CI rebuilds/tests
+the Fedora package without publishing it. Keep the maximum-priority parent task open pending
+real login/startup, production deployment, Windows implementation/acceptance, signed release
+metadata/downloads and the website handoff. The Android installer prerequisite is **not** satisfied.
+
+**Expanded installer requirements confirmed (2026-10-25):**
+
+- **Tooling/database preparation:** pnpm 12.15.0 replaces npm for project workflows; npm
+  is used only to bootstrap pnpm on online development/CI/Render hosts. Node 24.22.1 LTS
+  is selected with nvm 0.40.8 locally and in managed developer workspaces.
+  [PostgreSQL/pgAdmin discovery](database-development.md) records the approved Fedora
+  PostgreSQL 18.6 package installation (no initialized/running cluster), pgAdmin 9.18 stable
+  Flatpak update, support policy, and future gated integration steps. SQLite stays active.
+  Developer redistribution includes PostgreSQL client utilities and native SQLite CLI;
+  both profiles retain SQLite/SQL.js/WASM. Server/pgAdmin redistribution is not approved.
+  The migrated offline developer acceptance passes all 546 tests in 53 files, forced
+  frozen dependency repair with pnpm supply-chain checks, native client/version checks,
+  production build, 34-page HTML/CSS validation and W3C tool readiness. GUI/desktop and
+  production gates remain open.
+- [ ] **Future PostgreSQL/pgAdmin integration:** Follow the discovery guide's ordered
+      cluster approval, least-privilege role, pgAdmin connection, backend contract,
+      reversible migration and acceptance gates. No automatic SQLite migration or server
+      initialization is part of installer work.
+- Offline developer acceptance passes with Node 24.22.1: all 544 tests across 53 test files,
+  production build, local HTML/CSS checks for 34 pages, and bundled W3C tool readiness.
+  The rebuilt user installer also passes its complete lifecycle acceptance. Detached shutdown
+  no longer requires a systemd user session; setup-test fixtures use the Node 24 baseline and
+  test rejection of an older runtime. VS Code and login/startup still use fixtures, so these
+  results do not satisfy native desktop, signing, production deployment or Windows gates.
+- All install/repair/update profiles are strictly offline: include prerequisites and dependency
+  closures; downloads occur only during package building. Compare every bundled component and
+  add missing/new required components; update to the installer's reviewed versions, preserving
+  newer compatible system packages without downgrade. Never interpret this as an unrelated OS
+  upgrade or claim an offline package can discover future internet versions.
+- Include a separate developer profile: source/JS, deployment Bash/shell scripts and all their
+  operational dependencies, locked pnpm tools, Git/SSH/GitHub CLI, Node/pnpm, Java/W3C validators,
+  Chromium and scoped PATH/VS Code terminal configuration. Administrator installation of
+  bundled offline system packages is approved only with explicit invocation consent. Preserve
+  existing checkouts/local edits; use new managed workspaces instead.
+- Detect/configure an existing VS Code and block developer acceptance if absent. Do not bundle
+  Microsoft's proprietary binary; provide official offline-provisioning guidance. Do not download
+  editor extensions at installation. Full developer uninstall/old-toolchain cleanup remains open.
+- Investigate Windows **10 x64 as well as 11 x64** when Windows work begins. Record exact builds,
+  OS support/ESU status, runtime support and separate native tests; do not promise unsupported
+  combinations before discovery. Fedora remains first and Windows testing follows production.
+- Local fingerprint-pinned GPG signing/verification automation is implemented. The user chose
+  to keep real signing blocked until a protected hardware-backed identity is provisioned.
+  Tests use disposable identities only; no production key, password, signing bypass or publication
+  is created. Public release still requires native acceptance and redistribution-license review.
 
 **Current-state notes:**
 
-- Local installation currently requires an extracted source tree or Git clone, Node.js/npm, and dependency installation. There is no maintained end-user self-extracting release or equivalent Windows bootstrap. A downloaded static site is not the local helper.
-- `scripts/setup.sh` is Fedora-specific, mixes developer prerequisites with helper setup, uses `npm install`, modifies script permissions/line endings, and skips subsequent checks when `.setup-complete` exists unless forced. Its Node.js minimum is 20, CI selects Node.js 20, and README guidance says 22 or newer; reconcile these against actual dependency requirements before selecting supported runtimes.
+- Local installation currently requires an extracted source tree or Git clone, Node.js/pnpm, and dependency installation. There is no maintained end-user self-extracting release or equivalent Windows bootstrap. A downloaded static site is not the local helper.
+- `scripts/setup.sh` is Fedora-specific, uses nvm-managed Node LTS and pinned pnpm, restores
+  frozen dependencies when needed, and rechecks prerequisites even when `.setup-complete`
+  exists. It still mixes developer prerequisites with helper setup and modifies script
+  permissions/line endings; the managed offline developer profile is the redistribution path.
 - `scripts/helper-startup.js` already provides opt-in Windows logon tasks and Fedora systemd user services. Registrations reference the current Node executable and source location, so moving a checkout or changing Node can invalidate them. Reuse and improve this lifecycle rather than create competing startup managers.
 - The helper is shared by HERO and Wurm features, binds to loopback, supports `/health`, and uses a project-relative semaphore by default. HERO/map data use per-user storage with path overrides; identity and browser-pairing state also need explicit inventory. Packaging must include the helper's transitive modules, runtime dependencies, and assets, not just `wurm-local.js`.
 - Existing CI uses Ubuntu, not a Windows/Fedora installation matrix. Available desktop validation targets are Windows and Fedora/KDE; supported OS versions, architectures, and Wayland/X11 coverage still need to be recorded and verified. No tested macOS installer is promised.
 
 **Planned work, in dependency order; every item remains open:**
 
-- [ ] **Define the support and maintenance contract:** Inventory supported Windows/Fedora versions, CPU architectures, shells, Node/npm versions, browser requirements, privileges, network/proxy constraints, installation locations, and release/support lifetime. Record decisions and unsupported combinations explicitly. Resolve installer format, runtime bundling, signing, distribution, and offline-install requirements before scaffolding; do not choose a desktop UI framework for this helper-installation task.
+- [ ] **Define the support and maintenance contract:** Inventory supported Windows/Fedora versions, CPU architectures, shells, Node/pnpm versions, browser requirements, privileges, network/proxy constraints, installation locations, and release/support lifetime. Record decisions and unsupported combinations explicitly. Resolve installer format, runtime bundling, signing, distribution, and offline-install requirements before scaffolding; do not choose a desktop UI framework for this helper-installation task.
 - [ ] **Separate developer and user installation profiles:** Give both profiles clear install, inspect, repair, update, uninstall, and troubleshooting workflows on both OSes. Share prerequisite checks, release metadata, lifecycle logic, and platform adapters where appropriate without requiring user installs to contain the development toolchain.
-  - **Developer profile:** Use an explicit clone or extracted source workspace; validate Git where needed, supported Node/npm, and Chrome/Chromium for audit tooling. Restore lockfile-defined dependencies with `npm ci`, including development dependencies; make VS Code integration optional. Document PATH, executable permissions, line endings, paths with spaces/non-ASCII characters, and Windows `npm.cmd`/PowerShell restrictions without weakening execution policy. Do not overwrite source edits, switch branches, install held .NET/desktop tooling, or commit/push/deploy as an installation side effect.
-  - **User profile:** Provide versioned self-extracting downloads for Windows and Fedora with the helper, required runtime/dependencies/assets, and accessible launch/status/uninstall entry points. Aim for no manual Git, npm, editor, or source-checkout requirement; determine bundled versus managed runtime delivery and its patching obligations explicitly. Browser-only use must remain available without forcing helper installation.
+  - **Developer profile:** Use an explicit clone or extracted source workspace; validate Git where needed, supported Node/pnpm, and Chrome/Chromium for audit tooling. Restore lockfile-defined dependencies with `pnpm install --frozen-lockfile`, including development dependencies; make VS Code integration optional. Document PATH, executable permissions, line endings, paths with spaces/non-ASCII characters, and Windows `pnpm.cmd`/PowerShell restrictions without weakening execution policy. Do not overwrite source edits, switch branches, install held .NET/desktop tooling, or commit/push/deploy as an installation side effect.
+  - **User profile:** Provide versioned self-extracting downloads for Windows and Fedora with the helper, required runtime/dependencies/assets, and accessible launch/status/uninstall entry points. Aim for no manual Git, pnpm, editor, or source-checkout requirement; determine bundled versus managed runtime delivery and its patching obligations explicitly. Browser-only use must remain available without forcing helper installation.
 - [ ] **Establish one packaging source of truth:** Define a versioned release manifest covering application/helper version, supported platforms/architectures, runtime version, artifact checksums, protocol/data compatibility, and included files. Inventory transitive local imports and WASM/assets such as `sql.js`; test the resulting package without access to the repository or development `node_modules`. Keep platform-specific code thin and reuse the existing helper lifecycle where suitable.
 - [ ] **Design safe per-user layout and migration:** Separate replaceable program/runtime files from persistent data, configuration, credentials, logs, and runtime state. Preserve HERO databases, identity/roles, pairing state, map baselines/edits, environment overrides, Wurm install paths, and startup preferences during updates. Inventory actual current paths before designing migration; handle clone/ZIP-based and legacy setup installations, custom data paths, permissions, and multiple Windows/Fedora user accounts without exposing another user's data. Never modify Wurm/Steam game files as an installer repair.
 - [ ] **Design an idempotent installer state machine:** Inspect the actual machine on every run instead of trusting a completion marker. Distinguish absent, current, outdated, moved, partially installed, conflicting, and damaged installations; identify running helper instances and occupied ports safely. Report planned changes and request consent where required. Re-running install/repair must not duplicate startup entries, erase configuration, silently succeed after a failed step, or require unnecessary administrator/root access.
@@ -54,7 +125,7 @@ Calculations remain limited to existing, researched 5th Edition rules; labels do
 
 #### Confirmed Installer Decisions and Storage/Server Plan (2026-10-24)
 
-**Scope and gates:** Planning only; the production-validation gate and non-web implementation hold above still apply. The user confirmed the following installation decisions:
+**Scope and gates:** These are planned installation requirements, not delivered installation support. The production-validation prerequisite above is satisfied by user confirmation on 2026-10-25; the broader non-web implementation hold remains in effect. The user confirmed the following installation decisions:
 
 - Initial targets: **Windows 11 x64 and Fedora KDE x64**. Confirm exact supported Fedora releases before implementation; do not imply other architectures or platforms are tested.
 - End-user packages bundle a supported Node runtime and all required dependencies/assets. Installation must work offline after the complete artifact is downloaded; hosted services and update discovery still require connectivity. Developer installs retain the explicit source/toolchain workflow above.
@@ -135,6 +206,34 @@ These remain open follow-ups to the completed account, navigation, publication, 
 - [ ] A GM can choose to publish items for players, publish them globally, or leave them unpublished.
 - [ ] A GM needs the player's permission to share an object, even if the GM has approved its submission by the player.
 
+### Hex Map Editor — After Full Character/Object Builder Acceptance
+
+- [ ] Build a web-based hex map editor that displays a hex map and lets users edit it like paper. **Confirmed initial purpose: Game Masters build maps and define bases and related locations. Preserve the ability to support player-created maps too, without making player editing an initial-release prerequisite.** Planning/discovery only now. Start implementation after full character and object building is complete and has passed documented model, round-trip, permissions, UI, and regression tests; record the accepted commit and test evidence. Do not require completion of combat/interaction implementation unless a particular map feature actually depends on it, and do not lift the native/desktop development hold.
+
+**Feasibility and discovery notes (2026-10-24):**
+
+- **Confirmed graphics requirement:** Provide a full graphical editing toolset for GM map creation and base/location design, not merely hex coloring or marker placement. Include selection/multiselection, move/copy/paste/duplicate/delete, pen/freehand drawing, line/polyline/curve and shape tools, fill/stroke/color/opacity controls, text formatting, erasing, grouping/ungrouping, alignment/distribution, ordering, layers with visibility/locking, rotate/resize, grid snapping with free placement, pan/zoom, undo/redo, and image/background import and manipulation. Include portable save/load and visual export/printing. These are required capabilities; implementation may be staged, but the full editor requirement is not complete until the agreed toolset is delivered and tested. Exact supported formats, limits, and advanced behaviors still need specification; this does not imply parity with every feature of a general-purpose graphics suite.
+- Browser SVG or Canvas can render hex grids, editable terrain, text, paths, and freehand annotations with mouse, touch, or pen input. A native executable is not required. "Like paper" means direct manipulation, reliable erase/undo, and printable/exportable output; exact initial tools and map purpose still require approval.
+- Existing `src/js/tools/map-explorer/index.js` renders Wurm square-tile rasters with Canvas, zoom, coordinate selection, and export workflows. `browser-store.js` provides IndexedDB-backed imported baselines. These are prior art for interaction/storage patterns, not an existing generic hex-map model. Do not repurpose Wurm binary layers or alter game files to store HERO maps.
+- HERO management currently models campaigns/worlds and related ownership, but has no hex-map record kind. New map ownership, scope, serialization, and authorization need explicit integration with the helper/store/access layers; adding a menu or browser-only record is not sufficient.
+- Keep map geometry and document editing separate from rendering, persistence, and HERO rules. Axial coordinates with cube-coordinate algorithms are a candidate for storage/geometry; screen coordinates must not become authoritative map coordinates. Investigate pointy/flat orientation, edge ownership, line interpolation, rounding at boundaries, and negative coordinates. Technical reference: [Red Blob Games hex-grid guide](https://www.redblobgames.com/grids/hexagons/); implement appropriately licensed original project code, not copied page content.
+- No authenticated Android editing is approved by this requirement. Follow the separate Android roadmap; future desktop/browser adapters should reuse portable map documents and application operations rather than duplicate domain behavior.
+
+**Ordered implementation plan; all tasks remain open:**
+
+1. [ ] **Confirm builder acceptance and specify the full graphics toolset:** Verify the prerequisite above before implementation. Start with GM map creation and base/location definition; determine the required regional/site/floor-plan detail and whether encounter-map features are needed initially. Define acceptance cases for every confirmed graphics capability above, map bounds/size, orientation, labels/coordinates, scale/units, and print requirements. Plan delivery stages without reducing the full graphics requirement to a minimal paint-only editor. Character/object markers may reuse completed builder data later, but do not imply combat automation, pathfinding, line-of-sight rules, or undocumented HERO measurements.
+2. [ ] **Define map documents and editing operations:** Design versioned metadata, stable map/layer/feature IDs, grid coordinates, terrain/edge features, text, vector strokes, visibility, references, and ownership. Store freehand geometry in map/world units so zooming does not distort it. Define bounds and resource limits, validated commands, grouped brush gestures, undo/redo semantics, dirty state, and map resize/orientation behavior without silent data loss. Keep optional map scale explicit rather than invent rulebook defaults.
+   - **Base/location integration:** Let a GM define a base's mapped footprint and relevant areas and associate them with an existing or newly created base object through the completed object-builder workflow. Decide room/area boundaries, entrances, multiple levels, and regional-to-site links before implementing those details. Keep map annotations and geometry distinct from authoritative base statistics, costs, ownership, and permissions; reference the shared object model rather than copy or invent rules. Test object/map save-reload, units, linked-object changes/deletion, and whether shared maps may reveal a linked base's protected information.
+3. [ ] **Design GM-first and optional player creation permissions:** GMs create/manage maps within authorized worlds/campaigns; decide which players can create private maps or submit/share their own maps and how a GM accepts them. Reuse publication/submission approval and ownership policies where applicable. Enforce access on list/read/write/export/import/delete operations in the backend, not merely in controls. Distinguish player-visible content from GM notes/hidden layers; unauthorized content must never be sent to a player and merely hidden by CSS. Define sharing, copying, owner deletion, retained shared maps, and revocation consistently with existing account/data policies.
+4. [ ] **Prototype geometry/rendering after approval:** Compare SVG with Canvas against agreed map sizes, text editing, accessible selection, print fidelity, and pen performance; choose the simplest adequate renderer using measured evidence. Use pure geometry tests for hex/pixel round trips, neighbors, edge/corner selection, continuous brush interpolation, and orientation. Add pan/zoom with stable cursor anchoring, high-DPI rendering, pointer capture/cancel, and clear separation between navigation gestures and drawing. Do not introduce a new frontend framework unnecessarily.
+5. [ ] **Implement the full graphical toolset and accessibility:** Deliver all confirmed graphics capabilities above with clear active-tool, layer, color, selection, and save state; keyboard navigation/shortcuts, accessible controls and selection descriptions, text editing, deliberate destructive actions, and reliable undo/redo. Define consistent transforms for grouped features, image/text objects, copied content, and locked/hidden layers; prevent accidental edits across layers. Handle pen/mouse/touch gesture cancellation, zoom/resize, and focus without accidental drawing or page-scroll traps. Supply a nonvisual map/feature inspector instead of relying solely on a canvas. Investigate maintained SVG/Canvas editing libraries against tool coverage, licensing, import sanitization, accessibility, export fidelity, and performance before deciding between a dependency and original editing primitives.
+6. [ ] **Integrate safe persistence and portability:** Save authorized maps through the Node helper into local SQLite using the existing lifecycle and consistent transactions; define any draft/autosave behavior explicitly and report save failures. Support versioned portable import/export with strict validation, bounded payloads, sanitized labels and image/vector inputs, and no executable imported markup. Preserve unsaved work on navigation/failure as agreed. Reuse host-neutral contracts for later hosted PostgreSQL/API and desktop adapters; do not add automatic synchronization or unrestricted browser-storage fallback implicitly.
+7. [ ] **Add printing and visual export:** Preserve map scale/aspect, grid/label legibility, orientation, margins, and optional multipage tiling; agree on required PNG/SVG/PDF/browser-print formats and supported size limits. Make GM-only material excluded by default from player/public exports and require authorized explicit selection for GM exports. Test fonts, licensed assets, external-image/CORS failures, print layouts, and portable document round trips.
+8. [ ] **Verify behavior and performance against acceptance criteria:** Agree measurable map-size/feature-count, interaction-latency, memory, export-size, and save/load budgets before claiming support. Test create/edit/erase/undo/redo/save/reload/import/export/print, hidden-layer leakage, malicious/oversized imports, denied/revoked access, interrupted saves, object-reference deletion, resizing, theme contrast, keyboard use, and pointer cancellation. Validate GM and approved player workflows separately on Windows/Fedora browsers; Android and future desktop claims require their own acceptance.
+9. [ ] **Release without weakening existing gates:** Add the new page as a Vite HTML build entry so existing dynamic all-page validation includes it. Run unit/model/permission tests, formatting/lint/build, local standards, official local W3C tools, and required preview/live Chrome suites. Validate authenticated map internals separately from signed-out page audits. Deploy, verify the production build, document GM/player workflows and backup/recovery, and archive requirements/test evidence only when delivered. Keep deferred tools and collaborative editing/fog-of-war/live sessions as explicit future tasks, not assumed completed scope.
+
+**Open design decisions:** Initial tools and the level of base/location detail; supported sizes and measurable budgets; orientation/scale; player creation eligibility and approval; required print/export formats; optional background assets/markers; and draft/autosave expectations. The initial purpose is confirmed as GM map building and base definition. Resolve remaining decisions before coding, without treating this planning request as approval for a native app, real-time collaboration, or automatic combat rules.
+
 ### Object Interactions
 
 - [ ] After generation is rulebook-aligned, define and implement OOP interaction methods for rule-defined combat, damaging/breaking objects, and non-combat actions.
@@ -145,8 +244,8 @@ These remain open follow-ups to the completed account, navigation, publication, 
 Helper commands retained from the deletion note; the original note did not specify their relationship to that requirement:
 
 ```sh
-npm run helper:stop
-npm run helper
+pnpm run helper:stop
+pnpm run helper
 ```
 
 ### Genre Support

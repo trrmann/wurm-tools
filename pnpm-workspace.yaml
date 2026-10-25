@@ -1,0 +1,7 @@
+packages:
+  - .
+engineStrict: true
+enablePrePostScripts: true
+nodeLinker: hoisted
+allowBuilds:
+  esbuild: true

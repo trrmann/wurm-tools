@@ -58,7 +58,7 @@ export async function identityRequest(action, data) {
   const body = await response.json();
   if (action === 'status' && (!response.ok || typeof body.setupRequired !== 'boolean')) {
     const error = new Error(
-      'The helper is running, but does not support this account setup page. Restart the updated helper: run npm run helper:stop, wait for it to stop, then run npm run helper. Return here and select Check connection again.'
+      'The helper is running, but does not support this account setup page. Restart the updated helper: run pnpm run helper:stop, wait for it to stop, then run pnpm run helper. Return here and select Check connection again.'
     );
     error.code = 'HEROES_HELPER_OUTDATED';
     error.status = response.status;
@@ -72,7 +72,7 @@ export async function identityRequest(action, data) {
       );
     const error = new Error(
       unsupported
-        ? 'The running helper does not support this account feature. From your updated WurmTools folder run npm run helper:stop, then npm run helper. Reload this page afterward. Your data has not been changed by this request.'
+        ? 'The running helper does not support this account feature. From your updated WurmTools folder run pnpm run helper:stop, then pnpm run helper. Reload this page afterward. Your data has not been changed by this request.'
         : body.error || `Identity service returned ${response.status}`
     );
     error.status = response.status;

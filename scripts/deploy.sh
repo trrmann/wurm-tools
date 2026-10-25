@@ -116,15 +116,15 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -Lighthouse|--lighthouse|-lighthouse)
-      echo "Preview and production verification require all Chrome suites; individual-suite flags are not supported. Use npm run test:lighthouse for a standalone audit." >&2
+      echo "Preview and production verification require all Chrome suites; individual-suite flags are not supported. Use pnpm run test:lighthouse for a standalone audit." >&2
       exit 2
       ;;
     -CssOverview|--css-overview|-css-overview)
-      echo "Preview and production verification require all Chrome suites; individual-suite flags are not supported. Use npm run test:css-overview for a standalone audit." >&2
+      echo "Preview and production verification require all Chrome suites; individual-suite flags are not supported. Use pnpm run test:css-overview for a standalone audit." >&2
       exit 2
       ;;
     -Memory|--memory|-memory)
-      echo "Preview and production verification require all Chrome suites; individual-suite flags are not supported. Use npm run test:memory for a standalone audit." >&2
+      echo "Preview and production verification require all Chrome suites; individual-suite flags are not supported. Use pnpm run test:memory for a standalone audit." >&2
       exit 2
       ;;
     -RenderWait|--render-wait|-render-wait)
@@ -252,7 +252,7 @@ launch_when_ready() {
 
 # 0. Check dependencies
 if [ ! -d "node_modules" ]; then
-  invoke_step "Install Dependencies" npm install
+  invoke_step "Install Dependencies" pnpm install --frozen-lockfile
 fi
 
 # Clean up legacy .vite cache in node_modules if present to avoid OneDrive lock issues
@@ -266,15 +266,15 @@ verify_target() {
     invoke_step "Local W3C Validator Prerequisites" node "${SCRIPT_DIR}/w3c-local.js" --check-tools
   fi
   if [ "${AUTO_FORMAT}" = true ]; then
-    invoke_step "Auto-Format Code (Prettier)" npm run format
+    invoke_step "Auto-Format Code (Prettier)" pnpm run format
   else
     echo -e "${GRAY}[INFO] Skipping auto-format (--no-auto-format flag specified).${NC}"
   fi
-  invoke_step "Prettier Code Style Check" npm run format:check
-  invoke_step "ESLint Code Quality Check" npm run lint
-  invoke_step "Vitest Unit Test Suite" npm test
-  invoke_step "Vite Build (${DISPLAY_NAME} / mode: ${VITE_MODE})" npm run build -- --mode "${VITE_MODE}"
-  invoke_step "Local HTML & CSS Validation (All Pages)" npm run test:standards
+  invoke_step "Prettier Code Style Check" pnpm run format:check
+  invoke_step "ESLint Code Quality Check" pnpm run lint
+  invoke_step "Vitest Unit Test Suite" pnpm test
+  invoke_step "Vite Build (${DISPLAY_NAME} / mode: ${VITE_MODE})" pnpm run build --mode "${VITE_MODE}"
+  invoke_step "Local HTML & CSS Validation (All Pages)" pnpm run test:standards
   if [ "${TARGET_ENV}" = "dev" ]; then
     CHROME_RESULT="NOT REQUIRED (development target)"
     echo -e "${CYAN}[INFO] Development verification does not run Chrome audits.${NC}"
@@ -386,7 +386,7 @@ else
   else
     echo -e "${GRAY}Working tree clean.${NC}"
   fi
-  echo -e "${CYAN}[INFO] Environment is local ${DISPLAY_NAME} (matches 'npm run ${TARGET_ENV}'). Skipping push to GitHub.${NC}\n"
+  echo -e "${CYAN}[INFO] Environment is local ${DISPLAY_NAME} (matches 'pnpm run ${TARGET_ENV}'). Skipping push to GitHub.${NC}\n"
 fi
 
 # Wait for Render to pull the new commit from GitHub and publish it before any live-site testing
@@ -409,7 +409,7 @@ if [ "${TARGET_ENV}" = "prod" ] && { [ "${HAS_PUSHED}" = true ] || [ "${W3C_REQU
   else
     W3C_STEP="W3C Full Validation Suite (Explicit Live Recheck)"
   fi
-  if invoke_post_deployment_step "${W3C_STEP}" npm run test:w3c; then
+  if invoke_post_deployment_step "${W3C_STEP}" pnpm run test:w3c; then
     W3C_RESULT="PASSED (HTML and CSS, all live production pages)"
   else
     W3C_RESULT="FAILED (see W3C output; other live checks will continue)"
@@ -489,7 +489,7 @@ elif [ "${TARGET_ENV}" = "preview" ]; then
   fi
 
   echo -e "\n${CYAN}>>> Starting Vite preview server (running in foreground; press Ctrl+C to stop)...${NC}\n"
-  npm run preview
+  pnpm run preview
 else
   echo -e "GitHub Push : Skipped (local development environment)"
   echo -e "Local URL   : http://localhost:3000"
@@ -502,7 +502,7 @@ else
   fi
 
   echo -e "\n${CYAN}>>> Starting Vite development server (running in foreground; press Ctrl+C to stop)...${NC}\n"
-  npm run dev
+  pnpm run dev
 fi
 }
 

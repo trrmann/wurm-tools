@@ -614,7 +614,10 @@ export function createServer({ env = process.env } = {}) {
     const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
     try {
       if (req.method === 'GET' && url.pathname === '/health') {
-        return send(200, { ok: true });
+        return send(200, {
+          ok: true,
+          ...(env.WURM_INSTALLATION_ID ? { installationId: env.WURM_INSTALLATION_ID } : {}),
+        });
       }
       if (
         ['/pair', '/unpair', '/status'].includes(url.pathname) ||
@@ -972,7 +975,7 @@ export async function startDetachedHelper() {
     }
     console.info(`Wurm local helper started in the background (PID ${child.pid}).`);
     console.info(`Listening on http://127.0.0.1:${PORT}`);
-    console.info(`Stop with "npm run helper:stop" or delete ${file}.`);
+    console.info(`Stop with "pnpm run helper:stop" or delete ${file}.`);
   } catch (err) {
     removeSemaphore(file, token);
     throw err;
@@ -983,9 +986,9 @@ export async function stopDetachedHelper({
   file = semaphorePath(),
   runCommand = execFilePromise,
 } = {}) {
-  const startupStopped = await stopLinuxStartupHelper(runCommand);
   const current = readSemaphore(file);
   if (!current) {
+    const startupStopped = await stopLinuxStartupHelper(runCommand);
     if (fs.existsSync(file)) fs.unlinkSync(file);
     if (startupStopped) {
       console.info('Wurm Tools Fedora/Linux login-startup helper stopped gracefully.');
@@ -1005,8 +1008,6 @@ export async function stopDetachedHelper({
   } else {
     console.info('Helper shutdown requested; it is still closing active connections.');
   }
-  if (startupStopped)
-    console.info('Wurm Tools Fedora/Linux login-startup helper stopped gracefully.');
 }
 
 function runHelperServer({ foreground = false } = {}) {

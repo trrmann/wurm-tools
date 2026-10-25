@@ -17,7 +17,7 @@ if (sep < 0 || !['preview', 'dev'].includes(mode) || !port || cmd.length === 0) 
   process.exit(2);
 }
 
-// Vite is spawned directly (bypassing npm's predev hook), so start the helper explicitly.
+// Vite is spawned directly (bypassing pnpm's predev hook), so start the helper explicitly.
 spawnSync(process.execPath, [path.join(__dirname, 'wurm-local.js')], { stdio: 'inherit' });
 
 const viteBin = path.join(__dirname, '..', 'node_modules', 'vite', 'bin', 'vite.js');

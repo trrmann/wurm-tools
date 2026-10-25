@@ -30,7 +30,7 @@ export async function verifiedTool(tool, setup = false) {
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
     if (!setup)
-      throw new Error(`Missing ${file}. Run npm run test:w3c:setup first.`, { cause: error });
+      throw new Error(`Missing ${file}. Run pnpm run test:w3c:setup first.`, { cause: error });
   }
   if (!bytes) {
     const response = await fetch(tool.url, { signal: AbortSignal.timeout(120000) });
@@ -119,7 +119,9 @@ export async function run(args = process.argv.slice(2)) {
     throw new Error('Java 17+ is required for local official W3C validators.');
   }
   if (setup || checkTools) {
-    console.log('Verified validator tools installed. Run npm run test:w3c to validate production.');
+    console.log(
+      'Verified validator tools installed. Run pnpm run test:w3c to validate production.'
+    );
     return 0;
   }
   let failed = 0;

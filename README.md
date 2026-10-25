@@ -6,9 +6,16 @@ A fast, modern, and modular companion suite for **Wurm Online** and **Wurm Unlim
 
 ## Validation quick links
 
-- **[Standalone W3C checks — no deployment required](documentation/validation.md#standalone-w3c-validation-no-deployment)**: `npm run test:w3c` checks all live production pages using local official validators.
+- **[Standalone W3C checks — no deployment required](documentation/validation.md#standalone-w3c-validation-no-deployment)**: `pnpm run test:w3c` checks all live production pages using local official validators.
 - **[W3C developer prerequisites](documentation/validation.md#local-official-w3c-validators)**: automatic Fedora setup, Windows setup, Java requirements, and verified validator downloads.
 - **[Deployment checks and troubleshooting logs](documentation/validation.md#3-environment-targeted-deployment-quality-gates)**: environment-specific gates and the overwritten-per-run `.deploy.log`.
+
+## Helper installation quick links
+
+- **[Helper installer guide](documentation/helper-installer.md)**: Fedora test package build, isolated acceptance, install/repair/update, startup, uninstall and recovery.
+- **[Signing and publisher trust](documentation/helper-signing.md)**: Fedora signature verification, future Windows Authenticode, key custody and release gates.
+- **[Offline developer profile](documentation/helper-installer.md#developer-versus-user-setup)**: bundled development/deployment tools, version checks, preserved workspaces and scoped PATH.
+- **Status:** Fedora 44 KDE x64 unsigned maintainer builds only; signed public downloads and Windows acceptance are not yet available.
 
 ## Site entry and branding
 
@@ -98,19 +105,36 @@ WurmTools/
 
 ### 1. Prerequisites
 
-Use the current [Node.js LTS installer](https://nodejs.org/en/download) (Node.js 22 or
-newer), which includes npm. On Windows, keep npm and Add to PATH selected during installation.
-Close and reopen terminals/VS Code after installation, then verify:
+Use Node.js **24.22.1 LTS** and **pnpm 12.15.0**, pinned by `.nvmrc` and `package.json`.
+On Fedora/Linux use [nvm 0.40.8](https://github.com/nvm-sh/nvm/tree/v0.40.8).
+Install nvm using its official instructions, load it in your shell, then run from this checkout:
 
 ```bash
+nvm install
+nvm use
+nvm alias default 24.22.1
+npm install --global pnpm@12.15.0
+nvm current
+command -v node pnpm
 node -v
-npm -v
+pnpm -v
 ```
 
-If either command is not found, repair/reinstall the official Node.js installer with npm and PATH
-enabled, then reopen your terminal. On a managed device, ask your system administrator if installs
-are blocked. If PowerShell blocks `npm.ps1`, use `npm.cmd` in place of `npm` below; do not weaken
-your execution policy.
+The one npm command bootstraps pnpm only; use pnpm for all project dependencies and scripts.
+pnpm is **not** included with Node.js. Reopen VS Code/terminals after setting up shell activation.
+On Windows, use the [official Node LTS installer](https://nodejs.org/en/download) with npm and
+PATH enabled, then bootstrap pnpm as above (use `npm.cmd` if necessary). Unix nvm is not a
+native Windows version manager. If PowerShell blocks `pnpm.ps1`, use `pnpm.cmd`; do not weaken
+execution policy. CI/Render use an explicitly pinned Node runtime rather than Unix nvm.
+The offline developer installer includes its own nvm, Node, pnpm and dependency store;
+it does not fetch these during installation.
+
+### Database preparation (SQLite remains active)
+
+[PostgreSQL/pgAdmin discovery and integration guide](documentation/database-development.md)
+records this Fedora laptop's installed tools, support policy, future integration gates, and
+offline developer client utilities. pgAdmin administers PostgreSQL, not SQLite; no database
+backend is switched or migrated by this preparation.
 
 If you do not have the local JavaScript project, [download the project source ZIP](https://github.com/trrmann/wurm-tools/archive/refs/heads/main.zip)
 and fully extract it (Windows: **Extract All**). Open a terminal in the extracted `wurm-tools-main`
@@ -121,13 +145,13 @@ update an existing clone instead. Keep this project folder to run/update the hel
 ### 2. Install Dependencies
 
 ```bash
-npm install
+pnpm install --frozen-lockfile
 ```
 
 ### 3. Start Development Server
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 The site will be available at `http://localhost:3000`.
@@ -138,22 +162,22 @@ Linting and formatting cover all **HTML (`.html`)**, **CSS (`.css`)**, and **Jav
 
 ```bash
 # Check formatting across all HTML, CSS, and JS files with Prettier
-npm run format:check
+pnpm run format:check
 
 # Auto-format all HTML, CSS, and JS files with Prettier
-npm run format
+pnpm run format
 
 # Run multi-language ESLint (validates HTML, CSS, and JS)
-npm run lint
+pnpm run lint
 
 # Auto-fix lint issues across HTML, CSS, and JS
-npm run lint:fix
+pnpm run lint:fix
 ```
 
 ### 5. Build for Production
 
 ```bash
-npm run build
+pnpm run build
 ```
 
 The compiled, optimized production files will be placed into the `dist/` directory.
@@ -202,7 +226,7 @@ This is preparation only: no desktop executable, shared Razor project, native in
 ### 6. Preview Production Build
 
 ```bash
-npm run preview
+pnpm run preview
 ```
 
 ---
@@ -238,8 +262,8 @@ The deployment scripts enforce **mutually exclusive environment switches** (exac
 
 | Target Switch | Environment | Scope  | Vite Build Mode | GitHub Push Behavior                                                                               | Live Browser Behavior                                                                                                 |
 | :------------ | :---------- | :----- | :-------------- | :------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
-| `-dev`        | Development | Local  | `development`   | **Never pushed** (local verification matching `npm run dev`)                                       | Stays local; prints tip to run `npm run dev`                                                                          |
-| `-preview`    | Preview     | Local  | `preview`       | **Never pushed** (local verification matching `npm run preview`)                                   | Stays local; prints tip to run `npm run preview`                                                                      |
+| `-dev`        | Development | Local  | `development`   | **Never pushed** (local verification matching `pnpm run dev`)                                      | Stays local; prints tip to run `pnpm run dev`                                                                         |
+| `-preview`    | Preview     | Local  | `preview`       | **Never pushed** (local verification matching `pnpm run preview`)                                  | Stays local; prints tip to run `pnpm run preview`                                                                     |
 | `-prod`       | Production  | Remote | `production`    | Pushes to `origin main` **only if commits are ahead**. If nothing to push, push is safely skipped. | Automatically opens `https://wurm-tools.onrender.com` in **Google Chrome** (pass `-NoOpen` / `--no-open` to suppress) |
 
 ### Deployment Pipeline Steps & Safe Stops
@@ -248,11 +272,11 @@ Both scripts run the exact same verification pipeline and **safely halt immediat
 
 1. **Environment Target Validation**: Enforces that exactly one switch (`-dev`, `-preview`, or `-prod`) is supplied. Aborts safely if none or multiple are specified.
 2. **Dependency Verification**: Ensures `node_modules` are installed.
-3. **Prettier Code Formatting**: Runs `npm run format:check` (auto-fixed by default; skip with `--no-auto-format` / `-NoAutoFormat`).
-4. **ESLint Quality Check**: Runs `npm run lint`.
-5. **Vitest Unit Test Suite**: Runs `npm test`; skipping tests is not permitted.
+3. **Prettier Code Formatting**: Runs `pnpm run format:check` (auto-fixed by default; skip with `--no-auto-format` / `-NoAutoFormat`).
+4. **ESLint Quality Check**: Runs `pnpm run lint`.
+5. **Vitest Unit Test Suite**: Runs `pnpm test`; skipping tests is not permitted.
 6. **Vite Target Build**: Builds the application for the targeted mode (`development`, `preview`, or `production`).
-7. **Local HTML/CSS Validation**: Runs `npm run test:standards` on every HTML build entry and project stylesheets using the existing HTML/CSS ESLint rules. This is local source validation, not the external W3C Nu/Jigsaw service or a W3C conformance certification.
+7. **Local HTML/CSS Validation**: Runs `pnpm run test:standards` on every HTML build entry and project stylesheets using the existing HTML/CSS ESLint rules. This is local source validation, not the external W3C Nu/Jigsaw service or a W3C conformance certification.
 8. **All-Page Chrome Gate (Preview and Production)**: Runs **all** Lighthouse-style, CSS Overview, and Memory/leak suites on every dynamically discovered page against a local preview of the just-built target, **before any commit or push**. Development does not run Chrome audits. A production push additionally runs all three suites against the live Render site after the deployment wait.
 9. **Git Status & Commit Guard**: Checks repository state. For `-prod`, strictly requires a non-empty string message argument (`-m` / `-CommitMessage`) if uncommitted changes exist, stages files, and commits with co-authorship.
 10. **Intelligent Push to GitHub**:
@@ -272,8 +296,8 @@ not uploaded, and may contain sensitive diagnostics that need redaction before s
 Every deployment target requires unit tests, formatting, lint, build, and local HTML/CSS
 checks. Preview and production additionally require all-page Chrome audits; development
 does not. `--skip-tests` / `-SkipTests` and
-individual Chrome-suite deployment flags are rejected; use standalone `npm run test:lighthouse`,
-`npm run test:css-overview`, or `npm run test:memory` for focused troubleshooting.
+individual Chrome-suite deployment flags are rejected; use standalone `pnpm run test:lighthouse`,
+`pnpm run test:css-overview`, or `pnpm run test:memory` for focused troubleshooting.
 `-Chrome` / `--chrome` remains accepted but is redundant. `--no-push` does not skip local
 verification and does not audit an unchanged live production site unless `-w3c` is explicitly
 requested.
@@ -282,15 +306,15 @@ It does not run for development or preview. On a production no-push or up-to-dat
 `-w3c` explicitly reruns the full live HTML + CSS suite without pushing again;
 `-w3c-HTML` and `-w3c-CSS` are compatibility aliases and cannot narrow it.
 Public online validator services are disabled. Install Java 17+ and run
-`npm run test:w3c:setup` once to download checksum-verified official Nu and W3C CSS
+`pnpm run test:w3c:setup` once to download checksum-verified official Nu and W3C CSS
 validator jars. Alternatively, Fedora `bash scripts/setup.sh` installs missing Java
 and prepares the jars automatically, including on repeat runs. Windows developers
-can use `.\scripts\setup-w3c.ps1` after restoring npm dependencies; it installs
+can use `.\scripts\setup-w3c.ps1` after restoring pnpm dependencies; it installs
 missing Java via winget. Production preflight checks these prerequisites before Git operations.
-`npm run test:w3c` checks all live pages locally; `-- --url http://localhost:4173`
+`pnpm run test:w3c` checks all live pages locally; `-- --url http://localhost:4173`
 checks local preview. Raw tool output is preserved in deployment logging and errors
 remain blocking. See [validation setup](documentation/validation.md#local-official-w3c-validators).
-Use standalone `npm run test:w3c:html` or `npm run test:w3c:css` for focused live checks.
+Use standalone `pnpm run test:w3c:html` or `pnpm run test:w3c:css` for focused live checks.
 No public validator endpoint is used by these commands.
 For W3C-only runs, preview startup instructions, deployment flag differences, and
 logging examples, see [standalone W3C validation](documentation/validation.md#standalone-w3c-validation-no-deployment).
@@ -312,19 +336,19 @@ protected editor's signed-in behavior.
 The **Server** page (`/site/server-status/`) shows whether a local Wurm Unlimited dedicated server and client are installed and running, and can start them. Browsers can't inspect local processes, so it talks to a small localhost-only helper:
 
 ```bash
-npm run dev           # starts Vite and automatically starts/reuses the helper
-npm run preview       # starts Vite preview and automatically starts/reuses the helper
-npm run helper        # optional: start/reuse the helper without starting the site
-npm run helper:pair-code # print a one-time code to pair a browser
-npm run helper:unpair  # revoke all paired browsers
-npm run helper:stop  # removes its semaphore and waits for graceful shutdown
-npm run helper:startup:install # opt into starting the helper at Windows/Fedora logon
-npm run helper:startup:remove  # remove the logon startup task/service
+pnpm run dev           # starts Vite and automatically starts/reuses the helper
+pnpm run preview       # starts Vite preview and automatically starts/reuses the helper
+pnpm run helper        # optional: start/reuse the helper without starting the site
+pnpm run helper:pair-code # print a one-time code to pair a browser
+pnpm run helper:unpair  # revoke all paired browsers
+pnpm run helper:stop  # removes its semaphore and waits for graceful shutdown
+pnpm run helper:startup:install # opt into starting the helper at Windows/Fedora logon
+pnpm run helper:startup:remove  # remove the logon startup task/service
 ```
 
 The background helper is kept alive by `.wurm-helper.semaphore` in the project root. Deleting
-that file (or running `npm run helper:stop`) asks it to stop accepting requests and close active
-connections. Both Windows and Fedora `deploy -dev` / `deploy -preview` flows use these npm
+that file (or running `pnpm run helper:stop`) asks it to stop accepting requests and close active
+connections. Both Windows and Fedora `deploy -dev` / `deploy -preview` flows use these pnpm
 commands, so no separate helper setup is required. If a browser asks for local network access,
 allow it for the Render site.
 
@@ -334,8 +358,8 @@ allow it for the Render site.
   preview reports that 4173 is in use, reuse the existing preview or stop it in its own terminal
   before restarting. A page at `http://localhost:4174` cannot pair with the default helper.
 - **HERO accounts:** HERO pages store data through this local helper. In a
-  cloned Wurm Tools project, run `npm install` once to install the project dependencies, including
-  the bundled `sql.js` SQLite module. There is no separate SQLite server or PIN. Start `npm run dev`
+  cloned Wurm Tools project, run `pnpm install --frozen-lockfile` once to install the project dependencies, including
+  the bundled `sql.js` SQLite module. There is no separate SQLite server or PIN. Start `pnpm run dev`
   (which starts/reuses the helper). HERO now requires a separate account login, not Wurm pairing.
   A static site deployed to Render cannot reach the local database unless
   the user has the project and local helper installed and running on their own computer.
@@ -358,8 +382,8 @@ allow it for the Render site.
   independent copy or live reference when inserting a saved definition; deleting a definition
   converts its saved uses to copies. Library/world/object
   JSON exports contain portable copies. After updating helper code, restart it with
-  `npm run helper:stop` followed by `npm run helper` (or restart via `npm run dev` /
-  `npm run preview`) to enable the library routes without changing existing HERO data.
+  `pnpm run helper:stop` followed by `pnpm run helper` (or restart via `pnpm run dev` /
+  `pnpm run preview`) to enable the library routes without changing existing HERO data.
 - **Heros Tools management:** HERO pages now use their own Heros Tools title, shield, navigation,
   and cyan theme; Wurm pages retain Wurm branding. Open `/site/heroes/people/` for local Game Master
   profiles and `/site/heroes/people/players/` for Players. A profile can have either or both roles. Use **Open workspace** to view a
@@ -493,7 +517,7 @@ allow it for the Render site.
   object-use revocations take effect immediately. Approved campaign/world objects appear in
   their world views; private dependencies remain private.
   See [the completed interface checklist](./documentation/heroes-completed.md#interface-issues).
-- **First administrator:** restart the helper after updating, then run `npm run heroes:setup-code`
+- **First administrator:** restart the helper after updating, then run `pnpm run heroes:setup-code`
   in the project folder. Open `/site/heroes/setup/`, enter the one-use code within ten minutes and
   create an administrator with a distinct 12-256-character password. The code is shown only by the
   local command, never by the web API; public signup cannot claim Admin/GM/Player. Log in and
@@ -514,7 +538,7 @@ allow it for the Render site.
   Workspace links/content appear only after full authentication. Admin navigation is hidden from
   non-admins. Completed setup hides its form and offers sign-in/account guidance instead.
   If the command reports **already running**, it has reused the existing helper rather than
-  loading updated code. Run `npm run helper:stop`, wait for it to stop, then `npm run helper`.
+  loading updated code. Run `pnpm run helper:stop`, wait for it to stop, then `pnpm run helper`.
   Old helpers may reject `X-Heroes-Session` in browser CORS checks. Public account-status
   checks omit that header and report a restart instruction when the helper lacks account support.
 - **Server ACLs:** `/site/heroes/people/admins/roles/` lets an authenticated, MFA-verified active admin grant
@@ -555,7 +579,7 @@ allow it for the Render site.
   edits only their own name; permanent self-deletion removes it and retained-account recovery
   preserves it.
   If an older running helper returns "Unknown identity action", restart from the updated project
-  folder with `npm run helper:stop`, then `npm run helper`, and reload the page. Unknown
+  folder with `pnpm run helper:stop`, then `pnpm run helper`, and reload the page. Unknown
   name/configuration routes now show this instruction instead of an unexplained error.
 - **Player–Game Master relationships:** In **Account & security**, Game Masters can opt into
   **List my name for players seeking a Game Master**. This is **off by default**. Only opted-in,
@@ -590,7 +614,7 @@ allow it for the Render site.
   issuing administrator's account invalidates their unused invitations. Invited administrators
   must still enroll in TOTP after sign-in. Roles do not share existing game data; explicit resource
   ACLs remain necessary. No email delivery or public invitation link is configured. Restart an older
-  helper with `npm run helper:stop`, then `npm run helper`, to enable invitation support.
+  helper with `pnpm run helper:stop`, then `pnpm run helper`, to enable invitation support.
 - **Self-service account closure:** Account & security offers three choices, requiring the current
   password and exact username confirmation. **Retain** deactivates the account with identity,
   ownership, and game data preserved; a system administrator may restore it after verifying identity.
@@ -637,7 +661,7 @@ allow it for the Render site.
   references; back up the standalone reusable-definition library separately if its original entries
   are also needed. Limits are 1,000 records, worlds, and objects per collection and 64 MB per import.
   Data lives in the same local `heroes.db`, not a hosted account database. Restart the helper once
-  after updating (`npm run helper:stop`, then `npm run helper`) to enable `/heroes/management`.
+  after updating (`pnpm run helper:stop`, then `pnpm run helper`) to enable `/heroes/management`.
   Existing world/object export formats remain definition-only backups; use management collections
   to preserve ownership, campaigns, subscriptions, and notes.
 - `GET /status` and `POST /start/server|client` (JSON). Starting uses Steam (`steam://rungameid/402370` server, `366220` client).
@@ -671,14 +695,14 @@ allow it for the Render site.
   `/start/...` enforce both checks on every request; pairing/unpairing also requires account
   authorization. `/health` remains public for readiness checks. Existing pairing tokens alone no
   longer provide Wurm access. Restart an older helper after updating.
-- After account sign-in, run `npm run helper:pair-code` locally and enter the 8-digit, 10-minute code
-  in the Server page. Each browser gets its own bearer token. `npm run helper:unpair` revokes all
-  browser tokens. Use `npm run helper:startup:remove` to stop a login-managed helper.
+- After account sign-in, run `pnpm run helper:pair-code` locally and enter the 8-digit, 10-minute code
+  in the Server page. Each browser gets its own bearer token. `pnpm run helper:unpair` revokes all
+  browser tokens. Use `pnpm run helper:startup:remove` to stop a login-managed helper.
 - Database routes remain read-only, and database contents are never uploaded. The helper binds only to `127.0.0.1`; auth hashes are stored under the current user's config directory, while browser tokens stay in that browser's local storage.
 - CORS allows the exact Render origin and local `localhost`/`127.0.0.1` dev/preview origins. `WURM_ALLOWED_ORIGINS` adds exact origins only; wildcard origins are ignored. `WURM_HELPER_PORT` changes the port.
-- Login startup is opt-in: `npm run helper:startup:install` registers a Windows logon task or Fedora/Linux systemd user service; `npm run helper:startup:remove` removes it. Fedora setup also accepts `scripts/setup.sh --helper-service`.
+- Login startup is opt-in: `pnpm run helper:startup:install` registers a Windows logon task or Fedora/Linux systemd user service; `pnpm run helper:startup:remove` removes it. Fedora setup also accepts `scripts/setup.sh --helper-service`.
 - The Database Explorer reads the server's SQLite databases read-only (via `sql.js`) through `/db/...` endpoints. On the Fedora laptop, both Adventure and Creative worlds are detected. Player identity/power/kingdom, skill records, and item coordinates are available in separate tables, with live positions in the `POSITION` table (joined into the players view). Skill and inventory views join by `OWNER`/`PARENTID`. Terrain type/height, flags, and protected tiles can be read with `scripts/wurm-map.js`; tile type names and altitudes (surface, rock, cave floor) are included; resource records are not decoded yet.
-- `npm test -- tests/wurm-db.test.js` includes a local SQLite write/export/reopen/read-back test; it uses a temporary fixture and never writes to the game's databases.
+- `pnpm test tests/wurm-db.test.js` includes a local SQLite write/export/reopen/read-back test; it uses a temporary fixture and never writes to the game's databases.
 
 ## Deploying to Render
 
@@ -692,7 +716,8 @@ This repository is pre-configured for **Render Static Sites** via [`render.yaml`
    ```
 2. In the [Render Dashboard](https://dashboard.render.com/), click **New +** > **Blueprint**.
 3. Select your `wurm-tools` GitHub repository.
-4. Render will automatically detect [`render.yaml`](./render.yaml), build with `npm install && npm run build`, and publish `dist/`.
+4. Render will automatically detect [`render.yaml`](./render.yaml), select Node 24.22.1,
+   bootstrap pnpm 12.15.0, restore the frozen pnpm lockfile, and publish `dist/`.
 
 ### Method 2: Manual Static Site on Render
 
@@ -702,7 +727,8 @@ This repository is pre-configured for **Render Static Sites** via [`render.yaml`
 4. Configure the build parameters:
    - **Name**: `wurm-tools`
    - **Branch**: `main`
-   - **Build Command**: `npm install && npm run build`
+   - **Environment**: `NODE_VERSION=24.22.1`
+   - **Build Command**: `npm install --global pnpm@12.15.0 && pnpm install --frozen-lockfile && pnpm run build`
    - **Publish Directory**: `dist`
 5. Click **Create Static Site**.
 6. Render will automatically build and publish your site with a free SSL certificate on `https://wurm-tools.onrender.com` (or your custom domain).

@@ -12,7 +12,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 const pkgPath = path.join(projectRoot, 'package.json');
-const lockPath = path.join(projectRoot, 'package-lock.json');
 
 function readPackageJson() {
   const content = fs.readFileSync(pkgPath, 'utf8');
@@ -52,19 +51,6 @@ function updateVersion(newVersion) {
   const oldVersion = pkg.version;
   pkg.version = newVersion;
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
-
-  if (fs.existsSync(lockPath)) {
-    try {
-      const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
-      lock.version = newVersion;
-      if (lock.packages && lock.packages['']) {
-        lock.packages[''].version = newVersion;
-      }
-      fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n', 'utf8');
-    } catch {
-      // package-lock update is best-effort
-    }
-  }
 
   return { oldVersion, newVersion };
 }

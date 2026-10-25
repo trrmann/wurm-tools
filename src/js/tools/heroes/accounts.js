@@ -157,7 +157,7 @@ export function mountHeroesAccounts(
       text('h4', 'A. Install Node.js'),
       text(
         'p',
-        'Download the LTS version of Node.js (22 or newer) using the button below. Open the downloaded installer and follow its prompts. On Windows, leave npm and Add to PATH selected. npm comes with Node.js; it is not a separate download. Close and reopen your terminal after installation.'
+        'Install Node.js 24.22.1 LTS using the button below. On Windows, leave npm and Add to PATH selected. Then run npm.cmd install --global pnpm@12.15.0 to install the project package manager. pnpm is a separate tool, not included with Node.js. On Fedora/Linux, follow the project README to activate Node through nvm first. Close and reopen your terminal after installation.'
       ),
       link('Download Node.js', 'https://nodejs.org/en/download'),
       text('h4', 'B. Download the HERO helper'),
@@ -179,7 +179,7 @@ export function mountHeroesAccounts(
         'p',
         'Copy this command into that window and press Enter. Wait until it finishes and the command prompt returns. You need an internet connection.'
       ),
-      text('pre', 'npm install')
+      text('pre', 'pnpm install --frozen-lockfile')
     );
     guide.append(installation);
     const steps = document.createElement('ol');
@@ -187,12 +187,12 @@ export function mountHeroesAccounts(
       [
         'Start the helper',
         'Open a command window in your WurmTools folder (see installation help above). Copy this command into it and press Enter. Leave the helper running. If it is already running, skip this step.',
-        'npm run helper',
+        'pnpm run helper',
       ],
       [
         'Get your setup code',
         'Open another command window in the same folder. Copy this command into it and press Enter. Copy the setup code it prints, not the command itself. Keep the code private. It lasts ten minutes; run the command again if it expires.',
-        'npm run heroes:setup-code',
+        'pnpm run heroes:setup-code',
       ],
       [
         'Paste the code in the form above',
@@ -210,11 +210,11 @@ export function mountHeroesAccounts(
       text('summary', 'Something not working? Open troubleshooting'),
       text(
         'p',
-        'If npm is not recognized: install Node.js using the link above, then close and reopen your command window. If it still fails, run the installer again with npm and Add to PATH selected. On a managed computer, ask your system administrator if installation is blocked.'
+        'If pnpm is not recognized: first verify Node.js is installed, then run npm.cmd install --global pnpm@12.15.0 on Windows (npm install --global pnpm@12.15.0 on Linux/macOS). Close and reopen your command window. On a managed computer, ask your system administrator if installation is blocked.'
       ),
       text(
         'p',
-        'If PowerShell says npm.ps1 cannot run: use Command Prompt (cmd) as described above, or use npm.cmd in place of npm (for example npm.cmd install). Do not change your security policy.'
+        'If PowerShell says pnpm.ps1 cannot run: use Command Prompt (cmd) as described above, or use pnpm.cmd in place of pnpm (for example pnpm.cmd install). Do not change your security policy.'
       ),
       text(
         'p',
@@ -222,11 +222,11 @@ export function mountHeroesAccounts(
       ),
       text(
         'p',
-        'If the connection still fails: in the project command window, run npm run helper:stop, then npm run helper. This restarts the helper after an update without deleting your data. Then select Check connection again. Read any error in the command window; an older helper may not have account setup support.'
+        'If the connection still fails: in the project command window, run pnpm run helper:stop, then pnpm run helper. This restarts the helper after an update without deleting your data. Then select Check connection again. Read any error in the command window; an older helper may not have account setup support.'
       ),
       text(
         'p',
-        'For macOS or Linux: use the Node.js download page instructions for your system, extract the ZIP, then open Terminal in the extracted project folder and run the same npm commands.'
+        'For macOS or Linux: use the Node.js download page instructions for your system, extract the ZIP, then open Terminal in the extracted project folder and run the same pnpm commands.'
       ),
       text(
         'p',
@@ -330,7 +330,7 @@ export function mountHeroesAccounts(
         report(
           error.code === 'HEROES_HELPER_OUTDATED'
             ? error.message
-            : 'Cannot connect to account setup on this computer. In your WurmTools command window, run npm run helper:stop, wait for it to stop, then run npm run helper. Return here and select Check connection again. This does not delete your data.',
+            : 'Cannot connect to account setup on this computer. In your WurmTools command window, run pnpm run helper:stop, wait for it to stop, then run pnpm run helper. Return here and select Check connection again. This does not delete your data.',
           true
         );
         connectionDetails.textContent = `Connection details: ${error.message}`;

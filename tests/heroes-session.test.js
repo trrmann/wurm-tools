@@ -129,7 +129,7 @@ describe('HERO identity helper compatibility', () => {
     'admin/wurm-access',
   ])('explains an outdated helper when %s is unknown', async (action) => {
     mockRequest({ error: 'Unknown identity action' }, 404);
-    await expect(identityRequest(action)).rejects.toThrow('npm run helper:stop');
+    await expect(identityRequest(action)).rejects.toThrow('pnpm run helper:stop');
   });
 
   it.each(['status', 'setup', 'register', 'login'])(
@@ -153,7 +153,7 @@ describe('HERO identity helper compatibility', () => {
       mockRequest({ error: 'Unknown route' }, status);
       await expect(identityRequest('status')).rejects.toMatchObject({
         code: 'HEROES_HELPER_OUTDATED',
-        message: expect.stringContaining('npm run helper:stop'),
+        message: expect.stringContaining('pnpm run helper:stop'),
       });
     }
   );

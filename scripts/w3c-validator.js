@@ -355,7 +355,7 @@ async function run() {
     }
     if (results.unavailable || results.skipped) {
       console.log(
-        '  Service failures/skipped checks are not HTML/CSS conformance results. Resolve the reported service issue before retrying npm run test:w3c; no new deployment is required.'
+        '  Service failures/skipped checks are not HTML/CSS conformance results. Resolve the reported service issue before retrying pnpm run test:w3c; no new deployment is required.'
       );
     }
     console.log('==========================================================\n');
@@ -371,7 +371,7 @@ const isMain =
   process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 if (isMain) {
   console.error(
-    '[FAIL] Public online W3C services are disabled. Use npm run test:w3c for local official validators.'
+    '[FAIL] Public online W3C services are disabled. Use pnpm run test:w3c for local official validators.'
   );
   process.exitCode = 1;
 }
