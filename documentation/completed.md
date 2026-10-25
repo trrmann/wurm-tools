@@ -4,6 +4,13 @@ Active tasks and unresolved findings: [Wurm Tools roadmap](todo.md). Completed t
 
 ## Completed Milestones
 
+W3C execution update (2026-10-24): public online validator services are disabled
+because Cloudflare challenges prevent automated access. Deployment uses local,
+checksum-pinned official Nu/W3C CSS Java tools against every live production page.
+Java/tool integrity preflight runs before Git operations on both deployment scripts.
+The production-push/wait/live-Chrome policy below is otherwise unchanged; historical
+public-service retry notes are not the current execution path.
+
 Deployment policy update (2026-10-23): the historical all-target Chrome and opt-in
 W3C milestones below are superseded by the user-confirmed environment split.
 Unit tests, formatting, lint, build, and local HTML/CSS checks remain mandatory

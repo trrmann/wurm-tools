@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-time Fedora environment setup for Wurm Tools.
 # Installs git/Node.js/Chrome (if missing), makes scripts executable and runs npm install.
-# A semaphore file (.setup-complete) prevents re-running; pass --force to override.
+# Rechecks prerequisites each run; --force also restores project dependencies.
 #
 # Usage: scripts/setup.sh [--force] [--no-chrome] [--helper-service] [-h|--help]
 
@@ -36,9 +36,7 @@ info() { echo -e "\033[0;36m[INFO]\033[0m $*"; }
 fail() { echo -e "\033[0;31m[FAIL]\033[0m $*" >&2; exit 1; }
 
 if [ -f "${SEMAPHORE}" ] && [ "${FORCE}" != true ]; then
-  echo "[SKIP] Setup already completed on: $(cat "${SEMAPHORE}")"
-  echo "       Re-run with --force to override (or delete ${SEMAPHORE})."
-  exit 0
+  info "Previous setup: $(cat "${SEMAPHORE}"); rechecking prerequisites."
 fi
 
 if ! command -v dnf >/dev/null 2>&1; then
@@ -61,7 +59,7 @@ fi
 
 # 2. Node.js >= MIN_NODE_MAJOR
 node_major() { node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0; }
-if ! command -v node >/dev/null 2>&1 || [ "$(node_major)" -lt "${MIN_NODE_MAJOR}" ]; then
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1 || [ "$(node_major)" -lt "${MIN_NODE_MAJOR}" ]; then
   info "Installing Node.js and npm..."
   ${SUDO} dnf install -y nodejs npm
 fi
@@ -89,8 +87,28 @@ if command -v sed >/dev/null 2>&1; then
 fi
 
 # 5. Dependencies
-info "Running npm install..."
-(cd "${PROJECT_ROOT}" && npm install)
+if [ ! -f "${SEMAPHORE}" ] || [ "${FORCE}" = true ] || [ ! -d "${PROJECT_ROOT}/node_modules" ]; then
+  info "Restoring lockfile-defined project dependencies..."
+  (cd "${PROJECT_ROOT}" && npm ci)
+fi
+
+# W3C tools are developer prerequisites, not part of the end-user helper.
+java_major() {
+  if command -v java >/dev/null 2>&1; then
+    java --version 2>/dev/null | sed -nE '1s/.*(openjdk|java) ([0-9]+).*/\2/p'
+  fi
+}
+JAVA_MAJOR="$(java_major || true)"
+if [[ ! "${JAVA_MAJOR}" =~ ^[0-9]+$ ]] || [ "${JAVA_MAJOR}" -lt 17 ]; then
+  info "Installing Java 17+ for official local W3C validators..."
+  ${SUDO} dnf install -y java-21-openjdk-headless
+fi
+JAVA_MAJOR="$(java_major || true)"
+if [[ ! "${JAVA_MAJOR}" =~ ^[0-9]+$ ]] || [ "${JAVA_MAJOR}" -lt 17 ]; then
+  fail "Java 17+ is required. Check the active Java alternative and PATH, then rerun setup."
+fi
+info "Preparing checksum-verified local W3C validators (downloads missing jars)..."
+(cd "${PROJECT_ROOT}" && npm run test:w3c:setup)
 
 # 6. Local Wurm helper: report install detection, optionally install a systemd user service
 info "Checking for a local Wurm server install..."

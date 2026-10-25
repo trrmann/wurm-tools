@@ -303,6 +303,11 @@ if (Test-Path "node_modules\.vite") {
 
 # 1. Formatting (AutoFormat is default unless -NoAutoFormat is specified)
 function Test-Target {
+    if ($TargetEnv -eq "prod") {
+        Invoke-SafeStep "Local W3C Validator Prerequisites" {
+            node "$PSScriptRoot\w3c-local.js" --check-tools
+        }
+    }
     if (-not $NoAutoFormat) {
         Invoke-SafeStep "Auto-Format Code (Prettier)" {
             npm run format
@@ -474,7 +479,7 @@ if ($TargetEnv -eq "prod" -and $hasPushed -and $RenderWait -gt 0) {
 # 6. W3C Standards Validation Suite
 $W3cResult = "NOT RUN (no production deployment)"
 if ($TargetEnv -eq "prod" -and ($hasPushed -or $W3CRequested)) {
-    Write-Host ">>> [W3C Standards Check] Testing site pages against official W3C validators..." -ForegroundColor Cyan
+    Write-Host ">>> [W3C Standards Check] Local official validators checking live site pages; public validator services disabled." -ForegroundColor Cyan
     $w3cStep = if ($hasPushed) {
         "W3C Full Validation Suite (HTML5 & CSS across All Pages)"
     } else {

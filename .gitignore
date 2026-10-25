@@ -18,3 +18,4 @@ dist-ssr
 .setup-complete
 .wurm-helper.semaphore
 .deploy.log
+.w3c-tools/

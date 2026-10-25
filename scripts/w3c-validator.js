@@ -370,14 +370,10 @@ async function run() {
 const isMain =
   process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 if (isMain) {
-  run()
-    .then((code) => {
-      process.exitCode = code;
-    })
-    .catch((err) => {
-      console.error('[FATAL] Unexpected error in W3C validation:', err);
-      process.exitCode = 1;
-    });
+  console.error(
+    '[FAIL] Public online W3C services are disabled. Use npm run test:w3c for local official validators.'
+  );
+  process.exitCode = 1;
 }
 
 export { parseRetryAfter, validateHtml, validateCss, withRetry, run };

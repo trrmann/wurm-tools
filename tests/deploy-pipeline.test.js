@@ -162,6 +162,7 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
         'run build',
         'test:standards',
         'run-with-server.js',
+        'w3c-local.js',
       ])(
         'aborts before git when %s fails',
         (step) => {

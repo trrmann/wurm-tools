@@ -262,6 +262,9 @@ fi
 
 # 1. Formatting Check (AutoFormat is default true unless --no-auto-format is passed)
 verify_target() {
+  if [ "${TARGET_ENV}" = "prod" ]; then
+    invoke_step "Local W3C Validator Prerequisites" node "${SCRIPT_DIR}/w3c-local.js" --check-tools
+  fi
   if [ "${AUTO_FORMAT}" = true ]; then
     invoke_step "Auto-Format Code (Prettier)" npm run format
   else
@@ -400,7 +403,7 @@ fi
 # 6. W3C Standards Validation Suite
 W3C_RESULT="NOT RUN (no production deployment)"
 if [ "${TARGET_ENV}" = "prod" ] && { [ "${HAS_PUSHED}" = true ] || [ "${W3C_REQUESTED}" = true ]; }; then
-  echo -e "${CYAN}>>> [W3C Standards Check] Testing site pages against official W3C validators...${NC}"
+  echo -e "${CYAN}>>> [W3C Standards Check] Local official validators checking live site pages; public validator services disabled.${NC}"
   if [ "${HAS_PUSHED}" = true ]; then
     W3C_STEP="W3C Full Validation Suite (HTML5 & CSS across All Pages)"
   else

@@ -4,6 +4,12 @@ A fast, modern, and modular companion suite for **Wurm Online** and **Wurm Unlim
 
 ![Wurm Tools Preview](public/images/favicon.svg)
 
+## Validation quick links
+
+- **[Standalone W3C checks — no deployment required](documentation/validation.md#standalone-w3c-validation-no-deployment)**: `npm run test:w3c` checks all live production pages using local official validators.
+- **[W3C developer prerequisites](documentation/validation.md#local-official-w3c-validators)**: automatic Fedora setup, Windows setup, Java requirements, and verified validator downloads.
+- **[Deployment checks and troubleshooting logs](documentation/validation.md#3-environment-targeted-deployment-quality-gates)**: environment-specific gates and the overwritten-per-run `.deploy.log`.
+
 ## Site entry and branding
 
 The main URL `/` is the **Heros Tools login-only page**, without a dashboard, tool navigation,
@@ -271,15 +277,23 @@ individual Chrome-suite deployment flags are rejected; use standalone `npm run t
 `-Chrome` / `--chrome` remains accepted but is redundant. `--no-push` does not skip local
 verification and does not audit an unchanged live production site unless `-w3c` is explicitly
 requested.
-External W3C HTML/CSS validation is **automatic after a production push and deployment wait**.
+Local official W3C HTML/CSS validation of live pages is **automatic after a production push and deployment wait**.
 It does not run for development or preview. On a production no-push or up-to-date run,
 `-w3c` explicitly reruns the full live HTML + CSS suite without pushing again;
 `-w3c-HTML` and `-w3c-CSS` are compatibility aliases and cannot narrow it.
-The validator retries transient failures and honors `Retry-After`; persistent rate
-limits and anti-bot blocks stop further requests to that service, report unvalidated
-pages as skipped, and fail the gate rather than reporting a pass.
+Public online validator services are disabled. Install Java 17+ and run
+`npm run test:w3c:setup` once to download checksum-verified official Nu and W3C CSS
+validator jars. Alternatively, Fedora `bash scripts/setup.sh` installs missing Java
+and prepares the jars automatically, including on repeat runs. Windows developers
+can use `.\scripts\setup-w3c.ps1` after restoring npm dependencies; it installs
+missing Java via winget. Production preflight checks these prerequisites before Git operations.
+`npm run test:w3c` checks all live pages locally; `-- --url http://localhost:4173`
+checks local preview. Raw tool output is preserved in deployment logging and errors
+remain blocking. See [validation setup](documentation/validation.md#local-official-w3c-validators).
 Use standalone `npm run test:w3c:html` or `npm run test:w3c:css` for focused live checks.
-External services cannot access localhost and are not used by local validation.
+No public validator endpoint is used by these commands.
+For W3C-only runs, preview startup instructions, deployment flag differences, and
+logging examples, see [standalone W3C validation](documentation/validation.md#standalone-w3c-validation-no-deployment).
 
 Chrome's Lighthouse-style, CSS Overview and Memory suites, and W3C validation all
 discover their page list from Vite's HTML build entries. There is no separate three-page list

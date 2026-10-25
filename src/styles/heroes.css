@@ -89,10 +89,12 @@
   --accent-green: #136b48;
   --accent-red: #ae2639;
   --accent-purple: #77439e;
+  --heroes-body-border: rgb(106.4, 146.45, 174.4);
+  --heroes-body-background: rgb(221.3, 232, 241.55);
 }
 
 :root[data-game='heroes'][data-heroes-theme='light'] .top-header {
-  background: color-mix(in srgb, var(--bg-secondary) 95%, transparent);
+  background: rgba(232, 239, 247, 0.95);
 }
 
 :root[data-game='heroes'][data-heroes-theme='light'] .btn-primary {
@@ -230,6 +232,8 @@
   --bg-primary: #0b1726;
   --bg-secondary: #122338;
   --border-color: #2b4964;
+  --heroes-body-border: rgb(64, 123.4, 149.7);
+  --heroes-body-background: rgb(22.25, 44.1, 65.3);
 }
 
 .heroes-management-notice {
@@ -561,8 +565,8 @@
 }
 
 .heroes-sheet-body-summary {
-  border-color: color-mix(in srgb, var(--accent-gold) 35%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-gold) 5%, var(--bg-secondary));
+  border-color: var(--heroes-body-border);
+  background: var(--heroes-body-background);
 }
 
 .heroes-sheet-body-parts {
@@ -852,16 +856,14 @@
   }
 
   .heroes-sheet-table tbody tr {
-    display: grid;
-    grid-template-columns: minmax(6.5rem, 0.36fr) minmax(0, 1fr);
+    display: block;
     border-top: 1px solid var(--border-color);
     padding: 0.3rem 0;
   }
 
   .heroes-sheet-table td {
     display: grid;
-    grid-template-columns: subgrid;
-    grid-column: 1 / -1;
+    grid-template-columns: minmax(6.5rem, 0.36fr) minmax(0, 1fr);
     align-items: center;
     gap: 0.5rem;
     border-top: 0;
