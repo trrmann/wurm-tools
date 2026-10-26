@@ -2,6 +2,9 @@
 
 [Back to README](../README.md) | [Signing and release trust](helper-signing.md) | [HERO roadmap](heroes-todo.md#installation-and-updates)
 
+**[Consolidated user steering notes](steering-notes.md)** records each conversational requirement,
+where it is applied, and which native/signing/Windows/public-release gates remain open.
+
 ## Availability and support
 
 **Current status: Fedora 44 KDE x64 unsigned maintainer test build. Not a public release.**
@@ -9,6 +12,9 @@ The package includes Node **24.22.1 LTS**, the helper, SQL.js/WASM, and required
 Installation, repair and update need no Git, pnpm, source checkout, or internet connection.
 Stopping a detached helper does not require a systemd user session; login-startup service
 checks apply only when no detached-helper semaphore is present.
+During a start/stop transition, a reset/closed health connection is logged and probed again;
+it is never accepted as proof of shutdown. Only a fresh successful ownership probe or confirmed
+connection refusal satisfies the corresponding transition; persistent/unknown failures abort.
 Building the package does need pnpm dependencies and the official Node download.
 **No installer may download prerequisites.** Build-time downloads are separate from installation.
 “Up to date” means the reviewed/tested versions bundled in this installer, not an internet
@@ -37,6 +43,31 @@ restored (`pnpm install --frozen-lockfile`). Do not use `sudo` to run the instal
 pnpm run helper:installer:build
 pnpm run helper:installer:test
 ```
+
+For both profiles, including developer acceptance with networking disabled:
+
+```bash
+source "$HOME/.nvm/nvm.sh"
+nvm use
+pnpm run helper:installer:refresh
+pnpm run helper:installer:check
+```
+
+`refresh` rebuilds and tests the user profile, then the developer profile. It does not
+publish, sign, deploy, start PostgreSQL, or overwrite an existing signed release.
+`check` verifies source provenance and artifact digests; it does not run acceptance itself.
+Both acceptance entry points refuse stale artifacts or old metadata without source provenance.
+The source inventory covers eligible distribution source/configuration/tests/documentation,
+including newly added files, rather than relying on a version number or commit timestamp.
+The builder also refuses a source tree that changes during packaging.
+After deployment formatting/rebase or any source edit, rerun refresh. Old artifacts are not
+proof that the latest notes/code are packaged. Build metadata records the source hashes in
+`sourceFiles`; the package's normal file inventory still verifies payload integrity.
+Production deployment now enforces the rebuild plus both acceptance suites before Git
+operations, and repeats verification after a source-changing rebase. This currently requires
+the Fedora x64 release host, development-build prerequisites, and the cached Fedora image.
+Dev/preview do not build installers. Production deployment from Windows is explicitly blocked
+at this gate until the Windows release workflow is implemented; it must not silently skip it.
 
 The build downloads the pinned official Node archive if absent, verifies its SHA-256, then
 caches it in `.installer-cache/`. A checksum mismatch fails closed; delete only the named bad

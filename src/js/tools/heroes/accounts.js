@@ -25,6 +25,11 @@ export function mountHeroesAccounts(
   const content = document.createElement('div');
   section.append(heading, status, content);
   container.append(section);
+  const downloads = document.createElement('a');
+  downloads.href = '/site/downloads/';
+  downloads.className = 'btn btn-secondary';
+  downloads.textContent = 'Download and install the desktop helper';
+  section.append(downloads);
   let busy = false;
   const report = (message, error = false) => {
     status.textContent = message;
@@ -157,7 +162,7 @@ export function mountHeroesAccounts(
       text('h4', 'A. Install Node.js'),
       text(
         'p',
-        'Install Node.js 24.22.1 LTS using the button below. On Windows, leave npm and Add to PATH selected. Then run npm.cmd install --global pnpm@12.15.0 to install the project package manager. pnpm is a separate tool, not included with Node.js. On Fedora/Linux, follow the project README to activate Node through nvm first. Close and reopen your terminal after installation.'
+        'Install Node.js 24.22.1 LTS using the button below, with Corepack and Add to PATH available. Run corepack enable pnpm, then corepack prepare pnpm@12.15.0 --activate to prepare the project package manager. pnpm is a separate tool; Corepack is bundled with this Node LTS. On Fedora/Linux, follow the project README to activate Node through nvm first. Close and reopen your terminal after installation.'
       ),
       link('Download Node.js', 'https://nodejs.org/en/download'),
       text('h4', 'B. Download the HERO helper'),
@@ -210,7 +215,7 @@ export function mountHeroesAccounts(
       text('summary', 'Something not working? Open troubleshooting'),
       text(
         'p',
-        'If pnpm is not recognized: first verify Node.js is installed, then run npm.cmd install --global pnpm@12.15.0 on Windows (npm install --global pnpm@12.15.0 on Linux/macOS). Close and reopen your command window. On a managed computer, ask your system administrator if installation is blocked.'
+        'If pnpm is not recognized: first verify Node.js 24.22.1 LTS and Corepack are available, then run corepack enable pnpm followed by corepack prepare pnpm@12.15.0 --activate. Close and reopen your command window. If shim creation needs administrator permission on a managed computer, ask your system administrator; do not weaken security settings.'
       ),
       text(
         'p',

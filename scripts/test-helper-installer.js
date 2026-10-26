@@ -9,13 +9,13 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { assertCurrentInstaller, installerOutputDirectory } from './helper-build-state.js';
 
 const execute = promisify(execFile);
 const project = fileURLToPath(new URL('../', import.meta.url));
 const pkg = JSON.parse(await fs.readFile(path.join(project, 'package.json')));
 const artifact = path.join(
-  project,
-  'artifacts',
+  installerOutputDirectory(project, false, process.env.WURM_INSTALLER_OUTPUT_ROOT),
   `wurm-tools-helper-${pkg.version}-fedora44-x64-unsigned.run`
 );
 const work = await fs.mkdtemp(path.join(os.tmpdir(), 'wurm helper acceptance \u00e9 # % '));
@@ -78,6 +78,7 @@ async function alterManifest(payload, version, modifiedFile) {
 }
 
 try {
+  await assertCurrentInstaller(project, path.dirname(artifact));
   assert.equal(process.platform, 'linux');
   assert.notEqual(process.getuid(), 0, 'Run acceptance as a normal Fedora user');
   assert.ok(

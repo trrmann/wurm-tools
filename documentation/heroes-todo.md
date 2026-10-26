@@ -18,6 +18,10 @@ Calculations remain limited to existing, researched 5th Edition rules; labels do
 
 ### Installation and Updates
 
+**All conversational directions and their implementation status:** [User steering register](steering-notes.md).
+This includes notes supplied while builds were running; open signing/native/Windows gates are
+not silently marked complete by a passing container test.
+
 - [ ] **Maximum priority:** Build and maintain a downloadable, self-extracting installer to install or update a Fedora or Windows machine, selecting the download based on the OS reported by the browser. Instead of showing a message to restart the helper, offer the update download and let the installer determine and correct the laptop's current state. Rebuild this component whenever the code required on the laptop is updated.
 
 #### Installation Investigation and Implementation Plan (2026-10-24)
@@ -49,8 +53,17 @@ metadata/downloads and the website handoff. The Android installer prerequisite i
 
 **Expanded installer requirements confirmed (2026-10-25):**
 
-- **Tooling/database preparation:** pnpm 12.15.0 replaces npm for project workflows; npm
-  is used only to bootstrap pnpm on online development/CI/Render hosts. Node 24.22.1 LTS
+- **One-laptop signing clarification:** The user has one internet-connected Fedora laptop,
+  no known hardware token or access to an offline computer, and needs non-admin instructions.
+  `helper:signing:setup setup-local` now offers an explicitly approved password-protected
+  local identity; `sign-local` selects it and signs/verifies both tested profiles.
+  No second computer, token purchase or internet disconnection is required.
+  See [the beginner guide](helper-signing.md#start-here-one-fedora-laptop-no-security-expertise-required).
+  Passwords remain in local GPG prompts. The optional hardware workflow retains its
+  original strict checks; it is not silently weakened. Local `USE THIS LAPTOP` consent
+  approves the different custody model. Real setup, recovery and signing remain open.
+- **Tooling/database preparation:** pnpm 12.15.0 replaces npm for project workflows; Corepack
+  bootstraps pnpm on online development/CI/Render hosts without npm commands. Node 24.22.1 LTS
   is selected with nvm 0.40.8 locally and in managed developer workspaces.
   [PostgreSQL/pgAdmin discovery](database-development.md) records the approved Fedora
   PostgreSQL 18.6 package installation (no initialized/running cluster), pgAdmin 9.18 stable
@@ -87,8 +100,9 @@ metadata/downloads and the website handoff. The Android installer prerequisite i
 - Investigate Windows **10 x64 as well as 11 x64** when Windows work begins. Record exact builds,
   OS support/ESU status, runtime support and separate native tests; do not promise unsupported
   combinations before discovery. Fedora remains first and Windows testing follows production.
-- Local fingerprint-pinned GPG signing/verification automation is implemented. The user chose
-  to keep real signing blocked until a protected hardware-backed identity is provisioned.
+- Local fingerprint-pinned GPG signing/verification automation is implemented. The earlier
+  hardware-only plan is superseded by the user's one-laptop constraints: an explicitly
+  approved local software identity is now offered alongside the optional hardware workflow.
   Tests use disposable identities only; no production key, password, signing bypass or publication
   is created. Public release still requires native acceptance and redistribution-license review.
 

@@ -4,6 +4,7 @@ import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { installerSourceFiles } from './helper-build-state.js';
 
 const packages = [
   'bash',
@@ -132,39 +133,8 @@ export function buildDeveloperPayload({ project, payload, nodeArchive, nodeVersi
     { cwd: project }
   );
   replaceBinLinks(path.join(payload, 'runtime'));
-  const tracked = execute('git', ['ls-files', '-z'], { cwd: project, capture: true })
-    .split('\0')
-    .filter(Boolean);
-  const extra = [
-    'scripts/helper-installer.js',
-    'scripts/helper-developer.js',
-    'scripts/build-helper-installer.js',
-    'scripts/sign-helper-installer.js',
-    'scripts/test-helper-installer.js',
-    'tests/helper-installer.test.js',
-    'tests/helper-signing.test.js',
-    'tests/helper-developer.test.js',
-    'scripts/test-developer-installer.js',
-    'scripts/test-developer-installer.sh',
-    'documentation/helper-installer.md',
-    'documentation/helper-signing.md',
-    'documentation/database-development.md',
-    '.nvmrc',
-    'pnpm-lock.yaml',
-    'pnpm-workspace.yaml',
-  ];
-  for (const relative of new Set([...tracked, ...extra])) {
-    if (
-      !/^(?:src\/|site\/|public\/|scripts\/|tests\/|documentation\/|\.github\/|\.vscode\/settings\.json$|(?:README\.md|package\.json|pnpm-(?:lock|workspace)\.yaml|\.nvmrc|[^/]*config\.js|index\.html|render\.yaml|\.gitignore|\.gitattributes|\.prettierignore|\.prettierrc)$)/.test(
-        relative
-      )
-    )
-      continue;
-    if (relative.split('/').some((part) => part === '..' || part.startsWith('.env')))
-      throw new Error(`Unexpected source path: ${relative}`);
+  for (const relative of installerSourceFiles(project)) {
     const source = path.join(project, relative);
-    if (!fs.existsSync(source)) continue;
-    if (!fs.lstatSync(source).isFile()) throw new Error(`Not a regular source file: ${relative}`);
     fs.mkdirSync(path.dirname(path.join(workspace, relative)), { recursive: true });
     fs.copyFileSync(source, path.join(workspace, relative));
   }
@@ -173,7 +143,10 @@ export function buildDeveloperPayload({ project, payload, nodeArchive, nodeVersi
   ).packageManager.replace(/^pnpm@/, '');
   if (execute('pnpm', ['--version'], { capture: true }) !== pnpmVersion)
     throw new Error(`Build requires pinned pnpm ${pnpmVersion}`);
-  const pnpmBinary = execute('which', ['pnpm'], { capture: true });
+  const pnpmBinary = execute('pnpm', ['exec', 'node', '-p', 'process.env.npm_execpath'], {
+    cwd: project,
+    capture: true,
+  });
   // pnpm 12 ships a standalone native executable; copying it avoids install-time bootstrapping.
   const resolvedPnpm = fs.realpathSync(pnpmBinary);
   const magic = fs.readFileSync(resolvedPnpm).subarray(0, 4);

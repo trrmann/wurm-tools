@@ -18,6 +18,37 @@ afterEach(() => {
 });
 
 describe('Heros main login entry', () => {
+  it.each([
+    '/',
+    '/site/heroes/people/admins/',
+    '/site/heroes/player-characters/build/',
+    '/site/heroes/public/',
+  ])(
+    'renders an Android database-free shell at %s without mounting accounts or requesting access',
+    (pathname) => {
+      vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Linux; Android 14)' });
+      vi.stubGlobal('sessionStorage', { getItem: () => null });
+      vi.stubGlobal('window', { location: { pathname } });
+      vi.stubGlobal('document', {
+        title: '',
+        documentElement: { dataset: {} },
+        createElement: () => ({ append: vi.fn(), setAttribute: vi.fn() }),
+      });
+      const viewport = { append: vi.fn() };
+      renderShell.mockReturnValue(viewport);
+      const page = new HeroesPage();
+      page.setAccess = vi.fn();
+      page.checkAccess = vi.fn();
+      page.mount({});
+      expect(page.setAccess).toHaveBeenCalledWith({ stage: 'browse' });
+      expect(page.checkAccess).not.toHaveBeenCalled();
+      expect(mountHeroesAccounts).not.toHaveBeenCalled();
+      const panel = viewport.append.mock.calls[0][0];
+      const [, status, action] = panel.append.mock.calls[0];
+      expect(status.textContent).toContain('No local helper requests');
+      expect(action.disabled).toBe(true);
+    }
+  );
   it.each(['/', '/index.html'])(
     'mounts login only at %s, without a tool shell or account redirect',
     (pathname) => {

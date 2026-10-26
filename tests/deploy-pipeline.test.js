@@ -93,6 +93,31 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
     describe(shell, () => {
       const noOpen = shell === 'bash' ? '--no-open' : '-NoOpen';
       const noFormat = shell === 'bash' ? '--no-auto-format' : '-NoAutoFormat';
+      it('applies a requested version bump before building and accepting installers', () => {
+        const result = fixture(shell, [
+          '-prod',
+          shell === 'bash' ? '--patch' : '-Patch',
+          noOpen,
+          noFormat,
+        ]);
+        expect(result.status, result.stderr || result.stdout).toBe(0);
+        const bump = result.commands.findIndex(
+          (command) => command[1]?.endsWith('version.js') && command[2] === 'patch'
+        );
+        const gate = result.commands.findIndex((command) =>
+          command[1]?.endsWith('check-helper-installers.js')
+        );
+        expect(bump).toBeGreaterThan(-1);
+        expect(gate).toBeGreaterThan(bump);
+      });
+      it('blocks Git operations when installer rebuild or acceptance fails', () => {
+        const result = fixture(shell, ['-prod', noOpen, noFormat], {
+          FAIL_STEP: 'check-helper-installers.js',
+        });
+        expect(result.status).toBe(1);
+        expect(result.commands.some((command) => command[0] === 'git')).toBe(false);
+        expect(result.deploymentLog).toContain('check-helper-installers.js');
+      });
       it.each([
         ['dev', 'development', 'dev', '3000'],
         ['preview', 'preview', 'preview', '4173'],
@@ -105,6 +130,17 @@ describe.skipIf(process.platform === 'win32')('mandatory deployment verification
           expect(result.deploymentLog).not.toContain('STALE PREVIOUS RUN');
           expect(result.deploymentLog).toContain('Verification Completed');
           const commands = result.commands;
+          const installerGate = commands.findIndex((command) =>
+            command[1]?.endsWith('check-helper-installers.js')
+          );
+          if (target === 'prod') {
+            expect(installerGate).toBeGreaterThan(-1);
+            expect(commands[installerGate].at(-1)).toBe('--rebuild');
+            const firstGit = commands.findIndex((command) => command[0] === 'git');
+            expect(installerGate).toBeLessThan(firstGit);
+          } else {
+            expect(installerGate).toBe(-1);
+          }
           for (const command of [
             ['pnpm', 'run', 'format:check'],
             ['pnpm', 'run', 'lint'],

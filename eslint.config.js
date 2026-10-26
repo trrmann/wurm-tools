@@ -5,7 +5,14 @@ import html from '@html-eslint/eslint-plugin';
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**', '.installer-cache/**', 'artifacts/**'],
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      'coverage/**',
+      '.installer-cache/**',
+      'artifacts/**',
+      '.validation-results/**',
+    ],
   },
   // JavaScript rules
   {

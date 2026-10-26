@@ -22,6 +22,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         login: resolve(rootDir, 'index.html'),
+        downloads: resolve(rootDir, 'site/downloads/index.html'),
         dashboard: resolve(rootDir, 'site/wurm/index.html'),
         concepts: resolve(rootDir, 'site/concepts/index.html'),
         serverStatus: resolve(rootDir, 'site/server-status/index.html'),

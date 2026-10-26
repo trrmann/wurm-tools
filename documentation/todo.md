@@ -2,6 +2,12 @@
 
 Completed milestones, implementation details, measurements, and historical notes are in the [completed-task archive](completed.md). HERO System tasks are tracked separately in the [HERO roadmap](heroes-todo.md), with their own [completed-task archive](heroes-completed.md).
 
+**Installer and follow-up instructions:** [User steering notes/status](steering-notes.md) ·
+[Installer operations](helper-installer.md) · [Signing](helper-signing.md) ·
+[PostgreSQL/pgAdmin discovery (SQLite retained)](database-development.md) ·
+[Deployment and W3C troubleshooting](validation.md).
+The installer parent task remains in the HERO roadmap; it is not complete until its release gates pass.
+
 ## Undiscovered Data (Fedora)
 
 - [ ] Map: determine the meaning of rock-layer "Rock" data bytes 202/222 (137 tiles) and `resources.map` quantity versus type. Field/crop tiles (type, age) and real protected tiles remain untested because the sample world has none.

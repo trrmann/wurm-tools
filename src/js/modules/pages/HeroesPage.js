@@ -35,6 +35,10 @@ export class HeroesPage extends BasePage {
 
   render() {
     if (!this.container) return;
+    if (/Android/i.test(navigator.userAgent) && !heroesSessionToken()) {
+      this.renderBrowse();
+      return;
+    }
     if (this.page.public) {
       document.documentElement.dataset.game = 'heroes';
       this.teardownSharing = mountHeroesSharing(this.container, { publicOnly: true });
@@ -64,6 +68,11 @@ export class HeroesPage extends BasePage {
     this.checkAccess()
       .then((access) => {
         if (!this.isMounted) return;
+        if (/Android/i.test(navigator.userAgent) && access.stage !== 'ready') {
+          status.remove();
+          this.renderBrowse();
+          return;
+        }
         const redirect = heroesAccessRedirect(this.page, access);
         if (redirect) {
           window.location.replace(redirect);
@@ -125,8 +134,38 @@ export class HeroesPage extends BasePage {
       })
       .catch((error) => {
         if (!this.isMounted) return;
+        if (/Android/i.test(navigator.userAgent)) {
+          this.viewport.replaceChildren();
+          this.renderBrowse(error.message);
+          return;
+        }
         status.textContent = `Unable to check HERO access: ${error.message}`;
       });
+  }
+
+  renderBrowse(connectionError = '') {
+    if (!this.viewport) this.viewport = renderShell(this.container);
+    setHeader(this.title, 'Android browsing - no account or database connection required');
+    this.setAccess({ stage: 'browse' });
+    const panel = document.createElement('section');
+    panel.className = 'heroes-workspace';
+    const heading = document.createElement('h2');
+    heading.textContent = this.title;
+    const status = document.createElement('p');
+    status.setAttribute('role', 'status');
+    status.textContent =
+      'You are browsing without a database connection. All page destinations are available, but account actions, private data, editing, saving, publishing and database searches are unavailable. No local helper requests are made in this mode.';
+    if (connectionError) status.textContent += ` Connection check failed: ${connectionError}`;
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.disabled = true;
+    action.className = 'btn btn-secondary';
+    action.textContent = 'Database actions unavailable in browsing mode';
+    const downloads = document.createElement('a');
+    downloads.href = '/site/downloads/';
+    downloads.textContent = 'Desktop helper downloads and setup instructions';
+    panel.append(heading, status, action, downloads);
+    this.viewport.append(panel);
   }
 
   async checkAccess() {

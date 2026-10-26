@@ -99,19 +99,36 @@ async function health(env) {
     return await response.json();
   } catch (error) {
     if (error.cause?.code === 'ECONNREFUSED') return null;
-    throw new Error(`Cannot inspect helper port: ${error.message}`, { cause: error });
+    throw new Error(
+      `Cannot inspect helper port: ${error.message}${error.cause?.code ? ` (${error.cause.code})` : ''}`,
+      { cause: error }
+    );
   }
 }
 
-async function waitHealth(env, running) {
-  const deadline = Date.now() + 12000;
+export async function waitHealth(env, running, { inspect = health, timeoutMs = 12000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError;
   do {
-    const current = await health(env);
-    if (running ? current?.installationId === env.WURM_INSTALLATION_ID : !current) return;
+    try {
+      const current = await inspect(env);
+      if (running ? current?.installationId === env.WURM_INSTALLATION_ID : !current) return;
+      lastError = undefined;
+    } catch (error) {
+      // A verified helper can close a health socket while transitioning; confirm on a new probe.
+      const code = error.cause?.cause?.code;
+      if (!['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET'].includes(code)) throw error;
+      if (!lastError)
+        console.warn(
+          `[WARN] Helper transition health connection closed (${code}); confirming with a fresh probe.`
+        );
+      lastError = error;
+    }
     await new Promise((resolve) => setTimeout(resolve, 200));
   } while (Date.now() < deadline);
   throw new Error(
-    `Helper did not ${running ? 'become ready' : 'stop'} within 12 seconds; inspect helper.log`
+    `Helper did not ${running ? 'become ready' : 'stop'} within ${timeoutMs / 1000} seconds; inspect helper.log${lastError ? `: ${lastError.message}` : ''}`,
+    { cause: lastError }
   );
 }
 

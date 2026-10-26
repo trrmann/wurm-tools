@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Helper downloads - Heros Tools</title>
+    <meta
+      name="description"
+      content="Download the signed Fedora helper test installer, verify its publisher signature and follow local setup instructions. Android browsing needs no database."
+    />
+    <link rel="icon" type="image/svg+xml" href="/images/heroes-logo.svg" />
+    <script type="module" src="/src/js/downloads.js"></script>
+  </head>
+  <body>
+    <main class="container">
+      <h1>Download and set up the desktop helper</h1>
+      <p><a href="/">Home</a> | <a href="/site/heroes/">Browse HERO pages</a></p>
+      <p>
+        The website cannot read a SQLite file on your computer directly. The desktop helper keeps
+        your database locally and lets this browser use it through a protected local connection.
+        SQLite remains the active database.
+      </p>
+      <h2>Signed Fedora test download</h2>
+      <p>
+        <strong>Test/prerelease only, not an approved production release.</strong> Signing proves
+        the files match the publisher's key, not that every desktop or release test has passed. The
+        installer's original unsigned-test labels remain in the signed bytes.
+      </p>
+      <p>
+        Supported installer: Fedora 44, Intel/AMD 64-bit. Windows, macOS and Android installers are
+        not available. Do not run the Fedora file on another operating system.
+      </p>
+      <p id="download-status" role="status">
+        Checking whether the signed test download has been published...
+      </p>
+      <ul id="download-assets"></ul>
+      <h2>Install on Fedora</h2>
+      <ol>
+        <li>
+          Download the installer, its signature and publisher public certificate using the links
+          above. Save them together in Downloads. You do not need Node.js or this project's source
+          ZIP.
+        </li>
+        <li>
+          Compare the public fingerprint shown below with the publisher's fingerprint obtained
+          through a separately trusted channel. A certificate downloaded beside an installer is not
+          independent proof of identity.
+        </li>
+        <li>
+          Open a terminal in Downloads. Check the certificate and signature using the commands
+          below. Continue only if GPG succeeds and the fingerprint matches. Never run a download
+          with a missing, invalid or unexpected signature.
+        </li>
+      </ol>
+      <pre id="verify-commands"></pre>
+      <p id="publisher-fingerprint"></p>
+      <p>After successful verification, install as your normal user, not with sudo:</p>
+      <pre id="install-command"></pre>
+      <p>
+        The installer includes its runtime and database components. Installation does not download
+        dependencies. Return to this site on the same computer after installation. Open
+        <a href="/site/heroes/setup/">Administrator setup</a> and follow its pairing/setup-code
+        instructions. Keep codes and account passwords private. Do not expose the local helper to
+        the internet.
+      </p>
+      <h2>Android: browse without an account or database</h2>
+      <p>
+        <a href="/site/heroes/">Enter HERO browsing mode</a>. Android visitors without a session can
+        open every HERO page destination without logging in. Private records and all database-backed
+        actions remain unavailable. Page destinations are browsing shells, not copies of private
+        desktop data. No Fedora installer, phone-to-laptop database connection or simulated login is
+        used.
+      </p>
+      <h2>Developer installer</h2>
+      <p>
+        The signed developer bundle is not offered publicly yet: its bundled reference documents and
+        redistribution permissions need review. Use the regular helper above to run the application.
+      </p>
+    </main>
+  </body>
+</html>

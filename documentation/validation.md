@@ -43,10 +43,24 @@ The cross-platform deployment automation scripts (`scripts/deploy.ps1` and `scri
   - This applies to every target (`-dev`, `-preview`, `-prod`) on Fedora/Bash and Windows/PowerShell. The `scripts/deploy` Bash wrapper forwards to `deploy.sh`; Windows `deploy.cmd` forwards to `deploy.ps1`, so both inherit the same logging. Complete emitted service diagnostics are captured, not just the exit status or final summary; response bodies not emitted by a test tool cannot be recovered by deployment logging. Regression tests verify both stdout and stderr, including multiline output larger than the terminal summary. PowerShell is exercised on Fedora; native Windows behavior still requires validation on Windows.
 - **Target Switch Validation**: Requires exactly one target switch from `{-dev; -preview; -prod; }`. Any attempt to combine multiple target switches or omit the target causes an immediate safe abort.
 - **Pre-deployment Verification**: Every target executes Prettier formatting/checking, ESLint validation, the full Vitest suite, and Vite mode-specific compilation prior to touching Git.
+- **Production installer gate**: Production also rebuilds and accepts both offline Fedora
+  installer profiles before Git operations, repeating after a source-changing rebase.
+  Source fingerprints and artifact hashes prevent acceptance of stale packages.
+  This currently requires the Fedora x64 release host with nvm/pnpm and developer-package
+  prerequisites. Windows production deployment remains blocked pending its release workflow;
+  dev/preview do not require installer builds. See [installer operations](helper-installer.md).
 - **Local HTML/CSS Validation**: Every target runs `pnpm run test:standards` against all HTML build entries and project stylesheets using the existing HTML/CSS ESLint rules. These source checks run locally without external services; they are not W3C conformance certification.
 - **Environment-Specific All-Page Chrome Tests**: Preview and prod run all Lighthouse-style, CSS Overview, and Memory/leak suites against every Vite HTML build entry using a local preview of their just-built output. Dev runs unit tests and source checks without Chrome audits. All applicable local gates must pass before committing or pushing, and run again if a production rebase changes the source tree. Missing/error page responses fail verification.
 - **No Partial Deployment Verification**: Skip-tests and individual Chrome-suite deployment flags are rejected. Standalone pnpm audit commands remain available for focused troubleshooting.
 - **Post-Deployment W3C Checks**: After a production push and the Render deployment wait, local official Nu HTML and W3C CSS validators check every live page. Public online validator services are disabled. Production preflight checks Java and verified tools before Git operations. On no-push or up-to-date production runs, `-w3c` explicitly reruns the full live suite; compatibility aliases cannot narrow it. A production push attempts live Chrome even if W3C fails and aggregates failures afterward. Deployment W3C checks do not run for dev or preview; standalone commands can validate local preview explicitly.
+- **Persistent W3C failure evidence**: After tool/Java preflight, each standalone/deployment W3C page-validation run also writes
+  `.validation-results/w3c/<unique-run>/report.json`, independently of the overwritten
+  `.deploy.log`. The report is updated after each page/check and retains target, tool,
+  complete emitted stdout/stderr, exit code/signal, failures and final totals. Failed
+  HTML/CSS diagnostics are repeated at the end, so a later Chrome pass cannot obscure them.
+  Reports are Git-ignored, private local diagnostics; inspect/redact before sharing.
+  They are not included in developer redistribution. No retries, skipped pages or
+  weaker validation rules are used to turn a failure into a pass.
 - **Local Scope for `-dev` and `-preview`**: Aligned with `pnpm run dev` and `pnpm run preview`, `-dev` and `-preview` are strictly local environments and will never push code to GitHub.
 - **Production Git Commit Guard**: When deploying with `-prod`, the script inspects repository status for uncommitted changes (`git status --porcelain`). If changes are detected, a non-empty message argument (`-m` / `-CommitMessage`) is strictly required; deployments without an explicit message argument abort immediately with exit code 1.
 - **Smart Push-to-Prod**: For `-prod`, if the working tree is clean and the local branch is already up to date with `origin/main`, the script skips pushing to GitHub.
@@ -64,6 +78,14 @@ Chrome has a separate 30-second startup deadline;
 page-navigation and audit thresholds remain unchanged.
 
 ### Standalone W3C validation (no deployment)
+
+If a production push already occurred and only W3C failed, run `pnpm run test:w3c`
+without committing, pushing or redeploying. This checks **both HTML and CSS on every live page**.
+Keep the failed run's report and compare it with the new report; a new success does not
+explain an earlier failure whose diagnostics were lost. Use the first failed target/tool
+and its raw diagnostics to distinguish document errors, invalid tool output, Java termination
+and network/HTTP failures. Fix the actual cause before accepting that run.
+The [steering register](steering-notes.md) tracks this requirement and the installer gates.
 
 Run commands from the repository root after completing the
 [developer prerequisites](#local-official-w3c-validators).

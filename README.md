@@ -12,6 +12,15 @@ A fast, modern, and modular companion suite for **Wurm Online** and **Wurm Unlim
 
 ## Helper installation quick links
 
+- **[Signed test downloads and Android browsing](documentation/helper-downloads.md)**:
+  preparation/publication commands and `/site/downloads/` setup flow.
+
+- **[Plain-language signing setup for one Fedora laptop](documentation/helper-signing.md#start-here-one-fedora-laptop-no-security-expertise-required)**:
+  `pnpm run helper:signing:setup setup-local` (no token, second computer or internet disconnection).
+
+- **[User steering notes and completion checklist](documentation/steering-notes.md)**:
+  requirements supplied during installer work, where each is applied, and release blockers.
+
 - **[Helper installer guide](documentation/helper-installer.md)**: Fedora test package build, isolated acceptance, install/repair/update, startup, uninstall and recovery.
 - **[Signing and publisher trust](documentation/helper-signing.md)**: Fedora signature verification, future Windows Authenticode, key custody and release gates.
 - **[Offline developer profile](documentation/helper-installer.md#developer-versus-user-setup)**: bundled development/deployment tools, version checks, preserved workspaces and scoped PATH.
@@ -113,17 +122,21 @@ Install nvm using its official instructions, load it in your shell, then run fro
 nvm install
 nvm use
 nvm alias default 24.22.1
-npm install --global pnpm@12.15.0
+corepack enable pnpm
+corepack prepare pnpm@12.15.0 --activate
 nvm current
 command -v node pnpm
 node -v
 pnpm -v
 ```
 
-The one npm command bootstraps pnpm only; use pnpm for all project dependencies and scripts.
-pnpm is **not** included with Node.js. Reopen VS Code/terminals after setting up shell activation.
-On Windows, use the [official Node LTS installer](https://nodejs.org/en/download) with npm and
-PATH enabled, then bootstrap pnpm as above (use `npm.cmd` if necessary). Unix nvm is not a
+Corepack bundled with the pinned Node 24 LTS bootstraps pnpm; use pnpm for all project
+dependencies and scripts. There are no npm/npx bootstrap commands.
+pnpm itself is **not** included with Node.js. Reopen VS Code/terminals after setting up shell activation.
+On Windows, use the [official Node LTS installer](https://nodejs.org/en/download) with Corepack and
+PATH available, then bootstrap pnpm with the two Corepack commands above. Corepack may need
+administrator permission to create shims beside a system-wide Node installation; use an approved
+user-writable installation rather than changing permissions or execution policy. Unix nvm is not a
 native Windows version manager. If PowerShell blocks `pnpm.ps1`, use `pnpm.cmd`; do not weaken
 execution policy. CI/Render use an explicitly pinned Node runtime rather than Unix nvm.
 The offline developer installer includes its own nvm, Node, pnpm and dependency store;
@@ -277,6 +290,9 @@ Both scripts run the exact same verification pipeline and **safely halt immediat
 5. **Vitest Unit Test Suite**: Runs `pnpm test`; skipping tests is not permitted.
 6. **Vite Target Build**: Builds the application for the targeted mode (`development`, `preview`, or `production`).
 7. **Local HTML/CSS Validation**: Runs `pnpm run test:standards` on every HTML build entry and project stylesheets using the existing HTML/CSS ESLint rules. This is local source validation, not the external W3C Nu/Jigsaw service or a W3C conformance certification.
+   Production additionally rebuilds/tests both offline Fedora installer profiles before Git
+   operations. This gate requires the Fedora x64 release host and cannot be skipped; see
+   [installer operations](documentation/helper-installer.md). Dev/preview do not build installers.
 8. **All-Page Chrome Gate (Preview and Production)**: Runs **all** Lighthouse-style, CSS Overview, and Memory/leak suites on every dynamically discovered page against a local preview of the just-built target, **before any commit or push**. Development does not run Chrome audits. A production push additionally runs all three suites against the live Render site after the deployment wait.
 9. **Git Status & Commit Guard**: Checks repository state. For `-prod`, strictly requires a non-empty string message argument (`-m` / `-CommitMessage`) if uncommitted changes exist, stages files, and commits with co-authorship.
 10. **Intelligent Push to GitHub**:
@@ -728,7 +744,7 @@ This repository is pre-configured for **Render Static Sites** via [`render.yaml`
    - **Name**: `wurm-tools`
    - **Branch**: `main`
    - **Environment**: `NODE_VERSION=24.22.1`
-   - **Build Command**: `npm install --global pnpm@12.15.0 && pnpm install --frozen-lockfile && pnpm run build`
+   - **Build Command**: `corepack enable pnpm && corepack prepare pnpm@12.15.0 --activate && pnpm install --frozen-lockfile && pnpm run build`
    - **Publish Directory**: `dist`
 5. Click **Create Static Site**.
 6. Render will automatically build and publish your site with a free SSL certificate on `https://wurm-tools.onrender.com` (or your custom domain).

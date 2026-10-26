@@ -88,17 +88,32 @@ export function signing({ action, directory, expectedFingerprint, env = process.
     );
     return;
   }
-  if (action !== 'sign')
-    throw new Error('Usage: sign-helper-installer.js sign|verify [artifact-directory]');
+  if (!['sign', 'resume', 'check-existing'].includes(action))
+    throw new Error('Usage: sign-helper-installer.js sign|resume|verify [artifact-directory]');
+  const missing = [];
   for (const file of [manifestFile, artifact]) {
-    if (fs.existsSync(`${file}.asc`))
-      throw new Error(
-        `Signature already exists: ${file}.asc. Refusing to replace signed artifacts.`
-      );
+    const signature = `${file}.asc`;
+    if (fs.existsSync(signature)) {
+      if (action === 'sign')
+        throw new Error(
+          `Signature already exists: ${signature}. Refusing to replace signed artifacts.`
+        );
+      if (!fs.lstatSync(signature).isFile())
+        throw new Error(`Existing signature must be a regular file: ${signature}`);
+      verify(file, signature, expected, env);
+      console.log(`Verified existing signature; preserving ${signature}`);
+    } else {
+      missing.push(file);
+    }
+  }
+  if (action === 'check-existing') return;
+  if (!missing.length) {
+    console.log('All signatures already exist and verified; no files changed.');
+    return;
   }
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'wurm-signing-'));
   try {
-    for (const [index, file] of [manifestFile, artifact].entries()) {
+    for (const [index, file] of missing.entries()) {
       const signature = path.join(temporary, `${index}.asc`);
       gpg(
         ['--local-user', `${expected}!`, '--armor', '--detach-sign', '--output', signature, file],
@@ -113,7 +128,7 @@ export function signing({ action, directory, expectedFingerprint, env = process.
       throw new Error('Build outputs changed during signing; signatures not saved');
     const created = [];
     try {
-      for (const [index, file] of [manifestFile, artifact].entries()) {
+      for (const [index, file] of missing.entries()) {
         fs.copyFileSync(
           path.join(temporary, `${index}.asc`),
           `${file}.asc`,

@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { buildDeveloperPayload } from './helper-developer.js';
+import { installerSourceState, installerOutputDirectory } from './helper-build-state.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const nodeVersion = '24.22.1';
@@ -47,9 +48,10 @@ async function build() {
   if (args.some((arg) => arg !== '--developer'))
     throw new Error('Usage: build-helper-installer.js [--developer]');
   const developer = args.includes('--developer');
+  const sourceFiles = installerSourceState(root);
   if (process.platform !== 'linux' || process.arch !== 'x64')
     throw new Error('Build Fedora x64 artifacts on Linux x64');
-  const output = path.join(root, 'artifacts', ...(developer ? ['developer'] : []));
+  const output = installerOutputDirectory(root, developer, process.env.WURM_INSTALLER_OUTPUT_ROOT);
   const cache = path.join(root, '.installer-cache');
   await fs.mkdir(output, { recursive: true });
   await fs.mkdir(cache, { recursive: true });
@@ -91,7 +93,7 @@ async function build() {
       root
     );
     await copyTree(path.join(root, 'scripts'), path.join(payload, 'scripts'), (name) =>
-      /^(?:wurm-.*\.(?:js|json)|heroes-(?:identity|access|store|subscriptions|copies|impersonation)\.js|helper-(?:installer|startup|developer)\.js|replace-database-file\.js)$/.test(
+      /^(?:wurm-.*\.(?:js|json)|heroes-(?:identity|access|store|subscriptions|copies|impersonation)\.js|helper-(?:installer|startup|developer|build-state)\.js|replace-database-file\.js)$/.test(
         name
       )
     );
@@ -143,6 +145,7 @@ async function build() {
       publicReleaseAllowed: false,
       profile: developer ? 'developer' : 'user',
       components,
+      sourceFiles,
       files: await fileHashes(payload),
     };
     await fs.writeFile(
@@ -152,6 +155,10 @@ async function build() {
     const compressed = path.join(work, 'payload.tar.gz');
     run('tar', ['-czf', compressed, '-C', payload, '.'], root);
     const payloadBytes = await fs.readFile(compressed);
+    if (JSON.stringify(installerSourceState(root)) !== JSON.stringify(sourceFiles))
+      throw new Error(
+        'Distribution sources changed during packaging; rebuild from a stable checkout.'
+      );
     const header = `#!/usr/bin/env bash
 set -euo pipefail
 echo "Wurm Tools helper ${pkg.version} - UNSIGNED TEST BUILD. Public release blocked pending signing."

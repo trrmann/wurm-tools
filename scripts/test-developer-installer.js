@@ -4,12 +4,12 @@ import process from 'node:process';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { assertCurrentInstaller, installerOutputDirectory } from './helper-build-state.js';
 
 const project = fileURLToPath(new URL('../', import.meta.url));
 const version = JSON.parse(fs.readFileSync(path.join(project, 'package.json'))).version;
 const artifact = path.join(
-  project,
-  'artifacts/developer',
+  installerOutputDirectory(project, true, process.env.WURM_INSTALLER_OUTPUT_ROOT),
   `wurm-tools-developer-${version}-fedora44-x64-unsigned.run`
 );
 const container = `wurm-offline-developer-${randomUUID()}`;
@@ -25,6 +25,7 @@ try {
     throw new Error(
       'Build the developer installer first: pnpm run helper:installer:build:developer'
     );
+  await assertCurrentInstaller(project, path.dirname(artifact));
   run(['image', 'exists', image]);
   const digest = createHash('sha256').update(fs.readFileSync(artifact)).digest('hex');
   run([

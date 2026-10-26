@@ -2,7 +2,7 @@ services:
   - type: web
     name: wurm-tools
     runtime: static
-    buildCommand: npm install --global pnpm@12.15.0 && pnpm install --frozen-lockfile && pnpm run build
+    buildCommand: corepack enable pnpm && corepack prepare pnpm@12.15.0 --activate && pnpm install --frozen-lockfile && pnpm run build
     envVars:
       - key: NODE_VERSION
         value: 24.22.1

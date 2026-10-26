@@ -66,7 +66,7 @@ node_major() { node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo
 if [ "$(node_major)" -lt "${MIN_NODE_MAJOR}" ]; then
   fail "Node.js ${MIN_NODE_MAJOR}+ required, found $(node -v 2>/dev/null || echo none). Run nvm install and re-run."
 fi
-command -v pnpm >/dev/null 2>&1 || fail "pnpm is missing. Run npm install --global pnpm@12.15.0 using nvm Node."
+command -v pnpm >/dev/null 2>&1 || fail "pnpm is missing. Run corepack enable pnpm and corepack prepare pnpm@12.15.0 --activate using nvm Node."
 [ "$(pnpm --version)" = "12.15.0" ] || fail "pnpm 12.15.0 is required; provision the pinned version first."
 info "Node $(node -v), pnpm $(pnpm -v)"
 

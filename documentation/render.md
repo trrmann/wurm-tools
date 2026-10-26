@@ -8,10 +8,10 @@ The [blueprint](../render.yaml) pins Node 24.22.1 LTS and bootstraps pnpm 12.15.
 Existing manually configured Render services must also set `NODE_VERSION=24.22.1` and use:
 
 ```bash
-npm install --global pnpm@12.15.0 && pnpm install --frozen-lockfile && pnpm run build
+corepack enable pnpm && corepack prepare pnpm@12.15.0 --activate && pnpm install --frozen-lockfile && pnpm run build
 ```
 
-npm is only the online bootstrap for pnpm, not the project dependency manager.
+Corepack bundled with pinned Node 24 is the online bootstrap for pnpm; no npm/npx command is used.
 Publish `dist`. Production deployment and live verification remain explicit approval gates.
 This change does not modify an existing Render service remotely or deploy the application.
 

@@ -6,6 +6,11 @@ import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { signing } from '../scripts/sign-helper-installer.js';
+import {
+  parseSecretKeys,
+  requireHardwareSigner,
+  requireLocalSigner,
+} from '../scripts/provision-helper-signing.js';
 
 const available = spawnSync('gpg', ['--version'], { stdio: 'ignore' }).status === 0;
 describe.skipIf(!available)(
@@ -64,6 +69,81 @@ describe.skipIf(!available)(
       if (env) spawnSync('gpgconf', ['--kill', 'gpg-agent'], { env, stdio: 'ignore' });
       if (root) fs.rmSync(root, { recursive: true, force: true });
     });
+    it('parses real GPG storage markers and rejects the disposable software key as a hardware signer', () => {
+      const keys = parseSecretKeys(
+        command([
+          '--with-colons',
+          '--with-secret',
+          '--with-fingerprint',
+          '--list-secret-keys',
+          expected,
+        ])
+      );
+      expect(keys[0]).toMatchObject({ kind: 'sec', storage: '+', fingerprint: expected });
+      expect(() =>
+        requireHardwareSigner(
+          {
+            serial: 'D2760001240103040006123456780000',
+            signingFingerprint: expected,
+          },
+          keys,
+          expected
+        )
+      ).toThrow('SUBKEY');
+    });
+    it('recognizes a real password-protected local certification identity and signing subkey', () => {
+      // Only disposable keys in the temporary test keyring use a test password argument.
+      const password = 'disposable-test-only-not-a-production-password';
+      const uid = 'Local disposable test <local-test@example.invalid>';
+      command([
+        '--pinentry-mode',
+        'loopback',
+        '--passphrase',
+        password,
+        '--quick-generate-key',
+        uid,
+        'rsa3072',
+        'cert',
+        '2y',
+      ]);
+      const list = () =>
+        parseSecretKeys(
+          command([
+            '--with-colons',
+            '--with-secret',
+            '--with-fingerprint',
+            '--with-subkey-fingerprint',
+            '--list-secret-keys',
+            uid,
+          ])
+        );
+      const primary = list()[0].fingerprint;
+      command([
+        '--pinentry-mode',
+        'loopback',
+        '--passphrase',
+        password,
+        '--quick-add-key',
+        primary,
+        'rsa3072',
+        'sign',
+        '1y',
+      ]);
+      const keys = list();
+      const subkey = requireLocalSigner(keys);
+      expect(keys[0]).toMatchObject({ fingerprint: primary, storage: '+', kind: 'sec' });
+      expect(subkey).toMatchObject({ storage: '+', kind: 'ssb', capabilities: 's' });
+      expect(() =>
+        requireHardwareSigner(
+          {
+            serial: 'D2760001240103040006123456780000',
+            signingFingerprint: subkey.fingerprint,
+          },
+          keys,
+          subkey.fingerprint
+        )
+      ).toThrow('connected token');
+    }, 30000);
     it('signs both immutable outputs and verifies the exact expected identity without approving public release', () => {
       const directory = fixture();
       const options = { directory, expectedFingerprint: expected, env };
@@ -73,6 +153,42 @@ describe.skipIf(!available)(
         JSON.parse(fs.readFileSync(path.join(directory, 'fedora-build.json'))).publicReleaseAllowed
       ).toBe(false);
       expect(() => signing({ ...options, action: 'sign' })).toThrow('already exists');
+    });
+    it('resumes a partially signed installer without overwriting the completed signature', () => {
+      const directory = fixture();
+      const options = { directory, expectedFingerprint: expected, env };
+      signing({ ...options, action: 'sign' });
+      const metadataSignature = path.join(directory, 'fedora-build.json.asc');
+      const before = fs.readFileSync(metadataSignature);
+      const stat = fs.statSync(metadataSignature);
+      fs.unlinkSync(path.join(directory, 'test-unsigned.run.asc'));
+      signing({ ...options, action: 'check-existing' });
+      expect(fs.existsSync(path.join(directory, 'test-unsigned.run.asc'))).toBe(false);
+      signing({ ...options, action: 'resume' });
+      signing({ ...options, action: 'verify' });
+      expect(fs.readFileSync(metadataSignature)).toEqual(before);
+      expect(fs.statSync(metadataSignature).mtimeMs).toBe(stat.mtimeMs);
+      const installerSignature = fs.readFileSync(path.join(directory, 'test-unsigned.run.asc'));
+      signing({ ...options, action: 'resume' });
+      expect(fs.readFileSync(path.join(directory, 'test-unsigned.run.asc'))).toEqual(
+        installerSignature
+      );
+    });
+    it('does not replace or ignore invalid or wrong-key signatures during recovery', () => {
+      const directory = fixture();
+      const options = { directory, expectedFingerprint: expected, env };
+      signing({ ...options, action: 'sign' });
+      const signature = path.join(directory, 'fedora-build.json.asc');
+      const valid = fs.readFileSync(signature);
+      fs.unlinkSync(path.join(directory, 'test-unsigned.run.asc'));
+      expect(() =>
+        signing({ ...options, expectedFingerprint: 'A'.repeat(40), action: 'resume' })
+      ).toThrow('exact expected');
+      expect(fs.readFileSync(signature)).toEqual(valid);
+      fs.writeFileSync(signature, 'invalid signature');
+      expect(() => signing({ ...options, action: 'resume' })).toThrow('GPG failed');
+      expect(fs.readFileSync(signature, 'utf8')).toBe('invalid signature');
+      expect(fs.existsSync(path.join(directory, 'test-unsigned.run.asc'))).toBe(false);
     });
     it('rejects missing or abbreviated fingerprints, missing signatures and tampered build bytes', () => {
       const directory = fixture();

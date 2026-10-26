@@ -261,6 +261,7 @@ export function heroesNavigationLinks(access) {
 }
 
 export function heroesAccessPages(access) {
+  if (access.stage === 'browse') return HEROES_PAGES;
   if (access.stage === 'checking') return [];
   if (access.stage === 'setup') return HEROES_PAGES.filter((page) => page.account === 'setup');
   if (access.stage === 'anonymous')
@@ -276,6 +277,7 @@ export function heroesAccessPages(access) {
 }
 
 export function heroesAccessRedirect(page, access) {
+  if (access.stage === 'browse') return null;
   if (access.stage === 'ready' && access.user.impersonation && page.account === 'logout')
     return '/site/heroes/account/?notice=release-required';
   if (access.stage === 'setup') return page.account === 'setup' ? null : '/site/heroes/setup/';

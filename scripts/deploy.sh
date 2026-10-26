@@ -275,6 +275,9 @@ verify_target() {
   invoke_step "Vitest Unit Test Suite" pnpm test
   invoke_step "Vite Build (${DISPLAY_NAME} / mode: ${VITE_MODE})" pnpm run build --mode "${VITE_MODE}"
   invoke_step "Local HTML & CSS Validation (All Pages)" pnpm run test:standards
+  if [ "${TARGET_ENV}" = "prod" ]; then
+    invoke_step "Rebuild and Accept Offline Fedora Installers" node "${SCRIPT_DIR}/check-helper-installers.js" --rebuild
+  fi
   if [ "${TARGET_ENV}" = "dev" ]; then
     CHROME_RESULT="NOT REQUIRED (development target)"
     echo -e "${CYAN}[INFO] Development verification does not run Chrome audits.${NC}"
@@ -286,6 +289,9 @@ verify_target() {
   fi
 }
 
+if [ "${TARGET_ENV}" = "prod" ] && [ -n "${BUMP_TYPE}" ]; then
+  invoke_step "Advance Project Version (${BUMP_TYPE})" node "${SCRIPT_DIR}/version.js" "${BUMP_TYPE}"
+fi
 verify_target
 # 5. Git Status & Verification
 echo -e "${CYAN}>>> [Git Status Check] Verifying repository state...${NC}"
@@ -294,12 +300,6 @@ STATUS_OUTPUT="$(git status --porcelain)"
 HAS_PUSHED=false
 
 if [ "${TARGET_ENV}" = "prod" ]; then
-  # Advance project version if bump flag was provided
-  if [ -n "${BUMP_TYPE}" ]; then
-    invoke_step "Advance Project Version (${BUMP_TYPE})" node "${SCRIPT_DIR}/version.js" "${BUMP_TYPE}"
-    STATUS_OUTPUT="$(git status --porcelain)"
-  fi
-
   if [ -n "${STATUS_OUTPUT}" ]; then
     echo -e "${YELLOW}[INFO] Uncommitted changes detected for production deployment:${NC}"
     git status --short

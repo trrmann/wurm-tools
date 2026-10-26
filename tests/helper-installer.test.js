@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,6 +8,7 @@ import {
   main,
   verifyPayload,
   dataLocations,
+  waitHealth,
 } from '../scripts/helper-installer.js';
 import { createServer } from '../scripts/wurm-local.js';
 
@@ -36,6 +37,26 @@ afterEach(() => {
 });
 
 describe('offline helper installer', () => {
+  it('confirms shutdown with a fresh probe after a socket closes during transition', async () => {
+    const closed = new Error('Cannot inspect helper port: fetch failed', {
+      cause: new TypeError('fetch failed', { cause: { code: 'UND_ERR_SOCKET' } }),
+    });
+    const inspect = vi.fn().mockRejectedValueOnce(closed).mockResolvedValue(null);
+    await waitHealth({}, false, { inspect });
+    expect(inspect).toHaveBeenCalledTimes(2);
+  });
+  it('does not turn persistent transport failures or unexpected errors into a shutdown pass', async () => {
+    const closed = new Error('Cannot inspect helper port: fetch failed', {
+      cause: new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } }),
+    });
+    await expect(
+      waitHealth({}, false, { inspect: vi.fn().mockRejectedValue(closed), timeoutMs: 0 })
+    ).rejects.toThrow('did not stop');
+    const unexpected = new Error('Unexpected health response');
+    await expect(
+      waitHealth({}, false, { inspect: vi.fn().mockRejectedValue(unexpected) })
+    ).rejects.toBe(unexpected);
+  });
   it('uses per-user data locations, not the checkout', () => {
     expect(installationRoot({}, '/home/a user')).toBe(
       '/home/a user/.local/share/wurm-tools/helper'

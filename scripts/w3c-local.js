@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
@@ -53,20 +54,24 @@ export function executeJava(args) {
   return new Promise((resolve, reject) => {
     const child = spawn('java', args, { timeout: 120000, windowsHide: true });
     let stdout = '';
+    let stderr = '';
     child.stdout.on('data', (data) => {
       stdout += data;
       process.stdout.write(data);
     });
-    child.stderr.on('data', (data) => process.stderr.write(data));
+    child.stderr.on('data', (data) => {
+      stderr += data;
+      process.stderr.write(data);
+    });
     child.on('error', reject);
     child.on('close', (code, signal) => {
-      if (signal) reject(new Error(`Java terminated by ${signal}`));
-      else resolve({ code, stdout });
+      resolve({ code, signal, stdout, stderr });
     });
   });
 }
 
 export function checkResult(kind, result) {
+  if (result.signal) return false;
   const data = JSON.parse(result.stdout);
   if (kind === 'Nu HTML') {
     if (!Array.isArray(data.messages)) throw new Error('Nu returned no messages array');
@@ -87,6 +92,36 @@ export function checkResult(kind, result) {
     throw new Error('CSS validator returned no valid conformance result');
   }
   return result.code === 0 && css.validity && css.result.errorcount === 0 && !css.errors?.length;
+}
+
+export function validationDiagnostics(kind, result) {
+  if (result.signal) return [`Java terminated by ${result.signal}`];
+  let data;
+  try {
+    data = JSON.parse(result.stdout);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    return [`Invalid validator JSON: ${error.message}`, result.stderr.trim()].filter(Boolean);
+  }
+  const messages =
+    kind === 'Nu HTML'
+      ? (data.messages || [])
+          .filter((message) => ['error', 'non-document-error'].includes(message.type))
+          .map((message) => `Line ${message.lastLine ?? '?'}: ${message.message}`)
+      : (data.cssvalidation?.errors || []).map(
+          (error) =>
+            `Line ${error.line ?? '?'}: ${error.message ?? error.error ?? JSON.stringify(error)}`
+        );
+  return messages.length
+    ? messages
+    : [`Validator exit ${result.code}; see raw output`, result.stderr.trim()].filter(Boolean);
+}
+
+export async function saveValidationReport(directory, report) {
+  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+  const file = path.join(directory, 'report.json');
+  await fs.writeFile(file, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+  return file;
 }
 
 export async function run(args = process.argv.slice(2)) {
@@ -126,6 +161,13 @@ export async function run(args = process.argv.slice(2)) {
   }
   let failed = 0;
   const pages = projectPagePaths();
+  const reportDirectory = path.join(
+    fileURLToPath(new URL('../.validation-results/w3c/', import.meta.url)),
+    `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}`
+  );
+  const report = { startedAt: new Date().toISOString(), target: base, scope, pages, checks: [] };
+  const reportFile = await saveValidationReport(reportDirectory, report);
+  console.log(`W3C diagnostics retained independently of .deploy.log: ${reportFile}`);
   for (const page of pages) {
     const target = `${base}${page}`;
     try {
@@ -133,11 +175,15 @@ export async function run(args = process.argv.slice(2)) {
     } catch (error) {
       console.error(`[FAIL] ${target}: ${error.message}`);
       failed += selected.length;
+      for (const tool of selected)
+        report.checks.push({ tool: tool.name, target, passed: false, error: error.message });
+      await saveValidationReport(reportDirectory, report);
       continue;
     }
     for (let index = 0; index < selected.length; index++) {
       const tool = selected[index];
       console.log(`\n>>> ${tool.name}: ${target}`);
+      const record = { tool: tool.name, target, passed: false };
       try {
         const options =
           tool.name === 'Nu HTML' ? ['--format', 'json', '--stdout'] : ['--output=json'];
@@ -157,18 +203,33 @@ export async function run(args = process.argv.slice(2)) {
           ...options,
           target,
         ]);
+        Object.assign(record, result);
         if (!checkResult(tool.name, result))
-          throw new Error(`Validation failed (exit ${result.code})`);
+          throw new Error(validationDiagnostics(tool.name, result).join('\n'));
+        record.passed = true;
         console.log(`[PASS] ${tool.name}: ${target}`);
       } catch (error) {
         failed++;
+        record.error = error.message;
         console.error(`[FAIL] ${tool.name}: ${target}: ${error.message}`);
       }
+      report.checks.push(record);
+      await saveValidationReport(reportDirectory, report);
     }
   }
   console.log(
     `\n${failed ? '[FAIL]' : '[PASS]'} Local W3C: ${pages.length} pages, ${pages.length * selected.length} checks, ${failed} failed.`
   );
+  report.completedAt = new Date().toISOString();
+  report.failed = failed;
+  report.passed = failed === 0;
+  await saveValidationReport(reportDirectory, report);
+  if (failed) {
+    console.error('\nFailed W3C checks (all other passes do not override these failures):');
+    for (const check of report.checks.filter((check) => !check.passed))
+      console.error(`- ${check.tool}: ${check.target}: ${check.error}`);
+  }
+  console.log(`Full W3C diagnostics: ${reportFile}`);
   return failed ? 1 : 0;
 }
 

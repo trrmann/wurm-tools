@@ -330,6 +330,11 @@ function Test-Target {
     Invoke-SafeStep "Local HTML & CSS Validation (All Pages)" {
         pnpm run test:standards
     }
+    if ($TargetEnv -eq "prod") {
+        Invoke-SafeStep "Rebuild and Accept Offline Fedora Installers" {
+            node "$PSScriptRoot\check-helper-installers.js" --rebuild
+        }
+    }
     if ($TargetEnv -eq "dev") {
         $script:ChromeResult = "NOT REQUIRED (development target)"
         Write-Host "[INFO] Development verification does not run Chrome audits." -ForegroundColor Cyan
@@ -341,6 +346,12 @@ function Test-Target {
     }
 }
 
+if ($TargetEnv -eq "prod" -and ($Major -or $Minor -or $Patch -or $Point)) {
+    $bumpType = if ($Major) { "major" } elseif ($Minor) { "minor" } else { "patch" }
+    Invoke-SafeStep "Advance Project Version ($bumpType)" {
+        node "$PSScriptRoot\version.js" $bumpType
+    }
+}
 Test-Target
 
 # 5. Git Status and Verification
@@ -350,16 +361,6 @@ $statusOutput = (git status --porcelain)
 $hasPushed = $false
 
 if ($TargetEnv -eq "prod") {
-    # Check if a version bump was requested
-    if ($Major -or $Minor -or ($Patch -or $Point)) {
-        $bumpType = if ($Major) { "major" } elseif ($Minor) { "minor" } else { "patch" }
-        Invoke-SafeStep "Advance Project Version ($bumpType)" {
-            node "$PSScriptRoot\version.js" $bumpType
-        }
-        # Refresh status output since package.json was updated
-        $statusOutput = (git status --porcelain)
-    }
-
     if ($statusOutput) {
         Write-Host "[INFO] Uncommitted changes detected for production deployment:" -ForegroundColor Yellow
         git status --short
