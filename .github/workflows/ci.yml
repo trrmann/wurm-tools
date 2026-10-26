@@ -64,6 +64,9 @@ jobs:
       - name: Restore locked dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Trust only this container checkout for source provenance
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Build unsigned Fedora test installer
         run: pnpm run helper:installer:build
 
